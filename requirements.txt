@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+jinja2
+pydantic>=2.0
+eval_type_backport
+pyyaml
+caldav
+requests
+icalendar
+pillow
+pygame>=2.5
+python-multipart

@@ -1,0 +1,18 @@
+[Unit]
+Description=Family Planner Calendar Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/family-planner
+Environment=SDL_VIDEODRIVER=kmsdrm
+Environment=SDL_AUDIODRIVER=dummy
+ExecStart=/home/pi/family-planner/venv/bin/python app/main.py \
+    --config /boot/family-planner.config.yaml
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

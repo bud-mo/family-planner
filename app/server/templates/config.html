@@ -1,0 +1,458 @@
+{% extends "base.html" %}
+
+{% block extra_css %}
+/* ------------------------------------------------------------------ */
+/* Config page                                                          */
+/* ------------------------------------------------------------------ */
+.config-wrap {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+.config-inner {
+  max-width: 720px;
+}
+
+/* Banners */
+.banner {
+  padding: 10px 16px;
+  font-size: var(--text-sm);
+  border-left: 3px solid var(--color-rule-strong);
+  background: var(--color-bg-alt);
+  margin-bottom: 20px;
+}
+
+.banner--error {
+  border-left-color: #b00020;
+  color: #b00020;
+}
+
+/* Sections */
+.config-section {
+  margin-bottom: 36px;
+}
+
+.config-section__title {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding-bottom: 8px;
+  margin-bottom: 16px;
+  border-bottom: 2px solid var(--color-rule-strong);
+}
+
+/* Field grid (label + input pairs) */
+.field-grid {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 10px 16px;
+  align-items: center;
+}
+
+.field-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--color-ink-muted);
+}
+
+.field-input,
+.field-select {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--color-ink);
+  background: var(--color-bg);
+  border: 1px solid var(--color-rule-strong);
+  padding: 6px 8px;
+  width: 100%;
+  max-width: 360px;
+}
+
+.field-input:focus,
+.field-select:focus {
+  outline: 2px solid var(--color-rule-strong);
+  outline-offset: -2px;
+}
+
+.field-input[type="color"] {
+  padding: 2px 4px;
+  height: 32px;
+  cursor: pointer;
+}
+
+.field-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-sm);
+}
+
+/* Calendar cards */
+.cal-card {
+  border: 1px solid var(--color-rule);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.cal-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.cal-card__title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+/* Test-connection result */
+.test-result {
+  margin-top: 8px;
+  font-size: var(--text-sm);
+  display: none;
+}
+
+/* Buttons */
+.btn {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  padding: 8px 16px;
+  border: 1px solid var(--color-rule-strong);
+  background: var(--color-bg);
+  color: var(--color-ink);
+  cursor: pointer;
+}
+
+.btn:hover {
+  background: var(--color-bg-alt);
+}
+
+.btn:disabled {
+  color: var(--color-ink-faint);
+  cursor: default;
+}
+
+.btn--primary {
+  background: var(--color-accent);
+  color: var(--color-bg);
+  border-color: var(--color-accent);
+}
+
+.btn--primary:hover {
+  background: var(--color-ink);
+  border-color: var(--color-ink);
+}
+
+.btn--danger {
+  color: #b00020;
+  border-color: #b00020;
+}
+
+.btn--danger:hover {
+  background: #b00020;
+  color: var(--color-bg);
+}
+
+.btn-row {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+{% endblock %}
+
+{% block content %}
+<div class="config-wrap">
+<div class="config-inner">
+
+  {% if saved %}
+  <div class="banner">Configurazione salvata correttamente.</div>
+  {% endif %}
+
+  {% if error %}
+  <div class="banner banner--error">Errore di validazione:<br>{{ error }}</div>
+  {% endif %}
+
+  <form method="post" action="/config">
+
+    <!-- ---------------------------------------------------------------- -->
+    <!-- Server                                                             -->
+    <!-- ---------------------------------------------------------------- -->
+    <section class="config-section">
+      <h2 class="config-section__title">Server</h2>
+      <div class="field-grid">
+        <label class="field-label" for="server_host">host</label>
+        <input class="field-input" type="text" id="server_host" name="server_host"
+               value="{{ config.server.host }}" required />
+
+        <label class="field-label" for="server_port">port</label>
+        <input class="field-input" type="number" id="server_port" name="server_port"
+               value="{{ config.server.port }}" min="1" max="65535" required />
+      </div>
+    </section>
+
+    <!-- ---------------------------------------------------------------- -->
+    <!-- Display                                                            -->
+    <!-- ---------------------------------------------------------------- -->
+    <section class="config-section">
+      <h2 class="config-section__title">Display</h2>
+      <div class="field-grid">
+        <label class="field-label" for="display_type">type</label>
+        <select class="field-select" id="display_type" name="display_type">
+          <option value="hdmi"{% if config.display.type == "hdmi" %} selected{% endif %}>HDMI</option>
+          <option value="eink"{% if config.display.type == "eink" %} selected{% endif %}>E-Ink</option>
+        </select>
+
+        <label class="field-label" for="display_width">width (px)</label>
+        <input class="field-input" type="number" id="display_width" name="display_width"
+               value="{{ config.display.width }}" min="320" required />
+
+        <label class="field-label" for="display_height">height (px)</label>
+        <input class="field-input" type="number" id="display_height" name="display_height"
+               value="{{ config.display.height }}" min="240" required />
+
+        <label class="field-label" for="display_fullscreen">fullscreen</label>
+        <div class="field-checkbox-row">
+          <input type="checkbox" id="display_fullscreen" name="display_fullscreen"
+                 {% if config.display.fullscreen %}checked{% endif %} />
+          <label for="display_fullscreen">Attiva fullscreen</label>
+        </div>
+
+        <label class="field-label" for="display_refresh">refresh (s)</label>
+        <input class="field-input" type="number" id="display_refresh"
+               name="display_refresh_interval"
+               value="{{ config.display.refresh_interval }}" min="10" required />
+
+        <label class="field-label" for="display_eink_model">e-ink model</label>
+        <input class="field-input" type="text" id="display_eink_model"
+               name="display_eink_model"
+               value="{{ config.display.eink_model }}" />
+
+        <label class="field-label" for="display_eink_palette">e-ink palette</label>
+        <select class="field-select" id="display_eink_palette" name="display_eink_palette">
+          <option value="bw"{% if config.display.eink_palette == "bw" %} selected{% endif %}>BW</option>
+          <option value="bwr"{% if config.display.eink_palette == "bwr" %} selected{% endif %}>BWR</option>
+          <option value="4gray"{% if config.display.eink_palette == "4gray" %} selected{% endif %}>4 Gray</option>
+        </select>
+
+        <label class="field-label" for="display_eink_dither">dithering</label>
+        <div class="field-checkbox-row">
+          <input type="checkbox" id="display_eink_dither" name="display_eink_dither"
+                 {% if config.display.eink_dither %}checked{% endif %} />
+          <label for="display_eink_dither">Floyd-Steinberg dithering</label>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------------------------------------------------------------- -->
+    <!-- Calendari                                                          -->
+    <!-- ---------------------------------------------------------------- -->
+    <section class="config-section">
+      <h2 class="config-section__title">Calendari</h2>
+
+      <div id="cal-list">
+        {% for cal in config.calendars %}
+        <div class="cal-card">
+          <div class="cal-card__header">
+            <span class="cal-card__title">Calendario {{ loop.index }}</span>
+            <button type="button" class="btn btn--danger"
+                    onclick="removeCalendar(this)">Rimuovi</button>
+          </div>
+          <div class="field-grid">
+            <label class="field-label">name</label>
+            <input class="field-input" type="text" name="cal_name"
+                   value="{{ cal.name }}" required />
+
+            <label class="field-label">type</label>
+            <select class="field-select" name="cal_type"
+                    onchange="toggleCalFields(this)">
+              <option value="caldav"{% if cal.type == "caldav" %} selected{% endif %}>CalDAV</option>
+              <option value="ics"{% if cal.type == "ics" %} selected{% endif %}>File ICS</option>
+              <option value="ical"{% if cal.type == "ical" %} selected{% endif %}>iCal (URL)</option>
+            </select>
+
+            <label class="field-label">color</label>
+            <input class="field-input" type="color" name="cal_color"
+                   value="{{ cal.color }}" />
+
+            <label class="field-label caldav-field ical-field">url</label>
+            <input class="field-input caldav-field ical-field" type="url" name="cal_url"
+                   value="{{ cal.url or '' }}" />
+
+            <label class="field-label caldav-only-field">username</label>
+            <input class="field-input caldav-only-field" type="text" name="cal_username"
+                   value="{{ cal.username or '' }}" />
+
+            <label class="field-label caldav-only-field">password</label>
+            <input class="field-input caldav-only-field" type="password" name="cal_password"
+                   value="" placeholder="(invariata — lascia vuoto per mantenere)"
+                   autocomplete="new-password" />
+
+            <label class="field-label ics-field">path</label>
+            <input class="field-input ics-field" type="text" name="cal_path"
+                   value="{{ cal.path or '' }}" />
+          </div>
+          <div class="btn-row">
+            <button type="button" class="btn test-btn"
+                    onclick="testConnection(this)">
+              Testa connessione
+            </button>
+            <span class="test-result"></span>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <button type="button" class="btn" onclick="addCalendar()">
+        + Aggiungi calendario
+      </button>
+    </section>
+
+    <!-- Save -->
+    <div style="margin-top: 8px; padding-bottom: 32px;">
+      <button type="submit" class="btn btn--primary">Salva configurazione</button>
+    </div>
+
+  </form>
+</div>
+</div>
+
+<!-- -------------------------------------------------------------------- -->
+<!-- Template for dynamically added calendars                              -->
+<!-- -------------------------------------------------------------------- -->
+<template id="cal-tmpl">
+  <div class="cal-card">
+    <div class="cal-card__header">
+      <span class="cal-card__title">Nuovo calendario</span>
+      <button type="button" class="btn btn--danger"
+              onclick="removeCalendar(this)">Rimuovi</button>
+    </div>
+    <div class="field-grid">
+      <label class="field-label">name</label>
+      <input class="field-input" type="text" name="cal_name" required />
+
+      <label class="field-label">type</label>
+      <select class="field-select" name="cal_type" onchange="toggleCalFields(this)">
+        <option value="caldav">CalDAV</option>
+        <option value="ics">File ICS</option>
+        <option value="ical">iCal (URL)</option>
+      </select>
+
+      <label class="field-label">color</label>
+      <input class="field-input" type="color" name="cal_color" value="#4A90D9" />
+
+      <label class="field-label caldav-field ical-field">url</label>
+      <input class="field-input caldav-field ical-field" type="url" name="cal_url" value="" />
+
+      <label class="field-label caldav-only-field">username</label>
+      <input class="field-input caldav-only-field" type="text" name="cal_username" value="" />
+
+      <label class="field-label caldav-only-field">password</label>
+      <input class="field-input caldav-only-field" type="password" name="cal_password"
+             value="" autocomplete="new-password" />
+
+      <label class="field-label ics-field">path</label>
+      <input class="field-input ics-field" type="text" name="cal_path" value="" />
+    </div>
+    <div class="btn-row">
+      <button type="button" class="btn test-btn"
+              onclick="testConnection(this)">
+        Testa connessione
+      </button>
+      <span class="test-result"></span>
+    </div>
+  </div>
+</template>
+
+<script>
+(function () {
+  'use strict';
+
+  function updateTitles() {
+    var cards = document.querySelectorAll('#cal-list .cal-card');
+    cards.forEach(function (card, i) {
+      var t = card.querySelector('.cal-card__title');
+      if (t) { t.textContent = 'Calendario ' + (i + 1); }
+    });
+  }
+
+  window.addCalendar = function () {
+    var tmpl = document.getElementById('cal-tmpl');
+    var clone = tmpl.content.cloneNode(true);
+    document.getElementById('cal-list').appendChild(clone);
+    // Initialize field visibility for the newly added card.
+    var lastCard = document.querySelector('#cal-list .cal-card:last-child');
+    var sel = lastCard.querySelector('select[name="cal_type"]');
+    if (sel) { toggleCalFields(sel); }
+    updateTitles();
+  };
+
+  window.removeCalendar = function (btn) {
+    btn.closest('.cal-card').remove();
+    updateTitles();
+  };
+
+  window.toggleCalFields = function (select) {
+    var card = select.closest('.cal-card');
+    var type = select.value;
+    var showUrl = (type === 'caldav' || type === 'ical');
+    card.querySelectorAll('.caldav-field').forEach(function (el) {
+      el.style.display = showUrl ? '' : 'none';
+    });
+    card.querySelectorAll('.caldav-only-field').forEach(function (el) {
+      el.style.display = (type === 'caldav') ? '' : 'none';
+    });
+    card.querySelectorAll('.ics-field').forEach(function (el) {
+      el.style.display = (type === 'ics') ? '' : 'none';
+    });
+    var testBtn = card.querySelector('.test-btn');
+    if (testBtn) {
+      testBtn.style.display = showUrl ? '' : 'none';
+      testBtn.textContent = (type === 'ical') ? 'Testa URL iCal' : 'Testa connessione CalDAV';
+    }
+  };
+
+  window.testConnection = function (btn) {
+    var card = btn.closest('.cal-card');
+    var result = card.querySelector('.test-result');
+    var type     = (card.querySelector('[name="cal_type"]')     || {}).value || 'caldav';
+    var url      = (card.querySelector('[name="cal_url"]')      || {}).value || '';
+    var username = (card.querySelector('[name="cal_username"]') || {}).value || '';
+    var password = (card.querySelector('[name="cal_password"]') || {}).value || '';
+
+    var fd = new FormData();
+    fd.append('type', type);
+    fd.append('url', url);
+    fd.append('username', username);
+    fd.append('password', password);
+
+    btn.disabled = true;
+    result.style.display = 'inline';
+    result.style.color = 'var(--color-ink-muted)';
+    result.textContent = 'Test in corso\u2026';
+
+    fetch('/api/test-connection', { method: 'POST', body: fd })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        result.textContent = (data.ok ? '\u2713 ' : '\u2717 ') + data.message;
+        result.style.color = data.ok ? 'var(--color-ink)' : '#b00020';
+      })
+      .catch(function () {
+        result.textContent = '\u2717 Errore di rete.';
+        result.style.color = '#b00020';
+      })
+      .finally(function () { btn.disabled = false; });
+  };
+
+  // On page load: initialise visibility for pre-filled calendar cards.
+  document.querySelectorAll('#cal-list select[name="cal_type"]').forEach(function (sel) {
+    toggleCalFields(sel);
+  });
+}());
+</script>
+{% endblock %}
+
+{% block footer_hint %}{% endblock %}

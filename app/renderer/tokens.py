@@ -1,0 +1,113 @@
+"""Design tokens for Family Planner renderer.
+
+All values are sourced from docs/design.md and must not deviate from it.
+Units are always pixels — no rem/em/viewport units.
+"""
+from __future__ import annotations
+
+from pathlib import Path
+
+# ---------------------------------------------------------------------------
+# Asset paths
+# ---------------------------------------------------------------------------
+
+FONTS_DIR: Path = Path(__file__).parent.parent / "assets" / "fonts"
+ICONS_DIR: Path = Path(__file__).parent.parent / "assets" / "icons"
+
+# ---------------------------------------------------------------------------
+# Font file names (relative to FONTS_DIR)
+# ---------------------------------------------------------------------------
+
+FONT_DISPLAY_REGULAR = "PlayfairDisplay-Regular.ttf"
+FONT_DISPLAY_BOLD = "PlayfairDisplay-Bold.ttf"
+FONT_BODY_REGULAR = "IBMPlexSans-Regular.ttf"
+FONT_BODY_SEMIBOLD = "IBMPlexSans-SemiBold.ttf"
+FONT_MONO_REGULAR = "IBMPlexMono-Regular.ttf"
+
+# ---------------------------------------------------------------------------
+# Typographic scale (px)
+# ---------------------------------------------------------------------------
+
+TEXT_XS: int = 11
+TEXT_SM: int = 13
+TEXT_BASE: int = 15
+TEXT_MD: int = 18
+TEXT_LG: int = 24
+TEXT_XL: int = 32
+TEXT_2XL: int = 48
+
+# ---------------------------------------------------------------------------
+# Layout structure (px)
+# ---------------------------------------------------------------------------
+
+HEADER_HEIGHT: int = 56
+FOOTER_HEIGHT: int = 40
+
+# Footer interactive elements
+FOOTER_BUTTON_PADDING_X: int = 16  # horizontal padding per button
+FOOTER_ICON_SIZE: int = 16
+
+# Header icon size
+HEADER_ICON_SIZE: int = 24
+
+# Spacing
+DETAIL_ROW_SPACING: int = 12  # vertical gap between info rows in detail view
+
+# ---------------------------------------------------------------------------
+# Day palette
+# ---------------------------------------------------------------------------
+
+COLOR_BG: str = "#F8F6F0"
+COLOR_BG_ALT: str = "#EEECE6"
+COLOR_INK: str = "#111111"
+COLOR_INK_MUTED: str = "#666666"
+COLOR_INK_FAINT: str = "#AAAAAA"
+COLOR_ACCENT: str = "#1A1A1A"
+COLOR_HOLIDAY: str = "#444444"
+COLOR_RULE: str = "#CCCCAA"
+COLOR_RULE_STRONG: str = "#333333"
+
+# ---------------------------------------------------------------------------
+# Night palette
+# ---------------------------------------------------------------------------
+
+NIGHT_COLOR_BG: str = "#0D0D0D"
+NIGHT_COLOR_BG_ALT: str = "#1A1A1A"
+NIGHT_COLOR_INK: str = "#E8E6E0"
+NIGHT_COLOR_INK_MUTED: str = "#888888"
+NIGHT_COLOR_INK_FAINT: str = "#444444"
+NIGHT_COLOR_ACCENT: str = "#E8E6E0"
+NIGHT_COLOR_HOLIDAY: str = "#AAAAAA"
+NIGHT_COLOR_RULE: str = "#2A2A2A"
+NIGHT_COLOR_RULE_STRONG: str = "#CCCCAA"
+
+
+def get_palette(night_mode: bool) -> dict[str, str]:
+    """Return the active colour palette as a flat dictionary.
+
+    Keys use canonical names without the ``COLOR_`` prefix for brevity,
+    e.g. ``"BG"``, ``"INK"``, ``"ACCENT"`` …
+    """
+    if night_mode:
+        return {
+            "BG": NIGHT_COLOR_BG,
+            "BG_ALT": NIGHT_COLOR_BG_ALT,
+            "INK": NIGHT_COLOR_INK,
+            "INK_MUTED": NIGHT_COLOR_INK_MUTED,
+            "INK_FAINT": NIGHT_COLOR_INK_FAINT,
+            "ACCENT": NIGHT_COLOR_ACCENT,
+            "HOLIDAY": NIGHT_COLOR_HOLIDAY,
+            "RULE": NIGHT_COLOR_RULE,
+            "RULE_STRONG": NIGHT_COLOR_RULE_STRONG,
+        }
+    return {
+        "BG": COLOR_BG,
+        "BG_ALT": COLOR_BG_ALT,
+        "INK": COLOR_INK,
+        "INK_MUTED": COLOR_INK_MUTED,
+        "INK_FAINT": COLOR_INK_FAINT,
+        "ACCENT": COLOR_ACCENT,
+        "HOLIDAY": COLOR_HOLIDAY,
+        "RULE": COLOR_RULE,
+        "RULE_STRONG": COLOR_RULE_STRONG,
+    }

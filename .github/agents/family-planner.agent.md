@@ -61,6 +61,7 @@ docs/design.md          # Typography, color palette, layout, interaction model
 4. **Test locally first**: the app runs on macOS/Linux for dev; use `--config config/config.yaml` with `display.type: "hdmi"` and `fullscreen: false`
 5. **Raspberry Pi deploy**: use `scripts/deploy.sh` for SSH-based deploy; `scripts/setup-autostart.sh` for systemd registration
 6. **E-ink constraints**: palette quantization must be deterministic; avoid colors that don't map cleanly to BW/BWR/4-gray; always test dithering with `eink_dither: true`
+7. **Update documentation on every critical change**: after any modification that affects architecture, data flow, config schema, API routes, design system, or deployment — update `docs/architecture.md` and/or `docs/design.md` in the same work session before closing. Never leave docs out of sync with the code.
 
 ## Output Format
 

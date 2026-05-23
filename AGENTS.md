@@ -99,6 +99,16 @@ Usare `display.type: "hdmi"` e `fullscreen: false` per sviluppo su macOS/Linux.
 2. Verificare che le modifiche a `ImageRenderer` siano compatibili con entrambi i display
 3. Validare le modifiche allo schema config contro i modelli Pydantic in `app/config.py`
 
+### Dopo ogni modifica critica
+
+Se la modifica tocca architettura, flusso dati, schema config, rotte API, design system o deploy, aggiornare **nella stessa sessione di lavoro**:
+
+- `docs/architecture.md` — se cambia struttura, componenti, flusso o rotte
+- `docs/design.md` — se cambia palette, tipografia, layout o design system
+- `config/default.yaml` — se cambia lo schema di configurazione
+
+Non chiudere mai un task critico lasciando la documentazione non sincronizzata con il codice.
+
 ---
 
 ## Documentazione di Riferimento

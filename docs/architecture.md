@@ -43,6 +43,7 @@ family-planner/
 │   │   ├── base.py              # Classe astratta CalendarProvider
 │   │   ├── caldav_provider.py   # Provider CalDAV (Apple Calendar / iCloud)
 │   │   ├── ics_provider.py      # Provider file .ics locali
+│   │   ├── ical_provider.py     # Provider iCal URL (Google Calendar, feed pubblici)
 │   │   └── aggregator.py        # Aggrega eventi da più provider
 │   ├── renderer/
 │   │   ├── __init__.py
@@ -110,6 +111,11 @@ calendars:
     type: "ics"
     path: "/home/pi/calendars/locale.ics"
     color: "#E74C3C"
+
+  - name: "Google Calendar"
+    type: "ical"
+    url: "https://calendar.google.com/calendar/ical/<id>/basic.ics"  # anche webcal:// accettato
+    color: "#27AE60"
 ```
 
 La configurazione è validata tramite **Pydantic v2** all'avvio; errori di schema bloccano il processo con un messaggio chiaro.
@@ -167,6 +173,27 @@ Apple Calendar è supportato via **CalDAV** attraverso iCloud:
 - Il provider recupera tutti i calendari disponibili sull'account e filtra per nome se specificato
 
 > **Nota sicurezza**: la password non è mai esposta via API web. Il file di configurazione deve avere permessi `600`.
+
+---
+
+## Integrazione Google Calendar (e feed iCal generici)
+
+Google Calendar e qualsiasi servizio che espone un feed iCalendar via HTTP/HTTPS sono supportati dal tipo `ical`:
+
+- **URL**: si ottiene da Google Calendar → *Impostazioni* → *Integra il calendario* → *Indirizzo segreto in formato iCal*
+- **Autenticazione**: non richiesta — l'URL funge da token segreto; non è mai necessario username/password
+- **Schema `webcal://`**: accettato e convertito automaticamente in `https://` da `IcalProvider`
+- **Libreria**: `requests` (già inclusa) + `icalendar` (stessa pipeline di `IcsProvider`)
+
+```yaml
+calendars:
+  - name: "Google Calendar"
+    type: "ical"
+    url: "https://calendar.google.com/calendar/ical/<id>/basic.ics"
+    color: "#27AE60"
+```
+
+> **Nota sicurezza**: l'URL iCal di Google Calendar contiene un identificatore segreto. Trattarlo come una password: non condividerlo e non includerlo nei log. Il file di configurazione deve avere permessi `600`.
 
 ---
 
@@ -346,11 +373,11 @@ python-multipart     # per form POST /config
             │              ┌───────┴────────┐
    ┌────────┴────────┐     │                │
    │                 │  ┌──▼──────┐  ┌──────▼──────────┐
-┌──▼──────┐   ┌──────▼───┐│  HDMI  │  │  EinkRenderer  │
-│ CalDAV  │   │  ICS     ││Display │  │  palette/dither │
-│Provider │   │ Provider ││(pygame)│  └──────┬──────────┘
-│(iCloud) │   │(file)    │└────────┘         │
-└─────────┘   └──────────┘             ┌─────▼──────┐
+┌──▼──────┐   ┌──────▼───┐   ┌──────▼───┐│  HDMI  │  │  EinkRenderer  │
+│ CalDAV  │   │  ICS     │   │  iCal    ││Display │  │  palette/dither │
+│Provider │   │ Provider │   │ Provider ││(pygame)│  └──────┬──────────┘
+│(iCloud) │   │(file)    │   │(URL)     │└────────┘         │
+└─────────┘   └──────────┘   └──────────┘             ┌─────▼──────┐
                                         │   E-ink    │
                                         │  Display   │
                                         │ (Waveshare)│
