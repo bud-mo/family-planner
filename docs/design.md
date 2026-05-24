@@ -9,7 +9,7 @@ Il calendario è concepito come una **pagina stampata interattiva**, non come un
 - Assenza totale di ombreggiature (`box-shadow`, `text-shadow`, `drop-shadow`)
 - Assenza di bordi arrotondati (`border-radius: 0` ovunque)
 - Nessuna animazione o transizione — gli aggiornamenti sono istantanei
-- Il layout non scrolla mai, ad eccezione del dettaglio appuntamento
+- Il layout non scrolla mai
 - La griglia è l'unico strumento di composizione
 
 ---
@@ -42,9 +42,9 @@ La scala è fissa in pixel per garantire coerenza sul display fisico (nessun `re
 | `--text-sm`  | 13px | Orari, metadati appuntamento |
 | `--text-base`| 15px | Corpo testo, nomi eventi |
 | `--text-md`  | 18px | Numero giorno selezionato |
-| `--text-lg`  | 24px | Intestazione settimana / mese corrente |
-| `--text-xl`  | 32px | Titolo mese nella vista mensile |
-| `--text-2xl` | 48px | Anno nella vista annuale |
+| `--text-lg`  | 24px | Data nel banner meteo, intestazione calendario |
+| `--text-xl`  | 32px | Titolo sezione, elemento prominente |
+| `--text-2xl` | 48px | Uso eccezionale |
 
 Line-height uniforme: `1.3`. Letter-spacing per titoli: `0.03em`.
 
@@ -108,21 +108,18 @@ Il set di icone adottato è **Tabler Icons** (versione SVG outline, stroke-width
 
 | Icona Tabler | Utilizzo |
 |---|---|
-| `icon-calendar-month` | Vista mensile — intestazione |
-| `icon-calendar-week` | Vista settimanale — intestazione |
-| `icon-calendar-day` | Vista giornaliera — intestazione |
-| `icon-calendar-event` | Dettaglio appuntamento — intestazione |
-| `icon-chevron-up` | Pulsante Su (overlay virtuale) |
-| `icon-chevron-down` | Pulsante Giù (overlay virtuale) |
-| `icon-corner-up-left` | Pulsante Esci / Ritorna (overlay virtuale) |
-| `icon-check` | Pulsante Invio (overlay virtuale) |
-| `icon-sun` | Indicatore modalità giorno |
-| `icon-moon` | Indicatore modalità notte |
-| `icon-clock` | Orario appuntamento |
-| `icon-map-pin` | Luogo appuntamento |
-| `icon-users` | Partecipanti |
-| `icon-repeat` | Evento ricorrente |
-| `icon-star` | Festività / Giorno speciale |
+| `icon-sun` | Condizione soleggiato — banner meteo / indicatore modalità giorno |
+| `icon-cloud` | Condizione nuvoloso — banner meteo |
+| `icon-cloud-rain` | Condizione piovoso — banner meteo |
+| `icon-snowflake` | Condizione neve — banner meteo |
+| `icon-chevron-up` | Pulsante Su (footer) |
+| `icon-chevron-down` | Pulsante Giù (footer) |
+| `icon-corner-up-left` | Pulsante Oggi / Ritorna (footer) |
+| `icon-check` | Pulsante Invio — disabilitato (footer) |
+| `icon-moon` | Indicatore modalità notte (footer) |
+| `icon-clock` | Orario appuntamento — lista |
+| `icon-map-pin` | Luogo appuntamento — lista |
+| `icon-star` | Festività / Giorno speciale — calendario mensile |
 
 Dimensione standard icone: `16px` (inline con testo) / `20px` (pulsanti) / `24px` (intestazioni viste).
 
@@ -130,26 +127,59 @@ Dimensione standard icone: `16px` (inline con testo) / `20px` (pulsanti) / `24px
 
 ## Layout Generale
 
-Ogni schermata è divisa in **tre fasce orizzontali fisse**:
+L'interfaccia è costituita da un'unica **schermata Home** con due varianti di layout selezionabili tramite configurazione. Non esiste un header separato: la data è incorporata nel banner meteo.
+
+### Layout Portrait
+
+Quattro fasce orizzontali impilate:
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│  HEADER  (altezza fissa: 56px)                          │
-│  Vista corrente · Navigazione testuale · Data           │
-├─────────────────────────────────────────────────────────┤
+┌──────────────────────────────────────────────────────────┐
+│  BANNER METEO  (altezza fissa: 90px)                     │
+│  Data · Icona meteo · Temperatura attuale · Max/Min      │
+├──────────────────────────────────────────────────────────┤
+│  CALENDARIO MENSILE  (altezza fissa: 250px)              │
+│  Vista mensile visiva — nessuna interazione              │
+├──────────────────────────────────────────────────────────┤
 │                                                          │
-│  CONTENT AREA  (altezza variabile — occupa lo spazio     │
-│  rimanente)                                             │
+│  LISTA APPUNTAMENTI  (altezza variabile)                 │
+│  Dal prossimo appuntamento in poi — stile Agenda         │
 │                                                          │
-├─────────────────────────────────────────────────────────┤
-│  FOOTER  (altezza fissa: 40px)                          │
-│  Stato · Legenda scorciatoie tasti fisici               │
-└─────────────────────────────────────────────────────────┘
+├──────────────────────────────────────────────────────────┤
+│  FOOTER  (altezza fissa: 40px)                           │
+│  Pulsanti navigazione · Indicatori di stato              │
+└──────────────────────────────────────────────────────────┘
 ```
 
-**Header:** separato dal contenuto da una `border-bottom: 2px solid var(--color-rule-strong)`.  
-**Footer:** separato dal contenuto da una `border-top: 1px solid var(--color-rule)`. Su HDMI i quattro tasti della legenda sono cliccabili (v. *Footer Interattivo*).  
-**Content area:** non scrolla mai (eccetto dettaglio appuntamento).
+**Banner Meteo:** `border-bottom: 2px solid var(--color-rule-strong)`.  
+**Calendario Mensile:** `border-bottom: 1px solid var(--color-rule-strong)`.  
+**Lista Appuntamenti:** occupa l'altezza rimanente (`height − 90px − 250px − 40px`). Non scrolla — Su/Giù sostituisce l'intera pagina.  
+**Footer:** `border-top: 1px solid var(--color-rule)`.
+
+### Layout Landscape
+
+Due colonne affiancate + footer full-width:
+
+```
+┌─────────────────────────────────┬────────────────────────────────────────┐
+│  COLONNA SINISTRA  (38%)        │  COLONNA DESTRA  (62%)                 │
+│                                 │                                        │
+│  METEO  (90px)                  │  LISTA APPUNTAMENTI                    │
+│  Data · Icona · Temperatura     │  (altezza intera content area)         │
+│  ─────────────────────────────  │                                        │
+│  CALENDARIO MENSILE             │                                        │
+│  (altezza rimanente)            │                                        │
+│                                 │                                        │
+├─────────────────────────────────┴────────────────────────────────────────┤
+│  FOOTER  (40px, full width)                                              │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+**Separatore colonne:** `border-right: 1px solid var(--color-rule-strong)` sulla colonna sinistra, altezza `height − 40px`.  
+**Sezione Meteo:** `border-bottom: 1px solid var(--color-rule)`.  
+**Colonna sinistra:** larghezza `38%` (≈ rapporto aureo editoriale). Esempio: 1024×600 → 389px sinistra, 634px destra.  
+**Lista Appuntamenti:** occupa tutta l'altezza della content area (`height − 40px`).  
+**Footer:** `border-top: 1px solid var(--color-rule)`.
 
 ---
 
@@ -161,10 +191,10 @@ La mappatura dei 4 pulsanti fisici (o delle 4 azioni da tastiera):
 
 | Pulsante | Tasto tastiera | Azione |
 |---|---|---|
-| Esci / Ritorna | `Escape` | Torna alla schermata precedente |
-| Su | `ArrowUp` | Sposta la selezione verso l'alto / indietro |
-| Giù | `ArrowDown` | Sposta la selezione verso il basso / avanti |
-| Invio | `Enter` | Conferma la selezione / entra nella schermata |
+| Oggi / Ritorna | `Escape` | Reimposta la lista alla data odierna |
+| Su | `ArrowUp` | Pagina precedente nella lista appuntamenti |
+| Giù | `ArrowDown` | Pagina successiva nella lista appuntamenti |
+| Invio | `Enter` | Disabilitato — nessuna azione |
 
 ### Footer Interattivo (pulsanti virtuali)
 
@@ -172,16 +202,16 @@ Non esiste alcun overlay flottante. Il footer è l'**unico** elemento interattiv
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  [ ↑ Su ]  [ ↓ Giù ]  [ ↵ Invio ]  [ ← Esci ]              │
+│  [ ↑ Su ]  [ ↓ Giù ]  [ ↵ — ]  [ ← Oggi ]                  │
 └──────────────────────────────────────────────────────────────┘
 ```
 
 **Specifica footer interattivo:**
 - I quattro tasti occupano la fascia footer come elementi `inline-block` separati da `border-right: 1px solid var(--color-rule)`
 - Ogni tasto: altezza `40px` (= altezza footer), padding orizzontale `16px`, icona Tabler `16px` + etichetta testuale in `--text-xs`
-- Allineamento: i tasti sono raggruppati a sinistra; eventuali indicatori di stato (display, ora) restano a destra
+- Allineamento: i tasti sono raggruppati a sinistra; gli indicatori di stato (display, layout, ora) restano a destra
 - Su HDMI: `cursor: pointer`; area hit minima `44px` di larghezza per accessibilità touch
-- Il tasto "Esci" è disabilitato visivamente (`--color-ink-faint`, `pointer-events: none`) sulla vista annuale
+- Il tasto "Invio" è sempre disabilitato visivamente (`--color-ink-faint`, `pointer-events: none`)
 - Su e-ink: il footer è identico ma non interattivo — i pulsanti fisici rimangono l'unico mezzo di input
 
 ---
@@ -190,251 +220,113 @@ Non esiste alcun overlay flottante. Il footer è l'**unico** elemento interattiv
 
 ---
 
-### 1. Vista Annuale
+### Home (schermata unica)
 
-**Scopo:** orientamento rapido nell'anno. Permette di selezionare un mese.  
-**Navigazione:** Su/Giù seleziona il mese precedente/successivo; Invio entra nella vista mensile. Nessun tasto "Esci" attivo.
+**Scopo:** mostra la situazione meteorologica, il calendario mensile corrente e la lista degli appuntamenti dal prossimo in poi, in un unico colpo d'occhio.  
+**Navigazione:** Su/Giù pagina la lista appuntamenti; Esc reimposta alla data odierna; Enter disabilitato.
 
-#### Layout
+#### Sezione Meteo
+
+Banner superiore in portrait, sezione superiore della colonna sinistra in landscape.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  ANNO: 2026                                    [icona-sole]  │  ← Header
-├──────────────────────────────────────────────────────────────┤
-│                                                              │
-│   GEN          FEB          MAR          APR                 │
-│   ──────────   ──────────   ──────────   ──────────          │
-│   L M M G V S D  L M ...   L M ...      L M ...             │
-│   ·  ·  ·  1  2  3  4                                       │
-│   5  6  7  8  9 10 11                                        │
-│   ...                                                        │
-│                                                              │
-│   MAG ◄══ SELEZIONATO     GIU          LUG          AGO     │
-│   ══════════════════════                                     │
-│   ...                                                        │
-│                                                              │
-│   SET          OTT          NOV          DIC                 │
-│   ...                                                        │
-│                                                              │
-├──────────────────────────────────────────────────────────────┤
-│  ↑↓ Seleziona mese · ↵ Apri mese                            │  ← Footer
+│  Domenica, 24 Maggio 2026                   ⛅  18°  ↑22° ↓14° │
 └──────────────────────────────────────────────────────────────┘
 ```
 
-#### Regole visive
+**Regole visive:**
 
-- **Griglia 4×3:** i 12 mesi sono disposti in 3 righe da 4 colonne, a occupare tutta la content area.
-- Ogni mini-calendario mostra solo i **numeri dei giorni** in `--text-xs`. Nessuna etichetta di evento.
-- Intestazione mese: `--font-body`, `--text-sm`, uppercase, `letter-spacing: 0.08em`.
-- **Festività:** il numero del giorno è in `--font-display`, `font-weight: bold`, `--color-holiday`. Un punto `·` sottostante indica la presenza di una festività nazionale.
-- **Mese selezionato:** il mini-calendario riceve `outline: 2px solid var(--color-rule-strong)` sul bordo esterno, nessun riempimento di sfondo.
-- Il giorno corrente (se il mese visualizzato è il mese corrente): sfondo `--color-accent`, testo `--color-bg` (inversione) — un quadrato netto `16×16px`.
+- Data: `--font-display`, `--text-lg`, formato `"Giorno, DD Mese YYYY"`, `--color-ink`
+- Icona meteo: Tabler Icon `24px`, `currentColor`, allineata a destra
+- Temperatura attuale: `--font-body`, `--text-lg`, `font-weight: 600`, `--color-ink`
+- Max/Min: `--font-body`, `--text-sm`, `--color-ink-muted`, formato `"↑22° ↓14°"`
+- Sfondo: `--color-bg` — nessun sfondo alternato nel banner
 
----
+#### Sezione Calendario Mensile
 
-### 2. Vista Mensile
-
-**Scopo:** panoramica del mese selezionato. Permette di selezionare una settimana.  
-**Navigazione:** Su/Giù seleziona la settimana precedente/successiva; Invio entra nella vista settimanale. Esci torna alla vista annuale.
-
-#### Layout
+Il calendario mensile è **puramente visivo** — non risponde a nessuna interazione dell'utente.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  ← Esci   MAGGIO 2026                        [icona-mese]   │  ← Header
-├──────────────────────────────────────────────────────────────┤
-│                                                              │
-│   LUN   MAR   MER   GIO   VEN   SAB   DOM                   │
-│   ─────────────────────────────────────────────────────      │
-│                                                              │
+│                       MAGGIO 2026                            │
+│  LUN   MAR   MER   GIO   VEN   SAB   DOM                    │
 │   27    28    29    30     1     2     3                     │
-│   ──────────────────────────────────────────────────         │
 │    4     5     6     7     8     9    10                     │
-│   ══════ SETTIMANA SELEZIONATA ═══════════════               │
 │   11    12    13    14    15    16    17                     │
-│   ──────────────────────────────────────────────────         │
-│   18    19    20    21    22    23    24                     │
-│   ──────────────────────────────────────────────────         │
+│   18    19    20    21    22    23   [24]                    │
 │   25    26    27    28    29    30    31                     │
-│   ──────────────────────────────────────────────────         │
-│                                                              │
-├──────────────────────────────────────────────────────────────┤
-│  ↑↓ Seleziona settimana · ↵ Apri settimana · Esc Anno       │  ← Footer
 └──────────────────────────────────────────────────────────────┘
 ```
 
-#### Regole visive
+**Regole visive:**
 
-- **Righe settimana:** ogni riga è separata da `border-bottom: 1px solid var(--color-rule)`.
-- **Settimana selezionata:** la riga riceve `background: var(--color-bg-alt)` e `border-top: 2px solid var(--color-rule-strong)` / `border-bottom: 2px solid var(--color-rule-strong)`.
-- Numero del giorno: `--text-md`, `--font-body`. Giorni del mese precedente/successivo: `--color-ink-faint`.
-- **Oggi:** il numero ha sfondo `--color-accent`, testo `--color-bg`, dimensioni fisse `28×28px`, quadrato.
-- **Festività:** piccola stella `icon-star` a fianco del numero, `12px`, `--color-holiday`.
-- Le celle non mostrano testo degli eventi — solo il numero del giorno e l'indicatore festività.
-- Giorni con almeno un evento: un trattino `—` sotto il numero, `--color-ink-muted`, centrato.
+- Intestazione mese: `--font-body`, `--text-sm`, uppercase, `letter-spacing: 0.08em`, centrata
+- Intestazione colonne (L M M G V S D): `--text-xs`, `--color-ink-muted`
+- Numeri giorni: `--text-xs`, `--font-body`, `--color-ink`
+- **Oggi:** sfondo `--color-accent`, testo `--color-bg`, quadrato `16×16px` netto
+- **Festività:** numero in `--font-display`, `font-weight: bold`, `--color-holiday`
+- Giorni del mese precedente/successivo: `--color-ink-faint`
+- Nessun indicatore di eventi nel calendario
 
----
+#### Sezione Lista Appuntamenti
 
-### 3. Vista Settimanale *(schermata principale)*
-
-**Scopo:** visione d'insieme della settimana con gli appuntamenti. Permette di selezionare un giorno o un singolo appuntamento.  
-**Navigazione:** Su/Giù naviga tra gli appuntamenti visibili (o tra i giorni se nessun appuntamento); Invio entra nel dettaglio appuntamento o nella vista giornaliera; Esci torna alla vista mensile.
-
-#### Layout
-
-```
-┌───────────────────────────────────────────────────────────────────────┐
-│  ← Esci   Settimana 21 · 18–24 Maggio 2026         [icona-settimana] │  ← Header
-├───────────────────────────────────────────────────────────────────────┤
-│                                                                       │
-│   ORA  │  LUN 18  │  MAR 19  │  MER 20  │  GIO 21 ◄══│  VEN 22  │… │
-│   ─────┼──────────┼──────────┼──────────┼────────────┼──────────┤   │
-│  08:00 │          │          │  Riunione│            │          │   │
-│        │          │          │  09:00   │            │          │   │
-│  09:00 │          │          │  ────────│            │          │   │
-│  10:00 │ Dentista │          │          │ Videocall  │          │   │
-│        │ 10:30    │          │          │ 10:00      │          │   │
-│  11:00 │ ─────────│          │          │ ────────── │          │   │
-│  12:00 │          │  Pranzo  │          │            │  Pranzo  │   │
-│        │          │  12:30   │          │            │  12:00   │   │
-│  ...   │  ...     │  ...     │  ...     │  ...       │  ...     │   │
-│                                                                       │
-├───────────────────────────────────────────────────────────────────────┤
-│  ↑↓ Naviga appuntamenti · ↵ Dettaglio · Esc Mese                     │  ← Footer
-└───────────────────────────────────────────────────────────────────────┘
-```
-
-#### Regole visive
-
-- **Colonna ORA:** larghezza fissa `52px`, orari in `--font-mono`, `--text-xs`, `--color-ink-muted`.
-- **Colonne giorno:** larghezza uniforme, calcolata per riempire esattamente la content area senza scrolling orizzontale. La riga dell'ora corrente è indicata da una linea `1px solid var(--color-accent)` orizzontale.
-- **Intestazione colonna giorno:** giorno della settimana (3 lettere, uppercase) + numero. Il giorno corrente: inversione cromatica (sfondo `--color-accent`, testo `--color-bg`). Il giorno selezionato: `border-bottom: 2px solid var(--color-rule-strong)`.
-- **Blocco appuntamento:** rettangolo netto con `border: 1px solid var(--color-rule-strong)`, sfondo `--color-bg-alt`. Il testo interno: nome evento in `--text-sm` bold + orario inizio in `--text-xs mono`.
-- **Appuntamento selezionato:** `border: 2px solid var(--color-rule-strong)`, sfondo `--color-accent`, testo `--color-bg`.
-- **Appuntamenti tutto-il-giorno:** fascia fissa sopra la griglia oraria, altezza `24px`, separata da `border-bottom: 1px solid var(--color-rule-strong)`.
-- **Griglia temporale:** la vista copre 08:00–22:00 di default (configurabile). Se un evento cade fuori finestra, appare come blocco troncato con ellissi `…` nell'intestazione.
-
----
-
-### 4. Vista Giornaliera
-
-**Scopo:** dettaglio di un singolo giorno. Permette di selezionare un singolo appuntamento.  
-**Navigazione:** Su/Giù seleziona l'appuntamento; Invio entra nel dettaglio; Esci torna alla vista settimanale.
-
-#### Layout
+Lista in stile Agenda, ordinata cronologicamente. Gli eventi sono raggruppati per giorno con separatori di data. La paginazione Su/Giù sostituisce l'intera pagina — nessuno scroll CSS.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  ← Esci   Giovedì, 21 Maggio 2026               [icona-day] │  ← Header
-├──────────────────────────────────────────────────────────────┤
+│  ── OGGI, DOMENICA 24 MAGGIO ──────────────────────────────  │
+│  15:00  │  Riunione team                                     │
+│         │  Sala B                                            │
+│  ────────────────────────────────────────────────────────    │
+│  17:30  │  Dentista                                          │
+│  ────────────────────────────────────────────────────────    │
 │                                                              │
-│  09:00 ──────────────────────────────────────────────────── │
-│         Videocall con il team                                │
-│         09:00 – 10:00                                        │
-│                                                              │
-│  12:30 ──────────────────────────────────────────────────── │
-│         Pranzo con Marco                                     │
-│         12:30 – 14:00                               ◄══ SEL │
-│                                                              │
-│  15:00 ──────────────────────────────────────────────────── │
-│         Firma documenti notarili                             │
-│         15:00 – 15:30  ★ Festività prossima                 │
-│                                                              │
-│  (nessun altro appuntamento)                                 │
-│                                                              │
-├──────────────────────────────────────────────────────────────┤
-│  ↑↓ Seleziona · ↵ Dettaglio · Esc Settimana                 │  ← Footer
+│  ── LUNEDÌ 25 MAGGIO ──────────────────────────────────────  │
+│  09:00  │  Videocall con cliente                             │
+│  ────────────────────────────────────────────────────────    │
+│  12:30  │  Pranzo con Marco                                  │
+│         │  Ristorante Al Porto                               │
 └──────────────────────────────────────────────────────────────┘
 ```
 
-#### Regole visive
+**Regole visive:**
 
-- Ogni appuntamento occupa un blocco verticale separato da `border-top: 1px solid var(--color-rule)`.
-- L'orario è mostrato nella fascia sinistra (larghezza fissa `56px`), in `--font-mono`, `--text-sm`, `--color-ink-muted`, allineato a destra.
-- Nome evento: `--font-body`, `--text-base`, `font-weight: 600`.
-- Intervallo orario completo: `--text-sm`, `--color-ink-muted`, sotto il nome.
-- **Appuntamento selezionato:** `background: var(--color-bg-alt)`, `border-left: 3px solid var(--color-rule-strong)`.
-- Il layout è calcolato per mostrare al massimo gli appuntamenti che rientrano nella content area. Se gli appuntamenti sono più del visibile, vengono compressi uniformemente (senza scrolling): la selezione con Su/Giù fa avanzare la visualizzazione sostituendo l'intero contenuto (effetto "pagina").
-- Slot vuoti tra appuntamenti: mostrati come riga `──── Libero ────` in `--color-ink-faint`, `--text-xs`, solo se lo spazio temporale libero è ≥ 60 minuti.
-
----
-
-### 5. Vista Dettaglio Appuntamento
-
-**Scopo:** mostrare tutte le informazioni di un singolo appuntamento. **Unica schermata con scrolling.**  
-**Navigazione:** Su/Giù scrolla il contenuto se necessario; Esci torna alla schermata precedente (giornaliera o settimanale). Il tasto Invio non ha effetto.
-
-#### Layout
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│  ← Esci   Dettaglio Appuntamento           [icona-evento]    │  ← Header
-├──────────────────────────────────────────────────────────────┤
-│                                                              │
-│  ════════════════════════════════════════════════════════    │
-│  PRANZO CON MARCO                                            │
-│  ════════════════════════════════════════════════════════    │
-│                                                              │
-│  [icona-clock]   Giovedì, 21 Maggio 2026                    │
-│                  12:30 – 14:00  (1h 30min)                  │
-│                                                              │
-│  [icona-map-pin] Ristorante Al Porto                        │
-│                  Via dei Pini, 14 — Milano                  │
-│                                                              │
-│  [icona-users]   Marco Bianchi, Anna Rossi                  │
-│                                                              │
-│  [icona-repeat]  Non ricorrente                             │
-│                                                              │
-│  ────────────────────────────────────────────────────────── │
-│  NOTE                                                        │
-│  Portare la documentazione del contratto.                   │
-│  Confermare prenotazione entro stamattina.                  │
-│  ...                       ← scrolling solo in questa area  │
-│                                                              │
-├──────────────────────────────────────────────────────────────┤
-│  ↑↓ Scorri · Esc Ritorna                                     │  ← Footer
-└──────────────────────────────────────────────────────────────┘
-```
-
-#### Regole visive
-
-- Titolo dell'evento: `--font-display`, `--text-xl`, uppercase, `font-weight: bold`. Separato da doppie righe `════` (carattere `U+2550`) sopra e sotto — stile divisore di giornale.
-- Ogni riga informativa: icona Tabler `16px` + testo in `--font-body`, `--text-base`. Le righe sono separate da spazio verticale `12px`, senza bordi.
-- La sezione **NOTE** è separata da `border-top: 1px solid var(--color-rule)`. È l'unica area scrollabile: overflow visibile tramite un indicatore `▼` in `--color-ink-faint` nell'angolo inferiore destro del blocco note, quando il testo supera lo spazio disponibile.
-- Nel footer, il tasto "Esci" è evidenziato con `font-weight: bold` come unica azione disponibile; gli altri tre tasti sono in `--color-ink-faint`.
+- **Separatori di data:** testo uppercase, `--text-xs`, `--font-body`, `--color-ink-muted`; la data odierna mostra `"OGGI, GIORNO DD MESE"`, le successive solo `"GIORNO DD MESE"`; linee orizzontali `--color-rule` ai lati del testo
+- **Riga appuntamento:**
+  - Orario: `--font-mono`, `--text-sm`, `--color-ink-muted`, larghezza fissa `56px`, allineato a destra, `border-right: 1px solid var(--color-rule)`
+  - Nome evento: `--font-body`, `--text-base`, `font-weight: 600`, `--color-ink`
+  - Location (se presente): `--text-xs`, `--color-ink-muted`, su riga separata sotto il nome
+  - Separatore tra eventi: `border-bottom: 1px solid var(--color-rule)`
+- **Evento tutto-il-giorno:** al posto dell'orario, testo `"Tutto il giorno"` in `--color-ink-faint`
+- **Lista vuota:** testo `"Nessun appuntamento"` centrato, `--color-ink-faint`, `--text-sm`
 
 ---
 
 ## Flusso di Navigazione
 
+L'interfaccia ha un'unica schermata. Non esiste navigazione gerarchica.
+
 ```
-Vista Annuale
-     │  ↵ (seleziona mese)
-     ▼
-Vista Mensile  ←──── Esc ────┐
-     │  ↵ (seleziona settimana)  │
-     ▼                           │
-Vista Settimanale ←─── Esc ──┤
-     │  ↵ (seleziona giorno      │
-     │      o appuntamento)      │
-     ├──────────────┐            │
-     ▼              ▼            │
-Vista Giornaliera  Dettaglio    │
-     │  ↵            Appuntamento│
-     ▼  (seleziona   ↑↓ scroll   │
-  Dettaglio          Esc ────────┘
-  Appuntamento
+HOME
+  ↑ Esc   → ancora_data = oggi  (reimposta alla data corrente)
+  ↑ Su    → ancora_data -= N   (pagina precedente)
+  ↓ Giù   → ancora_data += N   (pagina successiva)
+  ↵ Enter → nessuna azione
 ```
+
+L'`ancora_data` determina il primo giorno mostrato nella lista appuntamenti.
 
 ---
 
-## Indicatori di Stato (Header)
+## Indicatori di Stato (Footer)
 
-L'header di ogni schermata (eccetto la vista annuale) mostra, a destra, tre piccoli indicatori in `--text-xs`:
+L'header separato è eliminato. Gli indicatori di stato sono incorporati nella parte destra del footer, in `--text-xs`, `--color-ink-muted`:
 
 | Indicatore | Contenuto |
 |---|---|
 | Tipo display | `e-ink` / `hdmi` — testo fisso |
+| Layout | `portrait` / `landscape` — testo fisso |
 | Modalità colore | `☀ Giorno` / `☾ Notte` — solo hdmi |
 | Ora corrente | `HH:MM` — aggiornato ad ogni refresh |
 
@@ -448,7 +340,7 @@ Quando `display.type = "eink"`:
 2. **Nessuna modalità notte:** l'interfaccia è sempre in modalità giorno. Il toggle notte è nascosto.
 3. **Footer non interattivo:** il footer mostra la legenda testuale identica a quella HDMI, ma i tasti non sono cliccabili. I pulsanti fisici sono l'unico mezzo di interazione.
 4. **Dithering:** il post-processor applica Floyd-Steinberg alle aree di testo piccolo per migliorare la leggibilità su display a bassa risoluzione.
-5. **Refresh parziale:** il layout è strutturato per isolare le aree che cambiano (content area) da quelle statiche (header, footer), per supportare il partial refresh delle librerie Waveshare.
+5. **Refresh parziale:** nel layout landscape, il calendario mensile (colonna sinistra, sezione inferiore) è l'area più statica e ideale per partial refresh separato. La lista appuntamenti (colonna destra / area inferiore portrait) cambia ad ogni navigazione.
 
 ---
 
@@ -481,10 +373,12 @@ Quando `display.type = "eink"`:
   --color-rule-strong: #333333;
 
   /* Struttura */
-  --height-header: 56px;
-  --height-footer: 40px;
-  --border-radius: 0;           /* Mai arrotondare */
-  --shadow:        none;        /* Mai ombreggiare */
+  --height-banner:   90px;      /* Banner meteo (portrait) / sezione meteo (landscape) */
+  --height-calendar: 250px;     /* Calendario mensile in portrait */
+  --height-footer:   40px;
+  --col-left-ratio:  38%;       /* Larghezza colonna sinistra in landscape */
+  --border-radius:   0;         /* Mai arrotondare */
+  --shadow:          none;      /* Mai ombreggiare */
 }
 
 [data-theme="night"] {
@@ -499,3 +393,40 @@ Quando `display.type = "eink"`:
   --color-rule-strong: #CCCCAA;
 }
 ```
+
+---
+
+## Display Target
+
+Valori pixel specifici per i display supportati:
+
+| Display | Risoluzione | Layout default | Colonna sinistra | Colonna destra | Lista appuntamenti |
+|---|---|---|---|---|---|
+| HDMI 7" | 1024×600 | `landscape` | 389px | 634px | 560px altezza |
+| Inky Impression 13.3" | 1600×1200 | `landscape` | 608px | 991px | 1160px altezza |
+| HDMI portrait (ruotato) | 600×1024 | `portrait` | — | — | 644px altezza |
+| E-ink portrait (ruotato) | 1200×1600 | `portrait` | — | — | 1220px altezza |
+
+Calcoli portrait: lista = `height − 90px − 250px − 40px`.  
+Calcoli landscape: lista height = `height − 40px`; colonna sinistra = `width × 0.38`.
+
+---
+
+## Configurazione Layout
+
+Il layout è selezionato tramite il campo `display.layout` nel file di configurazione YAML:
+
+```yaml
+display:
+  layout: "landscape"   # "landscape" | "portrait"
+```
+
+Il template HTML applica una classe CSS al tag `<body>` corrispondente:
+
+```html
+<body class="layout-landscape">
+<!-- oppure -->
+<body class="layout-portrait">
+```
+
+Le due classi selezionano i rispettivi blocchi CSS (flexbox colonne per landscape, stack verticale per portrait). Il `PillowEinkRenderer` legge `config.display.layout` per selezionare il metodo di rendering corrispondente.

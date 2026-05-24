@@ -12,12 +12,13 @@
 |---|---|
 | Linguaggio | Python 3.11+ |
 | Web server | FastAPI + Uvicorn |
-| Template HTML | Jinja2 + HTMX (rendering calendario e configurazione) |
-| Rendering calendario | Playwright (Chromium headless) — `PlaywrightRenderer.screenshot()` → `PIL.Image` |
-| Post-processing e-ink | `EinkRenderer` — resize, quantizzazione palette, dithering |
+| Template HTML | Jinja2 (solo configurazione) |
+| Rendering (HDMI + e-ink) | `PillowEinkRenderer` — Pillow nativo da `NavigationState` + eventi, senza browser |
+| Post-processing e-ink | `EinkRenderer` — resize, quantizzazione palette, dithering Floyd-Steinberg |
 | Calendario CalDAV | `caldav` + `icalendar` |
 | Configurazione | YAML (`pyyaml`) + Pydantic v2 |
-| Display HDMI | Playwright non-headless (Chromium) — finestra gestita da Python |
+| Stato navigazione | `StateManager` — singleton thread-safe condiviso tra renderer, rotte e loop display |
+| Display HDMI | `pygame` — finestra SDL, rendering diretto `PIL.Image` → surface |
 | Display e-ink | Waveshare (caricamento dinamico — richiede hardware RPi) |
 
 ---
@@ -33,29 +34,31 @@ family-planner/
 │   │   ├── __init__.py
 │   │   ├── app.py               # Definizione app FastAPI e rotte
 │   │   ├── routes/
-│   │   │   ├── index.py         # GET / — vista calendario
+│   │   │   ├── index.py         # GET / — anteprima HTML; GET /preview.png — immagine PNG
+│   │   │   ├── state.py         # GET/POST /state — stato navigazione (solo JSON)
 │   │   │   └── config.py        # GET/POST /config — configurazione UI
 │   │   └── templates/           # Template Jinja2
-│   │       ├── base.html
-│   │       ├── calendar.html
-│   │       └── config.html
+│   │       ├── base.html        # Layout base configurazione
+│   │       └── config.html      # Interfaccia configurazione
 │   ├── calendar/
 │   │   ├── __init__.py
 │   │   ├── base.py              # Classe astratta CalendarProvider
 │   │   ├── caldav_provider.py   # Provider CalDAV (Apple Calendar / iCloud)
 │   │   ├── ics_provider.py      # Provider file .ics locali
 │   │   ├── ical_provider.py     # Provider iCal URL (Google Calendar, feed pubblici)
-│   │   └── aggregator.py        # Aggrega eventi da più provider
+│   │   ├── aggregator.py        # Aggrega eventi da più provider
+│   │   └── data_builders.py     # Preparazione dati condivisa tra rotte e PillowEinkRenderer
 │   ├── renderer/
 │   │   ├── __init__.py
-│   │   ├── base.py                  # Classe astratta Renderer
-│   │   ├── playwright_renderer.py   # PlaywrightRenderer: istanza Chromium persistente + screenshot() → PIL.Image
-│   │   ├── eink_renderer.py         # Post-processing e-ink: resize, quantizzazione palette, dithering
-│   │   ├── state.py                 # NavigationState (dataclass immutabile) + View enum
-│   │   └── tokens.py                # Design tokens Python — sincronizzati con CSS custom properties in base.html
+│   │   ├── base.py                      # Classe astratta Renderer
+│   │   ├── pillow_eink_renderer.py      # PillowEinkRenderer: rendering Pillow nativo (HDMI + e-ink)
+│   │   ├── eink_renderer.py             # Post-processing e-ink: resize, quantizzazione palette, dithering
+│   │   ├── state.py                     # NavigationState (dataclass immutabile) + View enum
+│   │   ├── state_manager.py             # StateManager: singleton thread-safe per NavigationState
+│   │   └── tokens.py                    # Design tokens Python
 │   └── display/
 │       ├── __init__.py
-│       ├── hdmi.py              # HdmiDisplay: apre finestra Playwright non-headless
+│       ├── hdmi.py              # HdmiDisplay: finestra pygame — rendering PIL.Image diretto
 │       └── eink.py              # EinkDisplay: push immagine via SPI (libreria Waveshare)
 ├── config/
 │   └── default.yaml             # Configurazione di default (inclusa nel repo)
@@ -96,12 +99,11 @@ display:
   type: "hdmi"               # "hdmi" | "eink"
   width: 1920
   height: 1080
-  fullscreen: false          # true → finestra kiosk; false → finestra dimensionata (sviluppo)
+  fullscreen: false          # true → finestra fullscreen; false → finestra dimensionata (sviluppo)
   refresh_interval: 300      # secondi tra un aggiornamento e l'altro
   show_buttons: false        # mostra/nasconde i pulsanti di navigazione a schermo
-  playwright_executable: null # percorso Chromium di sistema (null = usa bundle Playwright)
   # solo se type: "eink":
-  eink_dither: true          # abilita dithering: true (Floyd-Steinberg) | "atkinson" (migliore per Spectra 6)
+  eink_dither: true          # abilita dithering Floyd-Steinberg
 
 calendars:
   - name: "Famiglia"
@@ -139,28 +141,36 @@ Avvio (main.py --config ...)
   (istanzia i provider definiti in config)
         │
         ▼
-  Avvia FastAPI / Uvicorn (thread daemon)
-  ├─── GET /          ──▶  Rendering calendario (Jinja2 + HTMX) — fonte unica per tutti i display
-  ├─── GET /state     ──▶  Stato navigazione corrente come JSON
-  ├─── POST /state    ──▶  Aggiorna stato navigazione (azione: next/prev/in/out/night)
-  ├─── GET /config    ──▶  Mostra form di configurazione
-  └─── POST /config   ──▶  Salva config.yaml → Riavvio graceful
+  Inizializza StateManager
+  (singleton thread-safe — condiviso tra renderer, rotte e loop display)
         │
         ▼
-  Avvia PlaywrightRenderer
-  (istanza Chromium persistente — headless per e-ink, non-headless per HDMI)
+  Inizializza PillowEinkRenderer  ← renderer unico per HDMI ed e-ink
         │
         ▼
-  Avvia Display
+  Avvia Display (condizionale sul tipo)
         │
-        ├── HDMI ──▶  HdmiDisplay.start() apre finestra Playwright non-headless
-        │             puntando a http://localhost:{port}/
-        │             HTMX gestisce gli aggiornamenti DOM senza full-page reload
+        ├── HDMI ──▶  HdmiDisplay(config, pillow_renderer, aggregator, state_manager)
+        │             Uvicorn avviato in background thread
+        │             ├─── GET /             ──▶  HTML anteprima (img auto-refresh)
+        │             ├─── GET /preview.png  ──▶  PillowEinkRenderer.render() → PNG
+        │             ├─── GET /state        ──▶  Stato navigazione JSON
+        │             ├─── POST /state       ──▶  Aggiorna stato (next/prev/in/out/night)
+        │             ├─── GET /config       ──▶  Mostra form di configurazione
+        │             └─── POST /config      ──▶  Salva config.yaml → SIGHUP
+        │             HdmiDisplay.run_blocking() blocca il main thread con pygame:
+        │               loop: state_manager.get() → PillowEinkRenderer.render()
+        │                     → pygame.Surface → schermo
+        │               tasti: ←/↑ prev · →/↓ next · Invio in · Esc out · n night
         │
-        └── E-ink ──▶  Loop daemon (ogni refresh_interval):
-                        PlaywrightRenderer.screenshot() → PIL.Image
-                        EinkRenderer: resize → quantize palette → dither
-                        EinkDisplay.push() → SPI → pannello Waveshare
+        └── E-ink ──▶  PillowEinkRenderer(config)  [nessun browser, nessun display server]
+                        Uvicorn sul main thread
+                        Loop daemon (ogni refresh_interval):
+                          state_manager.get() → NavigationState
+                          aggregator.get_events(start, end) → eventi
+                          PillowEinkRenderer.render(state, events) → PIL.Image
+                          EinkRenderer.process(img) → palette quantizzata
+                          EinkDisplay.push() → SPI → pannello Waveshare
 ```
 
 ---
@@ -168,11 +178,10 @@ Avvio (main.py --config ...)
 ## Rotte Web
 
 ### `GET /`
-Rendering calendario (Jinja2 + HTMX). **È la sorgente unica di rendering**: `PlaywrightRenderer` acquisisce screenshot di questa rotta per alimentare sia il display HDMI sia il display e-ink.
+Pagina HTML minimale con auto-refresh che mostra l'immagine calendario corrente via `<img src="/preview.png">`. L'intervallo di refresh è pari a `display.refresh_interval` secondi. Utile per anteprima browser durante lo sviluppo.
 
-Accetta il parametro opzionale `?view=annual|monthly|weekly|daily|detail` per selezionare la vista. Se omesso, viene usata la vista corrente dal `NavigationState`.
-
-I pulsanti di navigazione sono sempre presenti nel DOM; la loro visibilità è controllata da `show_buttons` nella configurazione.
+### `GET /preview.png`
+Chiama `PillowEinkRenderer.render(state, events)` on-demand e restituisce l'immagine PNG risultante (`Content-Type: image/png`). È la stessa immagine che verrebbe inviata al pannello e-ink.
 
 ### `GET /state`
 Restituisce il `NavigationState` corrente come JSON:
@@ -187,7 +196,7 @@ Restituisce il `NavigationState` corrente come JSON:
 ```
 
 ### `POST /state`
-Applica un'azione di navigazione e restituisce il nuovo stato. Accetta `{"action": "prev"|"next"|"in"|"out"|"night"}`. Consente a script GPIO, tastiera fisica o automazioni di controllare la navigazione senza accedere al processo display direttamente.
+Applica un'azione di navigazione e restituisce il nuovo stato come JSON. Accetta `{"action": "prev"|"next"|"in"|"out"|"night"}`. Consente a script GPIO o automazioni di controllare la navigazione senza accedere al processo display direttamente. Non restituisce mai HTML — solo JSON.
 
 ### `GET /config`
 Interfaccia web per la configurazione: aggiunta/rimozione calendari, modifica parametri di visualizzazione, test della connessione ai provider.
@@ -235,82 +244,91 @@ calendars:
 
 ### Architettura generale
 
-Il rendering del calendario è prodotto da **`PlaywrightRenderer`** che mantiene un'istanza Chromium persistente puntata alla rotta `GET /` di FastAPI e cattura screenshot come `PIL.Image`. HDMI ed e-ink condividono la stessa fonte HTML; differiscono solo nel modo in cui consumano il `PIL.Image`:
+Family Planner adotta un **renderer unico** — `PillowEinkRenderer` — condiviso da HDMI ed e-ink. Non viene avviato alcun browser né processo Chromium.
 
 ```
-FastAPI + Jinja2 + HTMX  →  GET /  →  HTML
-                                  │
-                        PlaywrightRenderer
-                        (Chromium persistente)
-                        page.screenshot() → PIL.Image
-                                  │
-              ┌───────────────────┴───────────────────┐
-              │                                       │
-    (HDMI) Playwright non-headless          (E-ink) EinkRenderer
-    finestra visibile a schermo             → resize alla risoluzione del pannello
-    HTMX gestisce la navigazione            → quantizzazione palette (B&W / BWR / 4gray)
-    senza full-page reload                  → dithering Floyd-Steinberg (opzionale)
-                                                       ↓
-                                            EinkDisplay (eink.py)
-                                            → push via SPI (Waveshare driver)
+                    StateManager (thread-safe)
+                    NavigationState
+                         │
+          ┌──────────────┴──────────────────────┐
+          │                                     │
+   PillowEinkRenderer (HDMI + e-ink)            │
+   Pillow nativo — render(state, events)         │
+   → PIL.Image                                  │
+          │                                     │
+   ┌──────┴──────┐                    ┌─────────┴────────┐
+   │ HdmiDisplay │                    │   EinkRenderer   │
+   │  (pygame)   │                    │ resize/quantize  │
+   │ main thread │                    │ dither           │
+   │ SDL window  │                    └─────────┬────────┘
+   └─────────────┘                             │ PIL.Image quantizzata
+                                    ┌──────────▼─────────┐
+                                    │    EinkDisplay      │
+                                    │    (Waveshare SPI)  │
+                                    └────────────────────┘
 ```
 
 ### Navigazione e stato
 
-Lo stato di navigazione è gestito da **`NavigationState`** (`renderer/state.py`) — un dataclass immutabile che vive all'interno del `PlaywrightRenderer`. Tutti i metodi `navigate_*()` restituiscono una nuova istanza; `PlaywrightRenderer.update_state()` sostituisce atomicamente lo stato corrente con un lock threading.
+Lo stato di navigazione è gestito da **`NavigationState`** (`renderer/state.py`) — un dataclass immutabile. **`StateManager`** (`renderer/state_manager.py`) è il singleton thread-safe che possiede lo stato e lo condivide tra rotte FastAPI, loop e-ink e `HdmiDisplay`. Tutti i metodi `navigate_*()` restituiscono una nuova istanza; `StateManager.set()` sostituisce atomicamente lo stato corrente con un lock threading.
 
 ```
-Input touchscreen / pulsante a schermo
-  o GPIO fisico (RPi)
-  o POST /state via HTTP (script esterno)
+Input da tastiera pygame (HDMI)
+  o GPIO fisico (RPi) → POST /state via HTTP
+  o script esterno    → POST /state via HTTP
         │
         ▼
-  playwright_renderer.get_state()  →  NavigationState corrente
-  state.navigate_*(events)          →  nuovo NavigationState
-  playwright_renderer.update_state(new_state)
+  state_manager.get()          →  NavigationState corrente
+  state.navigate_*(events)     →  nuovo NavigationState (immutabile)
+  state_manager.set(new_state) →  aggiornamento atomico
         │
         ▼
-  HTMX aggiorna il DOM: GET / → Jinja2 → HTML aggiornato
-  (HDMI: il pulsante HTMX aggiorna la pagina aperta)
-  (E-ink: il loop daemon chiama page.reload() → screenshot() al prossimo ciclo)
+  (HDMI): pygame loop legge il nuovo stato al frame successivo → PillowEinkRenderer.render()
+  (E-ink): il loop daemon legge il nuovo stato al prossimo ciclo → PillowEinkRenderer.render()
 ```
 
-**GPIO → Playwright click**: il gestore GPIO chiama `page.click('#btn-nav-next')` (o `prev`, `in`, `out`, `night`). Il pulsante HTML nascosto ha un attributo HTMX che invia `POST /state` — identico al click touchscreen.
+**GPIO → HTTP POST**: il gestore GPIO (da implementare in `app/gpio_handler.py`) chiama `_gpio_navigate(action, port)` — una chiamata HTTP diretta a `POST /state` su localhost.
 
-Il server web espone `GET /state` e `POST /state` per consentire a script GPIO o sessioni di debug di leggere e modificare lo stato senza accedere al processo display direttamente.
+### HDMI — pygame
 
-### HDMI — Playwright non-headless
+`display/hdmi.py` apre una finestra SDL tramite `pygame` e renderizza direttamente l'immagine `PIL.Image` prodotta da `PillowEinkRenderer`.
 
-`display/hdmi.py` avvia un'istanza Playwright non-headless puntando a `http://localhost:{port}/`.
+**Thread model**: su macOS SDL/Cocoa deve girare sul main thread. Per questo motivo:
+- `HdmiDisplay.run_blocking()` esegue il loop pygame sul thread chiamante (main thread)
+- Uvicorn gira in un background thread (`threading.Thread`)
 
-**Avvio:**
+**Loop pygame:**
 ```
-HdmiDisplay.start()
-  → poll HTTP GET / fino a risposta 200 (timeout 30 s)
-  → playwright.chromium.launch(headless=False, executable_path=config.playwright_executable)
-  → browser.new_page() → page.goto('http://localhost:{port}/')
+run_blocking()
+  → pygame.init() → display.set_mode(width × height)
+  loop ogni ~100 ms:
+    state_manager.get() → PillowEinkRenderer.render(state, events) → pygame.Surface
+    pygame.display.flip()
+    eventi tastiera: ←/↑ prev · →/↓ next · Invio in · Esc out · n night · q quit
 ```
 
-**Aggiornamento del display**: HTMX gestisce la navigazione senza full-page reload. Il `PlaywrightRenderer` chiama `page.evaluate()` per triggerare gli aggiornamenti o usa `page.click()` sui pulsanti HTMX nascosti.
+**Re-render**: ad ogni cambio di `NavigationState` o allo scadere di `refresh_interval` secondi (aggiornamento dati calendario).
 
-**Modalità kiosk** (`fullscreen: true`): Playwright apre la finestra a schermo intero — nessun flag shell necessario, gestito via `browser_context` options.
+**Modalità fullscreen** (`fullscreen: true`): `pygame.FULLSCREEN | pygame.NOFRAME` — nessun flag shell necessario.
 
 **Modalità sviluppo** (`fullscreen: false`): finestra dimensionata `width × height` dalla configurazione.
 
-**Executable**: configurabile via `playwright_executable`. Default: bundle Playwright. Su RPi: `/usr/bin/chromium-browser` (evita ~300 MB overhead del bundle).
+**Su Raspberry Pi con Wayland**: impostare le variabili `WAYLAND_DISPLAY` / `XDG_RUNTIME_DIR` nell'environment del service systemd. Con X11: `DISPLAY=:0`.
 
-**Su Raspberry Pi**: Playwright non-headless richiede un display server. Aggiungere `After=graphical.target` e le variabili `WAYLAND_DISPLAY` / `XDG_RUNTIME_DIR` nel service systemd per Wayland, oppure `DISPLAY=:0` per X11.
+### E-ink — PillowEinkRenderer (Pillow nativo, senza browser)
 
-### E-ink — Playwright headless + post-processing Pillow
+Il loop e-ink non avvia alcun processo Chromium. Il rendering avviene interamente in-process tramite **`PillowEinkRenderer`** (`renderer/pillow_eink_renderer.py`), che produce un `PIL.Image` direttamente da `NavigationState` e dalla lista eventi. I font TTF sono caricati da `app/assets/fonts/` — nessuna chiamata di rete.
 
-`display/eink.py` esegue un loop daemon con intervallo `refresh_interval`. Ad ogni iterazione:
+`main.py` avvia un thread daemon che esegue ogni `refresh_interval` secondi:
 
-1. **`PlaywrightRenderer.screenshot()`** esegue `page.reload()` e cattura uno screenshot della pagina `GET /` come `PIL.Image` RGB alle dimensioni configurate. Il browser Chromium è mantenuto in sessione persistente — non viene rilanciato ad ogni ciclo.
-2. **`EinkRenderer`** (`renderer/eink_renderer.py`) applica:
+1. **`state_manager.get()`** restituisce il `NavigationState` corrente (thread-safe).
+2. **`aggregator.get_events(start, end)`** recupera gli eventi per l'intervallo della vista corrente.
+3. **`PillowEinkRenderer.render(state, events)`** produce un `PIL.Image` RGB nelle dimensioni configurate (`display.width × display.height`).
+4. **`EinkRenderer`** (`renderer/eink_renderer.py`) applica:
    - **Ridimensionamento** alla risoluzione nativa del pannello (13 modelli Waveshare supportati)
    - **Quantizzazione palette**: B&W (1 bit), BWR (3 colori), 4-gray — configurabile via `eink_palette`
    - **Dithering Floyd-Steinberg** — opzionale, via `eink_dither: true`
-3. **`EinkDisplay`** (`display/eink.py`) invia l'immagine al pannello via il driver Waveshare appropriato, caricato dinamicamente:
+5. **`EinkDisplay`** (`display/eink.py`) invia l'immagine al pannello via il driver Waveshare appropriato, caricato dinamicamente:
    ```python
    # Import protetto — si attiva solo quando display.type == "eink"
    from waveshare_epd import epd13in3k  # esempio modello 13.3"
@@ -321,7 +339,7 @@ HdmiDisplay.start()
 
 > **Refresh time**: i pannelli e-ink Waveshare impiegano tipicamente 15–30 secondi per un aggiornamento completo. Impostare `refresh_interval` ≥ 60 secondi.
 
-> **Su RPi**: il loop e-ink non richiede un display server — funziona su RPi OS Lite senza X11 o Wayland.
+> **Su RPi**: il loop e-ink non richiede un display server — funziona su RPi OS Lite senza X11 o Wayland. Con `display.type: "eink"`, `pygame` non viene mai importato.
 
 ---
 
@@ -329,10 +347,10 @@ HdmiDisplay.start()
 
 | Comportamento | Mac (sviluppo) | Linux / Raspberry Pi (produzione) |
 |---|---|---|
-| `display.fullscreen: false` | Playwright non-headless, finestra `width × height` | Playwright non-headless, finestra `width × height` |
-| `display.fullscreen: true` | Playwright non-headless, schermo intero | Playwright non-headless, kiosk + Wayland/X11 |
-| `playwright_executable` | `null` (bundle Playwright) | `/usr/bin/chromium-browser` (sistema RPi) |
-| Display e-ink | Playwright headless; driver Waveshare non caricato (stub silenzioso) | Playwright headless; driver Waveshare via SPI |
+| `display.fullscreen: false` | pygame, finestra `width × height` | pygame, finestra `width × height` |
+| `display.fullscreen: true` | pygame fullscreen (SDL) | pygame fullscreen + Wayland/X11 |
+| Thread model HDMI | pygame sul main thread, Uvicorn in bg thread | idem |
+| Display e-ink | PillowEinkRenderer (Pillow nativo); driver Waveshare non caricato | PillowEinkRenderer (Pillow nativo); driver Waveshare via SPI |
 | Calendario | CalDAV / ICS / iCal via rete o file locale | CalDAV / ICS / iCal via rete o file locale |
 | Avvio automatico | Manuale / script locale | systemd (`family-planner.service`) |
 
@@ -383,7 +401,7 @@ RestartSec=10
 WantedBy=multi-user.target
 ```
 
-> **Nota HDMI**: Per la modalità HDMI con Chromium su RPi con Wayland, aggiungere `After=graphical.target` e le variabili `WAYLAND_DISPLAY` / `XDG_RUNTIME_DIR` (o `DISPLAY=:0` per X11) nell'environment del service. Per la modalità e-ink non è necessario alcun display server.
+> **Nota HDMI**: Per la modalità HDMI con pygame su RPi con Wayland, aggiungere `After=graphical.target` e le variabili `WAYLAND_DISPLAY` / `XDG_RUNTIME_DIR` (o `DISPLAY=:0` per X11) nell'environment del service. Per la modalità e-ink non è necessario alcun display server.
 
 ---
 
@@ -402,16 +420,13 @@ fastapi
 uvicorn[standard]
 jinja2
 pydantic>=2.0
-evaltype-backport          # compatibilità type hints Python 3.9
+eval_type_backport         # compatibilità type hints Python 3.9
 pyyaml
 caldav
 requests                   # HTTP per iCal URL provider
 icalendar
-pillow                     # post-processing e-ink (EinkRenderer) — non usato per rendering calendario
-playwright                 # rendering calendario via Chromium headless/non-headless
-# playwright install chromium  # da eseguire dopo pip install; oppure usare playwright_executable
-# htmx                    # incluso come asset locale in base.html — non è un pacchetto pip
-# chromium-browser         # Chromium di sistema su RPi (alternativa al bundle Playwright)
+pillow                     # renderer unico (PillowEinkRenderer) + post-processing (EinkRenderer)
+pygame                     # display HDMI — finestra SDL, rendering PIL.Image diretto
 python-multipart           # form POST /config
 # waveshare-epaper (opzionale — solo su RPi con display e-ink)
 ```
@@ -421,29 +436,37 @@ python-multipart           # form POST /config
 ## Diagramma Componenti
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                          main.py                             │
-│   args parsing → config load → aggregator → playwright_rend │
-└────────────┬─────────────────────────────┬───────────────────┘
-             │                             │
-     ┌───────▼──────┐          ┌───────────▼──────────────┐
-     │  FastAPI App  │          │    PlaywrightRenderer    │
-     │  GET /        │◀─────────│    (Chromium persistente)│
-     │  GET /state   │  punta a │    NavigationState       │
-     │  POST /state  │  GET /   │    + threading.Lock      │
-     │  GET /config  │          └──────────┬───────────────┘
-     │  POST /config │                     │ PIL.Image (screenshot)
-     └───────┬───────┘          ┌──────────┴──────────┐
-             │                  │                     │
-     ┌───────▼──────┐  ┌────────▼──────┐  ┌──────────▼──────┐
-     │  Aggregator  │  │  HdmiDisplay  │  │  EinkRenderer   │
-     │  (calendari) │  │  Playwright   │  │  resize/quantize│
-     └───────┬───────┘  │  non-headless │  │  dither         │
-             │          └───────────────┘  └──────────┬──────┘
-    ┌────────┴────────┐                               │ PIL.Image
-    │                 │                      ┌────────▼─────┐
-┌───▼────┐  ┌─────────▼──┐  ┌────────┐      │  EinkDisplay │
-│ CalDAV │  │    ICS     │  │  iCal  │      │  (Waveshare) │
-│Provider│  │  Provider  │  │Provider│      │  SPI / RPi   │
-└────────┘  └────────────┘  └────────┘      └──────────────┘
+┌───────────────────────────────────────────────────────────────────────┐
+│                             main.py                                   │
+│  args parsing → config load → StateManager → aggregator → renderer   │
+└──────┬────────────────────────────┬───────────────────────┬───────────┘
+       │                            │                       │
+┌──────▼──────┐           ┌─────────▼──────────┐  ┌────────▼────────┐
+│  FastAPI    │           │   StateManager     │  │   Aggregator    │
+│  GET /      │◀──────────│   (thread-safe)    │  │   (calendari)   │
+│  GET /prev. │  legge /  │   NavigationState  │  └────────┬────────┘
+│  POST /state│  scrive   │   threading.Lock   │    ┌──────┴──────┐
+│  GET /config│   stato   └─────────┬──────────┘    │             │
+│  POST/config│                     │            ┌──▼──┐  ┌───────▼────┐
+└─────────────┘                     │            │CalDAV│  │  ICS/iCal  │
+                                    │            │Prov. │  │  Provider  │
+                          ┌─────────▼──────────┐ └──────┘  └────────────┘
+                          │  PillowEinkRenderer │
+                          │  (HDMI + e-ink)     │
+                          │  Pillow nativo      │
+                          │  state + events     │
+                          └─────────┬───────────┘
+                                    │ PIL.Image
+               ┌────────────────────┴─────────────────────┐
+               │                                          │
+    ┌──────────▼────────┐                    ┌────────────▼───────┐
+    │   HdmiDisplay     │                    │    EinkRenderer    │
+    │   pygame window   │                    │    resize/quantize │
+    │   (main thread)   │                    │    dither          │
+    └───────────────────┘                    └────────────┬───────┘
+                                                          │ PIL.Image quantizzata
+                                             ┌────────────▼───────┐
+                                             │    EinkDisplay      │
+                                             │    (Waveshare SPI)  │
+                                             └────────────────────┘
 ```
