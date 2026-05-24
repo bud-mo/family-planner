@@ -6,13 +6,13 @@ Un visualizzatore di calendario minimalista, ispirato alla tipografia del *Wall 
 
 ## Caratteristiche
 
-- **Viste calendario**: annuale, mensile, settimanale, giornaliera e dettaglio appuntamento
-- **Sorgenti CalDAV**: Apple Calendar / iCloud e file `.ics` locali
+- **Calendario + Meteo**: banner con data, icona meteo e temperature da **Open-Meteo** (nessuna API key richiesta)
+- **Sorgenti calendario**: Apple Calendar / iCloud (CalDAV), Google Calendar e feed iCal generici, file `.ics` locali
+- **Layout portrait e landscape**: selezionabile da configurazione, adattabile a qualsiasi risoluzione
 - **Display HDMI**: finestra pygame (SDL2) con ciclo di refresh configurabile — nessun browser richiesto
 - **Display e-ink Waveshare**: quantizzazione palette (BW / BWR / 4 grigi) e dithering Floyd-Steinberg opzionale
-- **Server web FastAPI**: anteprima browser e configurazione remota via interfaccia web
-- **Modalità notte**: supportata su display HDMI/browser; e-ink usa sempre la modalità giorno
-- **4 pulsanti fisici**: mappatura Su / Giù / Invio / Esci tramite GPIO o tastiera
+- **Server web FastAPI**: anteprima browser (`GET /`) e configurazione remota (`GET/POST /config`)
+- **Navigazione**: Su / Giù / Oggi tramite GPIO, tastiera pygame o richieste `POST /state`
 
 ---
 
@@ -114,15 +114,21 @@ server:
   host: "0.0.0.0"
   port: 8080
 
+weather:
+  enabled: true              # false → nasconde la sezione meteo
+  latitude: 45.4654          # coordinate GPS della posizione
+  longitude: 9.1866
+  units: "celsius"           # "celsius" | "fahrenheit"
+
 display:
   type: "hdmi"               # "hdmi" | "eink"
-  fullscreen: false
-  width: 1920
-  height: 1080
+  layout: "landscape"        # "landscape" | "portrait"
+  width: 1024
+  height: 600
+  fullscreen: false          # true → fullscreen; false → finestra dimensionata (sviluppo)
   refresh_interval: 300      # secondi tra un aggiornamento e l'altro
+  show_buttons: false        # mostra pulsanti di navigazione (solo HDMI touchscreen)
   # Solo per e-ink:
-  eink_model: "7in5_V2"
-  eink_palette: "bwr"        # "bw" | "bwr" | "4gray"
   eink_dither: true
 
 calendars:
@@ -130,8 +136,13 @@ calendars:
     type: "caldav"
     url: "https://caldav.icloud.com"
     username: "utente@icloud.com"
-    password: "xxxx-xxxx-xxxx-xxxx"   # App-Specific Password
+    password: "xxxx-xxxx-xxxx-xxxx"   # App-Specific Password Apple ID
     color: "#4A90D9"
+
+  - name: "Google Calendar"
+    type: "ical"
+    url: "https://calendar.google.com/calendar/ical/<id>/basic.ics"
+    color: "#27AE60"
 
   - name: "Locale"
     type: "ics"
@@ -151,8 +162,9 @@ family-planner/
 │   ├── main.py              # Entry point
 │   ├── config.py            # Caricamento e validazione config (Pydantic v2)
 │   ├── server/              # FastAPI app, rotte, template Jinja2
-│   ├── calendar/            # Provider CalDAV / ICS e aggregatore
+│   ├── calendar/            # Provider CalDAV / iCal / ICS e aggregatore
 │   ├── renderer/            # Pipeline rendering Pillow (HDMI + e-ink)
+│   ├── weather/             # OpenMeteoProvider con cache in-memory TTL 1h
 │   └── display/             # Gestori display pygame (HDMI) e Waveshare (e-ink)
 ├── config/
 │   └── default.yaml         # Configurazione di default
@@ -169,19 +181,19 @@ family-planner/
 ## Architettura — Pipeline di Rendering
 
 ```
-CalendarAggregator (CalDAV / ICS)
+CalendarAggregator (CalDAV / iCal / ICS)
         │
         ▼
-  ImageRenderer (Pillow)
+PillowEinkRenderer (Pillow nativo)
         │
         ├── HDMI ──▶ HdmiDisplay (pygame / SDL2)
         │
-        └── E-ink ──▶ EinkRenderer (quantizzazione + dithering)
+        └── E-ink ──▶ EinkRenderer (quantizzazione palette + dithering Floyd-Steinberg)
                             │
                             └── EinkDisplay (SPI Waveshare)
 ```
 
-La pipeline è condivisa: il rendering Pillow è identico per entrambi i display. Solo il post-processing finale differisce.
+La pipeline è condivisa: `PillowEinkRenderer` genera la stessa `PIL.Image` per entrambi i display. Solo il post-processing finale differisce. Il meteo è iniettato da `OpenMeteoProvider` (cache in-memory TTL 1h, API Open-Meteo senza chiave).
 
 ---
 
