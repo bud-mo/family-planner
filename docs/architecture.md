@@ -97,11 +97,12 @@ server:
 
 display:
   type: "hdmi"               # "hdmi" | "eink"
-  width: 1920
-  height: 1080
+  layout: "landscape"        # "landscape" | "portrait"
+  width: 1024
+  height: 600
   fullscreen: false          # true → finestra fullscreen; false → finestra dimensionata (sviluppo)
   refresh_interval: 300      # secondi tra un aggiornamento e l'altro
-  show_buttons: false        # mostra/nasconde i pulsanti di navigazione a schermo
+  show_buttons: false        # mostra/nasconde i pulsanti di navigazione (solo HDMI touchscreen)
   # solo se type: "eink":
   eink_dither: true          # abilita dithering Floyd-Steinberg
 
@@ -155,13 +156,13 @@ Avvio (main.py --config ...)
         │             ├─── GET /             ──▶  HTML anteprima (img auto-refresh)
         │             ├─── GET /preview.png  ──▶  PillowEinkRenderer.render() → PNG
         │             ├─── GET /state        ──▶  Stato navigazione JSON
-        │             ├─── POST /state       ──▶  Aggiorna stato (next/prev/in/out/night)
+        │             ├─── POST /state       ──▶  Aggiorna stato (prev/next/today/night)
         │             ├─── GET /config       ──▶  Mostra form di configurazione
         │             └─── POST /config      ──▶  Salva config.yaml → SIGHUP
         │             HdmiDisplay.run_blocking() blocca il main thread con pygame:
         │               loop: state_manager.get() → PillowEinkRenderer.render()
         │                     → pygame.Surface → schermo
-        │               tasti: ←/↑ prev · →/↓ next · Invio in · Esc out · n night
+        │               tasti: ↑ prev · ↓ next · Esc today · n night
         │
         └── E-ink ──▶  PillowEinkRenderer(config)  [nessun browser, nessun display server]
                         Uvicorn sul main thread
@@ -187,16 +188,14 @@ Chiama `PillowEinkRenderer.render(state, events)` on-demand e restituisce l'imma
 Restituisce il `NavigationState` corrente come JSON:
 ```json
 {
-  "view": "weekly",
-  "selected_date": "2026-05-23",
-  "selected_event_uid": null,
-  "detail_scroll_offset": 0,
+  "anchor_date": "2026-05-24",
+  "page_offset": 0,
   "night_mode": false
 }
 ```
 
 ### `POST /state`
-Applica un'azione di navigazione e restituisce il nuovo stato come JSON. Accetta `{"action": "prev"|"next"|"in"|"out"|"night"}`. Consente a script GPIO o automazioni di controllare la navigazione senza accedere al processo display direttamente. Non restituisce mai HTML — solo JSON.
+Applica un'azione di navigazione e restituisce il nuovo stato come JSON. Accetta `{"action": "prev"|"next"|"today"|"night"}`. Consente a script GPIO o automazioni di controllare la navigazione senza accedere al processo display direttamente. Non restituisce mai HTML — solo JSON.
 
 ### `GET /config`
 Interfaccia web per la configurazione: aggiunta/rimozione calendari, modifica parametri di visualizzazione, test della connessione ai provider.
@@ -304,7 +303,7 @@ run_blocking()
   loop ogni ~100 ms:
     state_manager.get() → PillowEinkRenderer.render(state, events) → pygame.Surface
     pygame.display.flip()
-    eventi tastiera: ←/↑ prev · →/↓ next · Invio in · Esc out · n night · q quit
+    eventi tastiera: ↑/ArrowUp prev · ↓/ArrowDown next · Esc today · n night · q quit
 ```
 
 **Re-render**: ad ogni cambio di `NavigationState` o allo scadere di `refresh_interval` secondi (aggiornamento dati calendario).
@@ -341,6 +340,122 @@ Il loop e-ink non avvia alcun processo Chromium. Il rendering avviene interament
 
 > **Su RPi**: il loop e-ink non richiede un display server — funziona su RPi OS Lite senza X11 o Wayland. Con `display.type: "eink"`, `pygame` non viene mai importato.
 
+### Schermata Home — Unica Vista
+
+L'interfaccia è costituita da un'**unica schermata Home** — non esiste gerarchia di viste. Il `NavigationState` non porta un selettore di vista, ma un `anchor_date` (primo giorno da mostrare nella lista appuntamenti) e un `page_offset` per la paginazione.
+
+`PillowEinkRenderer.render(state, events)` delega a quattro componenti, ognuno ricevendo il proprio `Rect`:
+
+| Componente | Metodo | `Rect` (portrait) | `Rect` (landscape) |
+|---|---|---|---|
+| Banner meteo | `_draw_weather()` | `(0, 0, W, 90)` | `(0, 0, col_left, 90)` |
+| Mini-calendario | `_draw_mini_calendar()` | `(0, 90, W, 250)` | `(0, 90, col_left, H−130)` |
+| Lista appuntamenti | `_draw_agenda()` | `(0, 340, W, H−380)` | `(col_left, 0, col_right, H−40)` |
+| Footer | `_draw_footer()` | `(0, H−40, W, 40)` | `(0, H−40, W, 40)` |
+
+dove `col_left = int(W × 0.38)` e `col_right = W − col_left`.
+
+**Navigazione**: `prev` retrocede di una pagina nella lista appuntamenti; `next` avanza; `today` reimposta `anchor_date` alla data corrente e `page_offset = 0`; `night` fa il toggle della modalità notte (solo HDMI).
+
+> **Componente meteo**: la struttura `WeatherData` (data corrente, icona condizione, temperatura, max/min) è preparata da `data_builders.py`. La sorgente dati meteo è un **punto aperto** — attualmente non è implementato alcun provider meteo; il campo è riservato a una futura integrazione.
+
+---
+
+## Architettura Componenti Grafici — Bounds Espliciti
+
+Ogni componente `_draw_*` di `PillowEinkRenderer` riceve i propri limiti di disegno come parametro esplicito `rect: Rect`. Non legge costanti di layout globali al proprio interno.
+
+### Tipo `Rect`
+
+```python
+# renderer/tokens.py
+Rect = tuple[int, int, int, int]  # (x, y, width, height)
+```
+
+### Regola fondamentale
+
+`render()` è il **solo** punto dell'intera codebase dove si calcolano i `Rect` di layout, a partire dalle dimensioni del display (`W × H`) e dalla variante (`display.layout`). Le costanti `BANNER_HEIGHT`, `CALENDAR_HEIGHT`, `FOOTER_HEIGHT`, `COL_LEFT_RATIO` compaiono **esclusivamente** in `render()` — mai nei metodi `_draw_*`.
+
+### Firme dei componenti Home
+
+```python
+BannerHeight   = 90
+CalendarHeight = 250
+FooterHeight   = 40
+ColLeftRatio   = 0.38
+
+def _draw_weather(
+    self, draw: ImageDraw, rect: Rect,
+    weather: WeatherData, palette: dict
+) -> None: ...
+
+def _draw_mini_calendar(
+    self, draw: ImageDraw, rect: Rect,
+    state: NavigationState, events: list, palette: dict
+) -> None: ...
+
+def _draw_agenda(
+    self, draw: ImageDraw, rect: Rect,
+    state: NavigationState, events: list, palette: dict
+) -> None: ...
+
+def _draw_footer(
+    self, draw: ImageDraw, rect: Rect,
+    state: NavigationState, palette: dict
+) -> None: ...
+```
+
+### Calcolo dei `Rect` in `render()`
+
+```python
+def render(self, state: NavigationState, events: list) -> Image.Image:
+    W, H = self._size
+    palette = get_palette(state.night_mode)
+    img = Image.new("RGB", (W, H), palette["BG"])
+    draw = ImageDraw.Draw(img)
+
+    if self._layout == "portrait":
+        weather_rect   = (0,        0,       W,          BANNER_HEIGHT)
+        calendar_rect  = (0,        BANNER_HEIGHT, W,    CALENDAR_HEIGHT)
+        agenda_rect    = (0,        BANNER_HEIGHT + CALENDAR_HEIGHT,
+                          W,        H - BANNER_HEIGHT - CALENDAR_HEIGHT - FOOTER_HEIGHT)
+        footer_rect    = (0,        H - FOOTER_HEIGHT, W, FOOTER_HEIGHT)
+    else:  # landscape
+        col_left  = int(W * COL_LEFT_RATIO)
+        col_right = W - col_left
+        weather_rect   = (0,        0,       col_left,   BANNER_HEIGHT)
+        calendar_rect  = (0,        BANNER_HEIGHT, col_left,
+                          H - BANNER_HEIGHT - FOOTER_HEIGHT)
+        agenda_rect    = (col_left, 0,       col_right,  H - FOOTER_HEIGHT)
+        footer_rect    = (0,        H - FOOTER_HEIGHT, W, FOOTER_HEIGHT)
+
+    self._draw_weather(draw, weather_rect, weather_data, palette)
+    self._draw_mini_calendar(draw, calendar_rect, state, events, palette)
+    self._draw_agenda(draw, agenda_rect, state, events, palette)
+    self._draw_footer(draw, footer_rect, state, palette)
+    return img
+```
+
+### Coordinate assolute nei componenti
+
+All'interno di ogni `_draw_*`, le coordinate assolute sul canvas si ricavano sempre dall'origine del `rect` ricevuto:
+
+```python
+x0, y0, w, h = rect
+# disegno di un testo a (local_x, local_y) relativo al componente:
+draw.text((x0 + local_x, y0 + local_y), text, font=font, fill=color)
+```
+
+### Benefici
+
+- **Testabilità**: ogni componente è esercitabile su un canvas di dimensioni arbitrarie, senza configurazione globale del display.
+- **Separazione di responsabilità**: il layout vive solo in `render()`; i componenti non conoscono la struttura globale.
+- **Estensibilità**: aggiungere un nuovo componente o variante di layout richiede solo un nuovo `Rect` in `render()` e un nuovo metodo `_draw_*`.
+
+### Scope del Refactoring
+
+Riguarda **esclusivamente** `PillowEinkRenderer` (`renderer/pillow_eink_renderer.py`) e l'aggiunta di `Rect` + costanti rinominate in `renderer/tokens.py`. La logica di navigazione (`state.py`, `state_manager.py`), i provider calendario e FastAPI non sono coinvolti.
+
 ---
 
 ## Multipiattaforma
@@ -371,7 +486,7 @@ Variabili configurabili: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_PATH`.
 
 ### `scripts/install.sh`
 Eseguito una tantum sul dispositivo:
-- Installa dipendenze di sistema (`python3-pip`, `chromium-browser`, librerie SPI per e-ink)
+- Installa dipendenze di sistema (`python3-pip`, `python3-pygame`, librerie SPI per e-ink)
 - Crea il virtualenv
 - Installa i pacchetti Python da `requirements.txt`
 - Copia il file systemd in `/etc/systemd/system/`

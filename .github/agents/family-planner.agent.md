@@ -40,7 +40,7 @@ docs/design.md          # Typography, color palette, layout, interaction model
 
 - **Fonts**: Playfair Display (headings), IBM Plex Sans (body), IBM Plex Mono (times)
 - **Palette**: 6-value ivory/ink palette; night mode for HDMI only; e-ink always day mode
-- **Layout**: fixed header (56px) + flex content area + fixed footer (40px); never scrolls except appointment detail
+- **Layout**: banner meteo (90px) + mini-calendario mensile (250px, portrait) + lista appuntamenti agenda + footer (40px); never scrolls
 - **Icons**: Tabler Icons SVG outline, stroke-width 1.5px, `currentColor`
 - **No shadows, no rounded corners, no animations** — WSJ newspaper aesthetic
 
@@ -52,6 +52,7 @@ docs/design.md          # Typography, color palette, layout, interaction model
 - DO NOT load Waveshare libraries at import time — use dynamic import guarded by `display.type == "eink"` to keep the app runnable on non-Pi hardware
 - DO NOT add `box-shadow`, `border-radius`, or CSS transitions anywhere in templates
 - Keep config file permissions at `600` when writing examples or deploy scripts
+- Each `_draw_*` method in `PillowEinkRenderer` must receive `rect: Rect` as an explicit parameter — never read `BANNER_HEIGHT`, `CALENDAR_HEIGHT`, or other global layout constants inside a draw method; those constants belong only in `render()`
 
 ## Approach
 

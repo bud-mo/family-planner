@@ -6,21 +6,23 @@ Questo file definisce le istruzioni sempre attive per tutti gli agenti AI che la
 
 ## Identità del Progetto
 
-**Family Planner** è un'applicazione Python embedded per Raspberry Pi che visualizza un calendario su display HDMI o e-ink Waveshare. Include un server web FastAPI per configurazione e anteprima browser. Il rendering è basato su **Playwright** (Chromium headless/non-headless): i template HTML Jinja2 sono la fonte unica di rendering per entrambi i display. Il design segue l'estetica tipografica del *Wall Street Journal*: niente ombre, niente bordi arrotondati, niente animazioni.
+**Family Planner** è un'applicazione Python embedded per Raspberry Pi che visualizza un calendario su display HDMI o e-ink Waveshare. Include un server web FastAPI per configurazione e anteprima browser. Il rendering è basato su **Pillow** (PillowEinkRenderer): tutta la grafica è generata in Python nativo senza browser. Su HDMI la finestra è gestita da **pygame** (SDL); su e-ink l'immagine passa per un post-processor Pillow e viene inviata al pannello Waveshare via SPI. Il design segue l'estetica tipografica del *Wall Street Journal*: niente ombre, niente bordi arrotondati, niente animazioni.
 
 ---
 
 ## Stack e Versioni
 
 | Componente | Tecnologia |
-|---|---|
+|---|
+|---|
 | Python | 3.11+ |
 | Web server | FastAPI + Uvicorn |
-| Template + navigazione | Jinja2 + HTMX |
-| Rendering | Playwright (Chromium) + Pillow (post-processing e-ink) |
+| Template HTML | Jinja2 (solo `/config` e anteprima browser) |
+| Rendering calendario | Pillow nativo (`PillowEinkRenderer`) — nessun browser |
+| Post-processing e-ink | `EinkRenderer` — resize, quantizzazione palette, dithering Floyd-Steinberg |
 | CalDAV | `caldav` + `icalendar` |
 | Config | YAML + Pydantic v2 |
-| Display HDMI | Playwright non-headless (Chromium) |
+| Display HDMI | `pygame` (SDL) — finestra SDL, rendering diretto `PIL.Image` → surface |
 | Display e-ink | Waveshare (import dinamico) |
 | Target hardware | Raspberry Pi 3B+ / 4 / 5 |
 | OS target | Raspberry Pi OS Lite Bookworm 64-bit |
@@ -49,32 +51,33 @@ Questo file definisce le istruzioni sempre attive per tutti gli agenti AI che la
 ### Import e Dipendenze
 
 - Le librerie Waveshare **devono** essere importate dinamicamente, protette da `display.type == "eink"` — il codice deve girare su macOS/Linux senza le librerie hardware
-- Su RPi, Playwright **deve** usare il Chromium di sistema (`executable_path=/usr/bin/chromium-browser`) — non il bundle Playwright, per evitare ~300 MB di overhead su disco
+- Pillow è il renderer primario (`PillowEinkRenderer`) per entrambi i display; `EinkRenderer` è solo post-processing e-ink
+- Template HTML Jinja2 sono usati **solo** per la pagina `/config` e per l'anteprima browser (`GET /`) — non per il rendering del calendario
 - HTMX è incluso come asset locale in `base.html` — non è un pacchetto pip, non va aggiunto a `requirements.txt`
-- Pillow è usato **solo** per post-processing e-ink (`EinkRenderer`) — non per rendering del calendario
 
 ---
 
 ## Architettura — Regole Invarianti
 
-1. **Pipeline di rendering unificata**: `PlaywrightRenderer` è la fonte unica di rendering — `screenshot()` → `PIL.Image` condiviso da HDMI ed e-ink. I template HTML sono la fonte di verità del layout. Non duplicare logica di rendering in Python.
+1. **Pipeline di rendering unificata**: `PillowEinkRenderer` è la fonte unica di rendering — `render(state, events)` → `PIL.Image` condiviso da HDMI ed e-ink. Non viene avviato alcun browser né processo Chromium.
 2. **EinkRenderer** è solo post-processing: riceve un `PIL.Image` già composto e applica quantizzazione palette + dithering Floyd-Steinberg.
-3. **FastAPI è la fonte HTML per PlaywrightRenderer**: `GET /` produce il contenuto che Playwright renderizza per entrambi i display. `HdmiDisplay` usa Playwright non-headless; nessun subprocess Chromium separato.
+3. **FastAPI serve solo `/config` e `/preview.png`**: `GET /` restituisce una pagina HTML minimale con auto-refresh (`<img src="/preview.png">`); `GET /preview.png` chiama `PillowEinkRenderer.render()` on-demand. Il rendering del calendario non passa mai per HTML/CSS.
 4. **Riavvio graceful**: `POST /config` salva il file YAML e riavvia Uvicorn con SIGHUP — non terminare il processo bruscamente.
-5. **Nessun scroll** nel layout, eccetto il pannello dettaglio appuntamento.
-6. **GPIO e touchscreen usano lo stesso meccanismo**: `page.click('#btn-nav-{action}')` — i pulsanti HTML di navigazione sono sempre presenti nel DOM; `show_buttons` controlla solo la visibilità CSS.
+5. **Nessun scroll** nel layout — la paginazione Su/Giù sostituisce l'intera pagina.
+6. **GPIO e tastiera pygame usano lo stesso meccanismo**: `POST /state` con `action = prev|next|today|night` — nessuna dipendenza da Playwright o click su elementi DOM.
+7. **Componenti con bounds espliciti**: ogni `_draw_*` di `PillowEinkRenderer` riceve `rect: Rect` come parametro esplicito. `render()` è il solo punto dove si calcolano i `Rect`. I metodi `_draw_*` non leggono mai `BANNER_HEIGHT`, `CALENDAR_HEIGHT` o altre costanti di layout globali direttamente.
 
 ---
 
 ## Design System — Vincoli per Template e Renderer
 
-- **Unità CSS**: usare esclusivamente `px` — nessun `rem`, `em`, `vw`, `vh` (display fisico a risoluzione fissa)
-- **Nessuna ombra**: `box-shadow`, `text-shadow` e `drop-shadow` sono vietati
+- **Unità di misura nel renderer**: usare esclusivamente `px` interi — nessun `rem`, `em`, valori float non arrotondati (display fisico a risoluzione fissa)
+- **Nessuna ombra**: `box-shadow`, `text-shadow` e `drop-shadow` sono vietati (anche nelle pagine `/config`)
 - **Nessun border-radius**: `border-radius: 0` ovunque
 - **Nessuna transizione o animazione**: gli aggiornamenti sono istantanei
 - **Font**: Playfair Display (headings) · IBM Plex Sans (body) · IBM Plex Mono (orari)
 - **Icone**: Tabler Icons SVG outline, `stroke-width: 1.5px`, sempre `currentColor`
-- **Palette**: 6 valori definiti in `docs/design.md` — non introdurre nuovi colori senza aggiornare la doc
+- **Palette**: 9 valori definiti in `docs/design.md` — non introdurre nuovi colori senza aggiornare la doc
 
 ---
 
@@ -99,7 +102,7 @@ Usare `display.type: "hdmi"` e `fullscreen: false` per sviluppo su macOS/Linux.
 ### Prima di ogni modifica
 
 1. Leggere il file sorgente prima di editarlo
-2. Verificare che le modifiche ai template HTML (Jinja2/CSS) siano visivamente corrette per entrambi i display — fare screenshot via `PlaywrightRenderer` sui `width`/`height` configurati
+2. Verificare che le modifiche a `PillowEinkRenderer` producano output visivamente corretto per entrambi i display — fare screenshot via `GET /preview.png` sui `width`/`height` configurati
 3. Validare le modifiche allo schema config contro i modelli Pydantic in `app/config.py`
 
 ### Dopo ogni modifica critica
