@@ -24,13 +24,19 @@ logger = logging.getLogger(__name__)
 
 
 def events_range_for_state(state: NavigationState) -> tuple[datetime, datetime]:
-    """Return ``(start, end)`` datetime interval covering 30 days from anchor_date.
+    """Return ``(start, end)`` datetime interval for event queries.
+
+    The start is the Monday of the week containing ``anchor_date`` so that
+    ``_build_rolling_week_grid`` has events available for all displayed cells.
+    The end covers 35 days from ``anchor_date`` to ensure the full 5-week
+    rolling grid (max 34 days ahead) and the agenda section are both covered.
 
     The returned interval is used by callers to query the aggregator with
     ``aggregator.get_events(start, end)``.  No I/O is performed here.
     """
-    start = datetime.combine(state.anchor_date, datetime.min.time())
-    end = start + timedelta(days=30)
+    week_start = state.anchor_date - timedelta(days=state.anchor_date.weekday())
+    start = datetime.combine(week_start, datetime.min.time())
+    end = datetime.combine(state.anchor_date, datetime.min.time()) + timedelta(days=35)
     return start, end
 
 
@@ -74,6 +80,51 @@ def _build_month_grid(
                     "day_number": cur.day,
                     "is_today": cur == today,
                     "is_current_month": cur.month == month,
+                    "events": events_by_date.get(cur, []),
+                }
+            )
+            cur += timedelta(days=1)
+        weeks.append(week)
+    return weeks
+
+
+# ---------------------------------------------------------------------------
+# Rolling week grid builder
+# ---------------------------------------------------------------------------
+
+
+def _build_rolling_week_grid(
+    anchor_date: date,
+    events: list["CalendarEvent"],
+    today: date,
+    n_weeks: int = 5,
+) -> list[list[dict]]:
+    """Build a 2-D calendar grid (weeks × days) for the rolling week view.
+
+    Unlike ``_build_month_grid``, this always produces exactly ``n_weeks`` rows
+    (default: 5) starting from the Monday of the week that contains
+    ``anchor_date``.  All cells are marked ``is_current_month=True`` because
+    every displayed day is intentionally in range — the month separator in the
+    renderer provides the visual month-change cue.
+    """
+    events_by_date: dict[date, list["CalendarEvent"]] = {}
+    for evt in events:
+        d = evt.start.date()
+        events_by_date.setdefault(d, []).append(evt)
+
+    grid_start = anchor_date - timedelta(days=anchor_date.weekday())
+
+    weeks: list[list[dict]] = []
+    cur = grid_start
+    for _ in range(n_weeks):
+        week = []
+        for _ in range(7):
+            week.append(
+                {
+                    "date": cur,
+                    "day_number": cur.day,
+                    "is_today": cur == today,
+                    "is_current_month": True,
                     "events": events_by_date.get(cur, []),
                 }
             )

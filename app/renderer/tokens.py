@@ -42,7 +42,7 @@ TEXT_2XL: int = 48
 # ---------------------------------------------------------------------------
 
 BANNER_HEIGHT: int = 90       # banner meteo (portrait) / sezione meteo (landscape)
-CALENDAR_HEIGHT: int = 250    # mini-calendario mensile (solo portrait)
+CALENDAR_HEIGHT: int = 462    # mini-calendario mensile — 4 righe evento per cella su griglie da 6 settimane (solo portrait)
 FOOTER_HEIGHT: int = 40
 COL_LEFT_RATIO: float = 0.38  # larghezza colonna sinistra in layout landscape
 

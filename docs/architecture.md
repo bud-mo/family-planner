@@ -17,7 +17,6 @@
 | Post-processing e-ink | `EinkRenderer` — resize, quantizzazione palette, dithering Floyd-Steinberg |
 | Calendario CalDAV | `caldav` + `icalendar` |
 | Configurazione | YAML (`pyyaml`) + Pydantic v2 |
-| Stato navigazione | `StateManager` — singleton thread-safe condiviso tra renderer, rotte e loop display |
 | Display HDMI | `pygame` — finestra SDL, rendering diretto `PIL.Image` → surface |
 | Display e-ink | Waveshare (caricamento dinamico — richiede hardware RPi) |
 
@@ -35,7 +34,6 @@ family-planner/
 │   │   ├── app.py               # Definizione app FastAPI e rotte
 │   │   ├── routes/
 │   │   │   ├── index.py         # GET / — anteprima HTML; GET /preview.png — immagine PNG
-│   │   │   ├── state.py         # GET/POST /state — stato navigazione (solo JSON)
 │   │   │   └── config.py        # GET/POST /config — configurazione UI
 │   │   └── templates/           # Template Jinja2
 │   │       ├── base.html        # Layout base configurazione
@@ -53,8 +51,7 @@ family-planner/
 │   │   ├── base.py                      # Classe astratta Renderer
 │   │   ├── pillow_eink_renderer.py      # PillowEinkRenderer: rendering Pillow nativo (HDMI + e-ink)
 │   │   ├── eink_renderer.py             # Post-processing e-ink: resize, quantizzazione palette, dithering
-│   │   ├── state.py                     # NavigationState (dataclass immutabile) + View enum
-│   │   ├── state_manager.py             # StateManager: singleton thread-safe per NavigationState
+│   │   ├── state.py                     # NavigationState (dataclass immutabile — anchor_date = oggi)
 │   │   └── tokens.py                    # Design tokens Python
 │   ├── weather/
 │   │   ├── __init__.py
@@ -160,32 +157,26 @@ Avvio (main.py --config ...)
   (cache in-memory TTL 1h, thread-safe)
         │
         ▼
-  Inizializza StateManager
-  (singleton thread-safe — condiviso tra renderer, rotte e loop display)
-        │
-        ▼
   Inizializza PillowEinkRenderer(config, weather_provider)  ← renderer unico per HDMI ed e-ink
         │
         ▼
   Avvia Display (condizionale sul tipo)
         │
-        ├── HDMI ──▶  HdmiDisplay(config, pillow_renderer, aggregator, state_manager)
+        ├── HDMI ──▶  HdmiDisplay(config, pillow_renderer, aggregator)
         │             Uvicorn avviato in background thread
         │             ├─── GET /             ──▶  HTML anteprima (img auto-refresh)
         │             ├─── GET /preview.png  ──▶  PillowEinkRenderer.render() → PNG
-        │             ├─── GET /state        ──▶  Stato navigazione JSON
-        │             ├─── POST /state       ──▶  Aggiorna stato (prev/next/today/night)
         │             ├─── GET /config       ──▶  Mostra form di configurazione
         │             └─── POST /config      ──▶  Salva config.yaml → SIGHUP
         │             HdmiDisplay.run_blocking() blocca il main thread con pygame:
-        │               loop: state_manager.get() → PillowEinkRenderer.render()
+        │               loop: NavigationState() → PillowEinkRenderer.render()
         │                     → pygame.Surface → schermo
-        │               tasti: ↑ prev · ↓ next · Esc today · n night
+        │               tasti: q/F4 quit
         │
         └── E-ink ──▶  PillowEinkRenderer(config)  [nessun browser, nessun display server]
                         Uvicorn sul main thread
                         Loop daemon (ogni refresh_interval):
-                          state_manager.get() → NavigationState
+                          NavigationState() → anchor_date = oggi
                           aggregator.get_events(start, end) → eventi
                           PillowEinkRenderer.render(state, events) → PIL.Image
                           EinkRenderer.process(img) → palette quantizzata
@@ -201,18 +192,6 @@ Pagina HTML minimale con auto-refresh che mostra l'immagine calendario corrente 
 
 ### `GET /preview.png`
 Chiama `PillowEinkRenderer.render(state, events)` on-demand e restituisce l'immagine PNG risultante (`Content-Type: image/png`). È la stessa immagine che verrebbe inviata al pannello e-ink.
-
-### `GET /state`
-Restituisce il `NavigationState` corrente come JSON:
-```json
-{
-  "anchor_date": "2026-05-24",
-  "page_offset": 0
-}
-```
-
-### `POST /state`
-Applica un'azione di navigazione e restituisce il nuovo stato come JSON. Accetta `{"action": "prev"|"next"|"today"}`. Consente a script GPIO o automazioni di controllare la navigazione senza accedere al processo display direttamente. Non restituisce mai HTML — solo JSON.
 
 ### `GET /config`
 Interfaccia web per la configurazione: aggiunta/rimozione calendari, modifica parametri di visualizzazione, test della connessione ai provider.
@@ -333,16 +312,13 @@ calendars:
 Family Planner adotta un **renderer unico** — `PillowEinkRenderer` — condiviso da HDMI ed e-ink. Non viene avviato alcun browser né processo Chromium.
 
 ```
-                    StateManager (thread-safe)
-                    NavigationState
-                         │
-          ┌──────────────┴──────────────────────┐
-          │                                     │
-   PillowEinkRenderer (HDMI + e-ink)            │
-   Pillow nativo — render(state, events)         │
-   → PIL.Image                                  │
-          │                                     │
-   ┌──────┴──────┐                    ┌─────────┴────────┐
+           NavigationState() — sempre oggi
+                    │
+   PillowEinkRenderer (HDMI + e-ink)
+   Pillow nativo — render(state, events)
+   → PIL.Image
+          │
+   ┌──────┴──────┐                    ┌──────────────────┐
    │ HdmiDisplay │                    │   EinkRenderer   │
    │  (pygame)   │                    │ resize/quantize  │
    │ main thread │                    │ dither           │
@@ -353,27 +329,6 @@ Family Planner adotta un **renderer unico** — `PillowEinkRenderer` — condivi
                                     │    (Waveshare SPI)  │
                                     └────────────────────┘
 ```
-
-### Navigazione e stato
-
-Lo stato di navigazione è gestito da **`NavigationState`** (`renderer/state.py`) — un dataclass immutabile. **`StateManager`** (`renderer/state_manager.py`) è il singleton thread-safe che possiede lo stato e lo condivide tra rotte FastAPI, loop e-ink e `HdmiDisplay`. Tutti i metodi `navigate_*()` restituiscono una nuova istanza; `StateManager.set()` sostituisce atomicamente lo stato corrente con un lock threading.
-
-```
-Input da tastiera pygame (HDMI)
-  o GPIO fisico (RPi) → POST /state via HTTP
-  o script esterno    → POST /state via HTTP
-        │
-        ▼
-  state_manager.get()          →  NavigationState corrente
-  state.navigate_*(events)     →  nuovo NavigationState (immutabile)
-  state_manager.set(new_state) →  aggiornamento atomico
-        │
-        ▼
-  (HDMI): pygame loop legge il nuovo stato al frame successivo → PillowEinkRenderer.render()
-  (E-ink): il loop daemon legge il nuovo stato al prossimo ciclo → PillowEinkRenderer.render()
-```
-
-**GPIO → HTTP POST**: il gestore GPIO (da implementare in `app/gpio_handler.py`) chiama `_gpio_navigate(action, port)` — una chiamata HTTP diretta a `POST /state` su localhost.
 
 ### HDMI — pygame
 
@@ -388,12 +343,12 @@ Input da tastiera pygame (HDMI)
 run_blocking()
   → pygame.init() → display.set_mode(width × height)
   loop ogni ~100 ms:
-    state_manager.get() → PillowEinkRenderer.render(state, events) → pygame.Surface
+    NavigationState() → PillowEinkRenderer.render(state, events) → pygame.Surface
     pygame.display.flip()
-    eventi tastiera: ↑/ArrowUp prev · ↓/ArrowDown next · Esc today · q quit
+    eventi tastiera: q/F4 quit
 ```
 
-**Re-render**: ad ogni cambio di `NavigationState` o allo scadere di `refresh_interval` secondi (aggiornamento dati calendario).
+**Re-render**: allo scadere di `refresh_interval` secondi (aggiornamento dati calendario) o al cambio di data a mezzanotte.
 
 **Modalità fullscreen** (`fullscreen: true`): `pygame.FULLSCREEN | pygame.NOFRAME` — nessun flag shell necessario.
 
@@ -407,7 +362,7 @@ Il loop e-ink non avvia alcun processo Chromium. Il rendering avviene interament
 
 `main.py` avvia un thread daemon che esegue ogni `refresh_interval` secondi:
 
-1. **`state_manager.get()`** restituisce il `NavigationState` corrente (thread-safe).
+1. **`NavigationState()`** crea un nuovo stato con `anchor_date = date.today()`.
 2. **`aggregator.get_events(start, end)`** recupera gli eventi per l'intervallo della vista corrente.
 3. **`PillowEinkRenderer.render(state, events)`** produce un `PIL.Image` RGB nelle dimensioni configurate (`display.width × display.height`).
 4. **`EinkRenderer`** (`renderer/eink_renderer.py`) applica:
@@ -429,7 +384,7 @@ Il loop e-ink non avvia alcun processo Chromium. Il rendering avviene interament
 
 ### Schermata Home — Unica Vista
 
-L'interfaccia è costituita da un'**unica schermata Home** — non esiste gerarchia di viste. Il `NavigationState` non porta un selettore di vista, ma un `anchor_date` (primo giorno da mostrare nella lista appuntamenti) e un `page_offset` per la paginazione.
+L'interfaccia è costituita da un'**unica schermata Home** — non esiste gerarchia di viste né navigazione. Il `NavigationState` porta un solo campo: `anchor_date = date.today()`, usato per determinare il mese del mini-calendario e la finestra di 30 giorni della lista appuntamenti.
 
 `PillowEinkRenderer.render(state, events)` delega a quattro componenti, ognuno ricevendo il proprio `Rect`:
 
@@ -441,8 +396,6 @@ L'interfaccia è costituita da un'**unica schermata Home** — non esiste gerarc
 | Footer | `_draw_footer()` | `(0, H−40, W, 40)` | `(0, H−40, W, 40)` |
 
 dove `col_left = int(W × 0.38)` e `col_right = W − col_left`.
-
-**Navigazione**: `prev` retrocede di una pagina nella lista appuntamenti; `next` avanza; `today` reimposta `anchor_date` alla data corrente e `page_offset = 0`.
 
 > **Componente meteo**: la struttura `WeatherData` (icona condizione, descrizione testuale, temperatura attuale, max/min giornalieri) è prodotta da `OpenMeteoProvider.get()` — chiamata dentro `PillowEinkRenderer.render()` se il provider è stato iniettato. In assenza di provider (o se `weather.enabled: false`), `WeatherData` rimane vuota e il banner mostra solo la data.
 
@@ -488,7 +441,7 @@ def _draw_agenda(
 
 def _draw_footer(
     self, draw: ImageDraw, rect: Rect,
-    state: NavigationState, palette: dict
+    palette: dict
 ) -> None: ...
 ```
 
@@ -519,7 +472,7 @@ def render(self, state: NavigationState, events: list) -> Image.Image:
     self._draw_weather(draw, weather_rect, weather_data, palette)
     self._draw_mini_calendar(draw, calendar_rect, state, events, palette)
     self._draw_agenda(draw, agenda_rect, state, events, palette)
-    self._draw_footer(draw, footer_rect, state, palette)
+    self._draw_footer(draw, footer_rect, palette)
     return img
 ```
 
@@ -541,7 +494,7 @@ draw.text((x0 + local_x, y0 + local_y), text, font=font, fill=color)
 
 ### Scope del Refactoring
 
-Riguarda **esclusivamente** `PillowEinkRenderer` (`renderer/pillow_eink_renderer.py`) e l'aggiunta di `Rect` + costanti rinominate in `renderer/tokens.py`. La logica di navigazione (`state.py`, `state_manager.py`), i provider calendario e FastAPI non sono coinvolti.
+Riguarda **esclusivamente** `PillowEinkRenderer` (`renderer/pillow_eink_renderer.py`) e l'aggiunta di `Rect` + costanti rinominate in `renderer/tokens.py`. I provider calendario e FastAPI non sono coinvolti.
 
 ---
 

@@ -20,28 +20,14 @@ import pygame
 
 from app.calendar.data_builders import events_range_for_state
 from app.config import DisplayConfig
+from app.renderer.state import NavigationState
 
 if TYPE_CHECKING:
     from app.calendar.aggregator import CalendarAggregator
     from app.calendar.base import CalendarEvent
     from app.renderer.pillow_eink_renderer import PillowEinkRenderer
-    from app.renderer.state_manager import StateManager
 
 logger = logging.getLogger(__name__)
-
-
-def _handle_key(key: int, state_manager: StateManager) -> None:
-    """Map a pygame key event to a NavigationState transition."""
-    state = state_manager.get()
-    new_state = None
-    if key in (pygame.K_UP, pygame.K_PAGEUP):
-        new_state = state.navigate_prev()
-    elif key in (pygame.K_DOWN, pygame.K_PAGEDOWN):
-        new_state = state.navigate_next()
-    elif key == pygame.K_ESCAPE:
-        new_state = state.navigate_today()
-    if new_state is not None and new_state is not state:
-        state_manager.set(new_state)
 
 
 class HdmiDisplay:
@@ -52,12 +38,10 @@ class HdmiDisplay:
         config: DisplayConfig,
         renderer: PillowEinkRenderer,
         aggregator: CalendarAggregator,
-        state_manager: StateManager,
     ) -> None:
         self._config = config
         self._renderer = renderer
         self._aggregator = aggregator
-        self._state_manager = state_manager
         self._stop_event = threading.Event()
 
     # ------------------------------------------------------------------
@@ -101,10 +85,10 @@ class HdmiDisplay:
         while running and not self._stop_event.is_set():
             now = time.monotonic()
 
-            # Single state read per iteration — keeps fetch and render in sync.
-            state = self._state_manager.get()
+            # Single state read per iteration — always reflects today.
+            state = NavigationState()
 
-            # Re-fetch if: timer expired OR anchor_date changed (navigation).
+            # Re-fetch if: timer expired OR date rolled over at midnight.
             if (
                 now - last_event_fetch >= self._config.refresh_interval
                 or state.anchor_date != last_fetched_anchor
@@ -133,8 +117,6 @@ class HdmiDisplay:
                 elif event.type == pygame.KEYDOWN:
                     if event.key in (pygame.K_q, pygame.K_F4):
                         running = False
-                    else:
-                        _handle_key(event.key, self._state_manager)
 
             clock.tick(10)  # ~100 ms per frame
 

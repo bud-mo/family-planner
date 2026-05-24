@@ -97,6 +97,8 @@ def _check_file_permissions(path: Path) -> None:
 def load_config(path: Path) -> AppConfig:
     """Load and validate the application configuration from a YAML file.
 
+    If the file does not exist, it is created with default values and permissions 600.
+
     Args:
         path: Path to the YAML configuration file.
 
@@ -104,14 +106,27 @@ def load_config(path: Path) -> AppConfig:
         Validated AppConfig instance.
 
     Raises:
-        FileNotFoundError: If the config file does not exist.
+        OSError: If the config file does not exist and cannot be created.
         ValueError: If the YAML is malformed.
         pydantic.ValidationError: If the config schema is invalid.
     """
     path = Path(path)
 
     if not path.exists():
-        raise FileNotFoundError(f"Configuration file not found: {path}")
+        logger.warning("Configuration file not found at %s — creating with defaults.", path)
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            defaults = AppConfig()
+            path.write_text(
+                yaml.dump(defaults.model_dump(mode="json"), default_flow_style=False, allow_unicode=True),
+                encoding="utf-8",
+            )
+            path.chmod(0o600)
+            logger.info("Default configuration written to %s", path)
+        except OSError as exc:
+            raise OSError(
+                f"Configuration file not found and could not be created at {path}: {exc}"
+            ) from exc
 
     _check_file_permissions(path)
 

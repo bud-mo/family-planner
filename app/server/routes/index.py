@@ -13,6 +13,8 @@ from fastapi.requests import Request
 from fastapi.responses import StreamingResponse
 from fastapi.templating import Jinja2Templates
 
+from app.renderer.state import NavigationState
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -36,11 +38,10 @@ async def preview_png(request: Request) -> StreamingResponse:
     """Renderizza la Home view e restituisce un PNG on-demand."""
     from app.calendar.data_builders import events_range_for_state
 
-    state_manager = request.app.state.state_manager
     aggregator = request.app.state.aggregator
     renderer = request.app.state.renderer
 
-    state = state_manager.get()
+    state = NavigationState()
     start, end = events_range_for_state(state)
     try:
         events = aggregator.get_events(start, end)

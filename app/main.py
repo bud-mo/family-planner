@@ -45,7 +45,7 @@ import uvicorn
 from app.calendar.aggregator import CalendarAggregator
 from app.config import load_config
 from app.renderer.pillow_eink_renderer import PillowEinkRenderer
-from app.renderer.state_manager import StateManager
+from app.renderer.state import NavigationState
 from app.server.app import create_app
 
 if TYPE_CHECKING:
@@ -98,7 +98,6 @@ def _eink_loop(
     eink_renderer: "EinkRenderer",
     display: "EinkDisplay",
     aggregator: CalendarAggregator,
-    state_manager: StateManager,
     interval: int,
     stop_event: threading.Event,
 ) -> None:
@@ -111,7 +110,7 @@ def _eink_loop(
     logger.info("E-ink loop avviato (interval=%ds).", interval)
 
     while not stop_event.is_set():
-        state = state_manager.get()
+        state = NavigationState()
         start, end = events_range_for_state(state)
         try:
             events = aggregator.get_events(start, end)
@@ -164,7 +163,6 @@ def main() -> None:
     # ------------------------------------------------------------------
     # Renderer + state (shared between display pipeline and web server)
     # ------------------------------------------------------------------
-    state_manager = StateManager()
     renderer = PillowEinkRenderer(config, weather_provider=weather_provider)
 
     # ------------------------------------------------------------------
@@ -189,7 +187,6 @@ def main() -> None:
                 eink_renderer,
                 display_obj,
                 aggregator,
-                state_manager,
                 config.display.refresh_interval,
                 eink_stop_event,
             ),
@@ -207,7 +204,7 @@ def main() -> None:
     # ------------------------------------------------------------------
     # Web server
     # ------------------------------------------------------------------
-    web_app = create_app(config, aggregator, config_path, renderer, state_manager)
+    web_app = create_app(config, aggregator, config_path, renderer)
 
     uv_config = uvicorn.Config(
         web_app,
@@ -277,7 +274,7 @@ def main() -> None:
     if config.display.type == "hdmi":
         from app.display.hdmi import HdmiDisplay
 
-        hdmi = HdmiDisplay(config.display, renderer, aggregator, state_manager)
+        hdmi = HdmiDisplay(config.display, renderer, aggregator)
         _hdmi_ref[0] = hdmi
 
         # Uvicorn in daemon thread — must start before run_blocking()

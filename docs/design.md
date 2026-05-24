@@ -123,14 +123,14 @@ Quattro fasce orizzontali impilate:
 │                                                          │
 ├──────────────────────────────────────────────────────────┤
 │  FOOTER  (altezza fissa: 40px)                           │
-│  Pulsanti navigazione · Indicatori di stato              │
+│  Indicatori di stato                                     │
 └──────────────────────────────────────────────────────────┘
 ```
 
 **Banner Meteo:** `border-bottom: 2px solid var(--color-rule-strong)`.  
 **Calendario Mensile:** `border-bottom: 1px solid var(--color-rule-strong)`.  
-**Lista Appuntamenti:** occupa l'altezza rimanente (`height − 90px − 250px − 40px`). Non scrolla — Su/Giù sostituisce l'intera pagina.  
-**Footer:** `border-top: 1px solid var(--color-rule)`.
+**Lista Appuntamenti:** occupa l'altezza rimanente (`height − 90px − 250px − 40px`). Non scrolla.  
+**Footer:** `border-top: 1px solid var(--color-rule)`. Mostra solo gli indicatori di stato a destra (nessun pulsante di navigazione).
 
 ### Layout Landscape
 
@@ -155,40 +155,21 @@ Due colonne affiancate + footer full-width:
 **Sezione Meteo:** `border-bottom: 1px solid var(--color-rule)`.  
 **Colonna sinistra:** larghezza `38%` (≈ rapporto aureo editoriale). Esempio: 1024×600 → 389px sinistra, 634px destra.  
 **Lista Appuntamenti:** occupa tutta l'altezza della content area (`height − 40px`).  
-**Footer:** `border-top: 1px solid var(--color-rule)`.
+**Footer:** `border-top: 1px solid var(--color-rule)`. Full width, mostra solo gli indicatori di stato a destra.
 
----
+Il footer è la fascia inferiore fissa (altezza `40px`). Non contiene pulsanti di navigazione. Mostra esclusivamente gli **indicatori di stato** allineati a destra, in `--text-xs`, `--color-ink-muted`:
 
-## Pulsanti di Interazione
-
-### Pulsanti Fisici
-
-La mappatura dei 4 pulsanti fisici (o delle 4 azioni da tastiera):
-
-| Pulsante | Tasto tastiera | Azione |
-|---|---|---|
-| Oggi / Ritorna | `Escape` | Reimposta la lista alla data odierna |
-| Su | `ArrowUp` | Pagina precedente nella lista appuntamenti |
-| Giù | `ArrowDown` | Pagina successiva nella lista appuntamenti |
-| Invio | `Enter` | Disabilitato — nessuna azione |
-
-### Footer Interattivo (pulsanti virtuali)
-
-Non esiste alcun overlay flottante. Il footer è l'**unico** elemento interattivo: su `display.type = "hdmi"` (o modalità browser) ogni tasto nella legenda diventa un'area cliccabile con mouse o touch. La legenda è già presente su tutti i display — su e-ink funge da sola guida testuale, su HDMI è anche interfaccia touch/click.
+| Indicatore | Contenuto |
+|---|---|
+| Tipo display | `e-ink` / `hdmi` — testo fisso |
+| Layout | `portrait` / `landscape` — testo fisso |
+| Ora corrente | `HH:MM` — aggiornato ad ogni refresh |
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  [ ↑ Su ]  [ ↓ Giù ]  [ ↵ — ]  [ ← Oggi ]                  │
+│                                 hdmi · landscape · 09:32  │
 └──────────────────────────────────────────────────────────────┘
 ```
-
-**Specifica footer interattivo:**
-- I quattro tasti occupano la fascia footer come elementi `inline-block` separati da `border-right: 1px solid var(--color-rule)`
-- Ogni tasto: altezza `40px` (= altezza footer), padding orizzontale `16px`, icona Tabler `16px` + etichetta testuale in `--text-xs`
-- Allineamento: i tasti sono raggruppati a sinistra; gli indicatori di stato (display, layout, ora) restano a destra
-- Su HDMI: `cursor: pointer`; area hit minima `44px` di larghezza per accessibilità touch
-- Il tasto "Invio" è sempre disabilitato visivamente (`--color-ink-faint`, `pointer-events: none`)
-- Su e-ink: il footer è identico ma non interattivo — i pulsanti fisici rimangono l'unico mezzo di input
 
 ---
 
@@ -242,10 +223,13 @@ Il calendario mensile è **puramente visivo** — non risponde a nessuna interaz
 - Intestazione mese: `--font-body`, `--text-sm`, uppercase, `letter-spacing: 0.08em`, centrata
 - Intestazione colonne (L M M G V S D): `--text-xs`, `--color-ink-muted`
 - Numeri giorni: `--text-xs`, `--font-body`, `--color-ink`
-- **Oggi:** sfondo `--color-accent`, testo `--color-bg`, quadrato `16×16px` netto
+- **Oggi:** sfondo `--color-bg-alt` sull'intera cella; numero del giorno e testo eventi in `--color-ink` (nessun quadrato, nessuna inversione)
 - **Festività:** numero in `--font-display`, `font-weight: bold`, `--color-holiday`
-- Giorni del mese precedente/successivo: `--color-ink-faint`
-- Nessun indicatore di eventi nel calendario
+- Giorni del mese precedente/successivo: `--color-ink-faint`, nessun evento mostrato
+- **Layout cella:** numero giorno nella fascia alta (18px); righe evento nella fascia inferiore
+- **Righe evento:** `--font-body`, `--text-xs`, `--color-ink-muted`; formato `HH:MM Titolo` per eventi con orario, solo titolo per tutto-il-giorno; testo troncato con `…` se non entra in larghezza
+- **Overflow:** se gli eventi non entrano tutti, l'ultima riga mostra `+N` in `--color-ink-faint`
+- **Ordinamento per cella:** tutto-il-giorno prima, poi per orario di inizio
 
 #### Sezione Lista Appuntamenti
 
@@ -297,23 +281,13 @@ Lista in stile Agenda, ispirata a Google Calendar. La data di ogni giorno è vis
 
 ## Flusso di Navigazione
 
-L'interfaccia ha un'unica schermata. Non esiste navigazione gerarchica.
-
-```
-HOME
-  ↑ Esc   → ancora_data = oggi  (reimposta alla data corrente)
-  ↑ Su    → ancora_data -= N   (pagina precedente)
-  ↓ Giù   → ancora_data += N   (pagina successiva)
-  ↵ Enter → nessuna azione
-```
-
-L'`ancora_data` determina il primo giorno mostrato nella lista appuntamenti.
+L'interfaccia ha un'unica schermata. Non esiste navigazione — viene sempre mostrato il giorno corrente.
 
 ---
 
 ## Indicatori di Stato (Footer)
 
-L'header separato è eliminato. Gli indicatori di stato sono incorporati nella parte destra del footer, in `--text-xs`, `--color-ink-muted`:
+Gli indicatori di stato sono incorporati nella parte destra del footer, in `--text-xs`, `--color-ink-muted`:
 
 | Indicatore | Contenuto |
 |---|---|
@@ -364,7 +338,7 @@ Quando `display.type = "eink"`:
 
   /* Struttura */
   --height-banner:   90px;      /* Banner meteo (portrait) / sezione meteo (landscape) */
-  --height-calendar: 250px;     /* Calendario mensile in portrait */
+  --height-calendar: 462px;     /* Calendario mensile: 4 righe evento per cella (solo portrait) */
   --height-footer:   40px;
   --col-left-ratio:  38%;       /* Larghezza colonna sinistra in landscape */
   --border-radius:   0;         /* Mai arrotondare */
@@ -382,10 +356,10 @@ Valori pixel specifici per i display supportati:
 |---|---|---|---|---|---|
 | HDMI 7" | 1024×600 | `landscape` | 389px | 634px | 560px altezza |
 | Inky Impression 13.3" | 1600×1200 | `landscape` | 608px | 991px | 1160px altezza |
-| HDMI portrait (ruotato) | 600×1024 | `portrait` | — | — | 644px altezza |
-| E-ink portrait (ruotato) | 1200×1600 | `portrait` | — | — | 1220px altezza |
+| HDMI portrait (ruotato) | 600×1024 | `portrait` | — | — | 342px altezza |
+| E-ink portrait (ruotato) | 1200×1600 | `portrait` | — | — | 1008px altezza |
 
-Calcoli portrait: lista = `height − 90px − 250px − 40px`.  
+Calcoli portrait: lista = `height − 90px − 462px − 40px`.  
 Calcoli landscape: lista height = `height − 40px`; colonna sinistra = `width × 0.38`.
 
 ---

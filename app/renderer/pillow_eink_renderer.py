@@ -9,7 +9,7 @@ It is the sole renderer for both HDMI (pygame) and e-ink (Waveshare) displays.
 Usage::
 
     renderer = PillowEinkRenderer(config)
-    state = state_manager.get()
+    state = NavigationState()
     start, end = events_range_for_state(state)
     events = aggregator.get_events(start, end)
     img = renderer.render(state, events)      # PIL.Image RGB
@@ -21,9 +21,9 @@ from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageColor, ImageDraw, ImageFont
 
-from app.calendar.data_builders import _build_month_grid
+from app.calendar.data_builders import _build_month_grid, _build_rolling_week_grid
 from app.renderer.emoji_icons import load_icon, split_text_emoji
 from app.renderer.state import NavigationState
 from app.renderer.tokens import (
@@ -114,6 +114,7 @@ class PillowEinkRenderer:
         self._font_body: ImageFont.FreeTypeFont = self._load_font(FONT_BODY_REGULAR, TEXT_BASE)
         self._font_date_num: ImageFont.FreeTypeFont = self._load_font(FONT_BODY_REGULAR, TEXT_MD)
         self._font_label: ImageFont.FreeTypeFont = self._load_font(FONT_BODY_SEMIBOLD, TEXT_XS)
+        self._font_event: ImageFont.FreeTypeFont = self._load_font(FONT_BODY_REGULAR, TEXT_XS)
         self._font_mono: ImageFont.FreeTypeFont = self._load_font(FONT_MONO_REGULAR, TEXT_SM)
         self._font_temp: ImageFont.FreeTypeFont = self._load_font(FONT_BODY_SEMIBOLD, 40)
 
@@ -159,7 +160,7 @@ class PillowEinkRenderer:
         self._draw_weather(draw, img, weather_rect, weather, palette)
         self._draw_mini_calendar(draw, calendar_rect, state, events, palette)
         self._draw_agenda(draw, img, agenda_rect, state, events, palette)
-        self._draw_footer(draw, footer_rect, state, palette)
+        self._draw_footer(draw, footer_rect, palette)
         return img
 
     # ------------------------------------------------------------------
@@ -260,6 +261,36 @@ class PillowEinkRenderer:
         )
 
     # ------------------------------------------------------------------
+    # Mini-calendar helpers
+    # ------------------------------------------------------------------
+
+    def _format_event_short(self, evt: "CalendarEvent") -> str:
+        """Return a compact display string: 'HH:MM Title' for timed events, 'Title' for all-day."""
+        if evt.all_day:
+            return evt.title
+        local_start = evt.start.astimezone(self._tz) if self._tz else evt.start
+        return f"{local_start.strftime('%H:%M')} {evt.title}"
+
+    def _truncate_event_line(
+        self, text: str, font: "ImageFont.FreeTypeFont", max_width: int
+    ) -> str:
+        """Truncate *text* to fit *max_width* pixels, appending '…' if needed."""
+        if font.getlength(text) <= max_width:
+            return text
+        ellipsis = "…"
+        ellipsis_w = font.getlength(ellipsis)
+        if ellipsis_w > max_width:
+            return ""
+        lo, hi = 0, len(text)
+        while lo < hi:
+            mid = (lo + hi + 1) // 2
+            if font.getlength(text[:mid]) + ellipsis_w <= max_width:
+                lo = mid
+            else:
+                hi = mid - 1
+        return text[:lo] + ellipsis if lo > 0 else ""
+
+    # ------------------------------------------------------------------
     # Mini-calendar
     # ------------------------------------------------------------------
 
@@ -273,25 +304,16 @@ class PillowEinkRenderer:
     ) -> None:
         x0, y0, w, h = rect
         today = date.today()
-        year = state.anchor_date.year
-        month = state.anchor_date.month
-        weeks = _build_month_grid(year, month, events, today)
+        weeks = _build_rolling_week_grid(state.anchor_date, events, today)
+        # Always 5 rows
+        N_ROWS = 5
 
-        month_header_h = 20
+        # No top month header — the in-grid month separator provides context.
         dow_header_h = 16
-
-        # Month header
-        month_label = f"{_MONTH_NAMES_IT[month - 1].upper()} {year}"
-        draw.text(
-            (x0 + w // 2, y0 + month_header_h // 2),
-            month_label,
-            font=self._font_label,
-            fill=palette["INK"],
-            anchor="mm",
-        )
+        separator_h = 16  # height reserved for each between-row month separator
 
         # DOW header
-        dow_y = y0 + month_header_h + dow_header_h // 2
+        dow_y = y0 + dow_header_h // 2
         cell_w = w / 7
         for i, name in enumerate(_DAY_NAMES_IT):
             cx = x0 + i * cell_w + cell_w / 2
@@ -303,37 +325,132 @@ class PillowEinkRenderer:
                 anchor="mm",
             )
 
-        # Grid
-        grid_top = y0 + month_header_h + dow_header_h
-        grid_h = h - month_header_h - dow_header_h
-        n_rows = len(weeks)
-        cell_h = grid_h / n_rows
+        # Determine which rows are preceded by a month separator
+        sep_before_rows: set[int] = {
+            i
+            for i in range(1, N_ROWS)
+            if weeks[i][0]["date"].month != weeks[i - 1][0]["date"].month
+        }
+        total_sep_h = len(sep_before_rows) * separator_h
 
+        grid_top = y0 + dow_header_h
+        grid_h = h - dow_header_h
+        cell_h = (grid_h - total_sep_h) / N_ROWS
+
+        # Cell layout constants
+        day_area_h = 18    # height reserved for the day number at the top of each cell
+        event_line_h = 13  # TEXT_XS (11px) + 2px gap
+        cell_pad_x = 3     # horizontal margin inside cell for event text
+        max_event_lines = 4  # show up to 4 events; if more, show 3 + "+N"
+
+        # Color border: only on screens wide enough to absorb the 4px overhead per cell
+        show_border = self._size[0] >= 1024
+        text_x_offset = cell_pad_x + 4 if show_border else cell_pad_x  # border(2) + gap(2)
+        max_text_w = int(cell_w) - text_x_offset - cell_pad_x
+
+        cum_y = grid_top
         for row_idx, week in enumerate(weeks):
+            # Month separator: a full-width label row between weeks at month boundary
+            if row_idx in sep_before_rows:
+                sep_date = week[0]["date"]
+                sep_label = (
+                    f"{_MONTH_NAMES_IT[sep_date.month - 1].upper()} {sep_date.year}"
+                )
+                draw.text(
+                    (x0 + w // 2, cum_y + separator_h // 2),
+                    sep_label,
+                    font=self._font_label,
+                    fill=palette["INK"],
+                    anchor="mm",
+                )
+                cum_y += separator_h
+
+            row_top_y = cum_y
+
             for col_idx, cell in enumerate(week):
                 cx0 = x0 + col_idx * cell_w
-                cy0 = grid_top + row_idx * cell_h
+                cy0 = row_top_y
                 cx_mid = cx0 + cell_w / 2
-                cy_mid = cy0 + cell_h / 2
+
+                # Day number: centered in the top area [cy0+1 .. cy0+day_area_h]
+                day_num_cy = cy0 + 1 + day_area_h // 2
 
                 if cell["is_today"]:
-                    sq = 16
-                    half = sq // 2
+                    # Light-gray cell background for today; day number and events in black
                     draw.rectangle(
-                        [cx_mid - half, cy_mid - half, cx_mid + half, cy_mid + half],
-                        fill=palette["ACCENT"],
+                        [cx0, cy0, cx0 + cell_w - 1, cy0 + cell_h - 1],
+                        fill=palette["BG_ALT"],
                     )
-                    ink = palette["BG"]
+                    ink = palette["INK"]
+                    event_ink = palette["INK"]
                 else:
-                    ink = palette["INK"] if cell["is_current_month"] else palette["INK_FAINT"]
+                    ink = palette["INK"]
+                    event_ink = palette["INK_MUTED"]
 
                 draw.text(
-                    (cx_mid, cy_mid),
+                    (cx_mid, day_num_cy),
                     str(cell["day_number"]),
                     font=self._font_label,
                     fill=ink,
                     anchor="mm",
                 )
+
+                cell_events = cell["events"]
+                if not cell_events or max_event_lines == 0:
+                    continue
+
+                cell_events = sorted(cell_events, key=lambda e: (not e.all_day, e.start))
+                n_events = len(cell_events)
+
+                if n_events <= max_event_lines:
+                    events_to_show = cell_events
+                    overflow_count = 0
+                else:
+                    events_to_show = cell_events[: max_event_lines - 1]
+                    overflow_count = n_events - len(events_to_show)
+
+                event_area_top = cy0 + day_area_h + 1
+
+                for line_idx, evt in enumerate(events_to_show):
+                    line_top = int(event_area_top + line_idx * event_line_h)
+                    line_y = line_top + event_line_h // 2
+                    if show_border:
+                        border_x = int(cx0 + cell_pad_x)
+                        try:
+                            border_color: tuple | None = ImageColor.getrgb(evt.color) if evt.color else None
+                        except (ValueError, AttributeError):
+                            border_color = None
+                        if border_color is not None:
+                            draw.line(
+                                [(border_x, line_top + 1), (border_x, line_top + event_line_h - 2)],
+                                fill=border_color,
+                                width=2,
+                            )
+                    text = self._truncate_event_line(
+                        self._format_event_short(evt), self._font_event, max_text_w
+                    )
+                    if text:
+                        draw.text(
+                            (cx0 + text_x_offset, line_y),
+                            text,
+                            font=self._font_event,
+                            fill=event_ink,
+                            anchor="lm",
+                        )
+
+                if overflow_count > 0:
+                    overflow_y = (
+                        event_area_top + len(events_to_show) * event_line_h + event_line_h // 2
+                    )
+                    draw.text(
+                        (cx0 + cell_pad_x, overflow_y),
+                        f"+{overflow_count}",
+                        font=self._font_event,
+                        fill=palette["INK_FAINT"],
+                        anchor="lm",
+                    )
+
+            cum_y += cell_h
 
         # Bottom separator (portrait only)
         if self._layout == "portrait":
@@ -568,7 +685,6 @@ class PillowEinkRenderer:
         self,
         draw: ImageDraw.ImageDraw,
         rect: Rect,
-        state: NavigationState,
         palette: dict[str, str],
     ) -> None:
         x0, y0, w, h = rect
@@ -577,29 +693,6 @@ class PillowEinkRenderer:
         draw.line([(x0, y0), (x0 + w, y0)], fill=palette["RULE"])
 
         y_mid = y0 + h // 2
-        button_padding = 16
-
-        buttons: list[tuple[str, bool]] = [
-            ("↑ Su", state.page_offset == 0),
-            ("↓ Giù", False),
-            ("← Oggi", False),
-        ]
-        # Draw buttons left-to-right
-        cur_x = x0
-        for label, disabled in buttons:
-            ink = palette["INK_FAINT"] if disabled else palette["INK"]
-            bbox = draw.textbbox((0, 0), label, font=self._font_label)
-            text_w = bbox[2] - bbox[0]
-            btn_w = text_w + button_padding * 2
-            draw.text(
-                (cur_x + btn_w // 2, y_mid),
-                label,
-                font=self._font_label,
-                fill=ink,
-                anchor="mm",
-            )
-            cur_x += btn_w
-            draw.line([(cur_x, y0 + 4), (cur_x, y0 + h - 4)], fill=palette["RULE"])
 
         # Status indicators (right-aligned)
         status_parts: list[tuple[str, ImageFont.FreeTypeFont]] = [

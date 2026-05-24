@@ -5,10 +5,12 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=pi
+User=root
 WorkingDirectory=/home/pi/family-planner
-Environment=SDL_VIDEODRIVER=kmsdrm
+Environment=SDL_VIDEODRIVER=wayland
 Environment=SDL_AUDIODRIVER=dummy
+Environment=WAYLAND_DISPLAY=wayland-0
+Environment=XDG_RUNTIME_DIR=/run/user/1000
 ExecStart=/home/pi/family-planner/venv/bin/python app/main.py \
     --config /boot/family-planner.config.yaml
 Restart=on-failure
