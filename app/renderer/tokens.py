@@ -60,6 +60,7 @@ class WeatherData:
     """Dati meteo per il banner. Tutti i campi sono None in assenza di un provider."""
 
     condition_icon: str | None = None    # nome icona Tabler (es. "sun", "cloud-rain")
+    description: str | None = None       # descrizione testuale (es. "Sereno", "Pioggia")
     temp_current: float | None = None    # temperatura attuale (°C)
     temp_max: float | None = None        # massima giornaliera (°C)
     temp_min: float | None = None        # minima giornaliera (°C)

@@ -1,2 +1,5 @@
 /.venv/
 /config/*.local.*
+/app/assets/icons/16/
+/app/assets/icons/24/
+/node_modules/

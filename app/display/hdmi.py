@@ -11,7 +11,9 @@ in the systemd unit).  With X11 set ``DISPLAY=:0``.
 from __future__ import annotations
 
 import logging
+import threading
 import time
+from datetime import date
 from typing import TYPE_CHECKING
 
 import pygame
@@ -58,10 +60,20 @@ class HdmiDisplay:
         self._renderer = renderer
         self._aggregator = aggregator
         self._state_manager = state_manager
+        self._stop_event = threading.Event()
 
     # ------------------------------------------------------------------
     # Public interface
     # ------------------------------------------------------------------
+
+    def stop(self) -> None:
+        """Signal the pygame loop to exit on the next frame."""
+        self._stop_event.set()
+
+    def set_aggregator(self, aggregator: CalendarAggregator) -> None:
+        """Replace the calendar aggregator (called on config reload)."""
+        self._aggregator = aggregator
+        self._stop_event.set()
 
     def run_blocking(self) -> None:
         """Open the pygame window and block until the user closes it.
@@ -77,6 +89,7 @@ class HdmiDisplay:
 
         clock = pygame.time.Clock()
         last_event_fetch: float = 0.0
+        last_fetched_anchor: date | None = None
         events: list[CalendarEvent] = []
 
         logger.info(
@@ -87,21 +100,26 @@ class HdmiDisplay:
         )
 
         running = True
-        while running:
+        while running and not self._stop_event.is_set():
             now = time.monotonic()
 
-            # Re-fetch calendar events according to refresh_interval.
-            if now - last_event_fetch >= self._config.refresh_interval:
-                state = self._state_manager.get()
+            # Single state read per iteration — keeps fetch and render in sync.
+            state = self._state_manager.get()
+
+            # Re-fetch if: timer expired OR anchor_date changed (navigation).
+            if (
+                now - last_event_fetch >= self._config.refresh_interval
+                or state.anchor_date != last_fetched_anchor
+            ):
                 start, end = events_range_for_state(state)
                 try:
                     events = self._aggregator.get_events(start, end)
+                    last_fetched_anchor = state.anchor_date
                 except Exception as exc:
                     logger.error("HdmiDisplay: event fetch error: %s", exc)
                 last_event_fetch = now
 
             # Render.
-            state = self._state_manager.get()
             try:
                 pil_img = self._renderer.render(state, events)
                 surface = pygame.image.frombytes(pil_img.tobytes(), pil_img.size, "RGB")

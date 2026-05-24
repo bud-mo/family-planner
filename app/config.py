@@ -41,10 +41,18 @@ class CalendarConfig(BaseModel):
     path: str | None = None
 
 
+class WeatherConfig(BaseModel):
+    enabled: bool = False
+    latitude: float = 45.4654
+    longitude: float = 9.1866
+    units: Literal["celsius", "fahrenheit"] = "celsius"
+
+
 class AppConfig(BaseModel):
     server: ServerConfig = ServerConfig()
     display: DisplayConfig = DisplayConfig()
     calendars: list[CalendarConfig] = []
+    weather: WeatherConfig = WeatherConfig()
     timezone: str = "Europe/Rome"
 
     @field_validator("timezone")

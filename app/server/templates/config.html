@@ -206,6 +206,12 @@
           <option value="eink"{% if config.display.type == "eink" %} selected{% endif %}>E-Ink</option>
         </select>
 
+        <label class="field-label" for="display_layout">orientation</label>
+        <select class="field-select" id="display_layout" name="display_layout">
+          <option value="landscape"{% if config.display.layout == "landscape" %} selected{% endif %}>Landscape</option>
+          <option value="portrait"{% if config.display.layout == "portrait" %} selected{% endif %}>Portrait</option>
+        </select>
+
         <label class="field-label" for="display_width">width (px)</label>
         <input class="field-input" type="number" id="display_width" name="display_width"
                value="{{ config.display.width }}" min="320" required />
@@ -244,6 +250,43 @@
                  {% if config.display.eink_dither %}checked{% endif %} />
           <label for="display_eink_dither">Floyd-Steinberg dithering</label>
         </div>
+      </div>
+    </section>
+
+    <!-- ---------------------------------------------------------------- -->
+    <!-- Meteo                                                             -->
+    <!-- ---------------------------------------------------------------- -->
+    <section class="config-section">
+      <h2 class="config-section__title">Meteo</h2>
+      <div class="field-grid">
+        <label class="field-label" for="weather_enabled">abilitato</label>
+        <div class="field-checkbox-row">
+          <input type="checkbox" id="weather_enabled" name="weather_enabled"
+                 {% if config.weather.enabled %}checked{% endif %} />
+          <label for="weather_enabled">Mostra dati meteo nel banner</label>
+        </div>
+
+        <label class="field-label" for="weather_latitude">latitude</label>
+        <input class="field-input" type="number" id="weather_latitude"
+               name="weather_latitude" step="any" min="-90" max="90"
+               value="{{ config.weather.latitude }}" required />
+
+        <label class="field-label" for="weather_longitude">longitude</label>
+        <input class="field-input" type="number" id="weather_longitude"
+               name="weather_longitude" step="any" min="-180" max="180"
+               value="{{ config.weather.longitude }}" required />
+
+        <label class="field-label" for="weather_units">units</label>
+        <select class="field-select" id="weather_units" name="weather_units">
+          <option value="celsius"{% if config.weather.units == "celsius" %} selected{% endif %}>Celsius (°C)</option>
+          <option value="fahrenheit"{% if config.weather.units == "fahrenheit" %} selected{% endif %}>Fahrenheit (°F)</option>
+        </select>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="btn" onclick="testWeather(this)">
+          Testa connessione meteo
+        </button>
+        <span id="weather-test-result" class="test-result"></span>
       </div>
     </section>
 
@@ -451,8 +494,38 @@
   document.querySelectorAll('#cal-list select[name="cal_type"]').forEach(function (sel) {
     toggleCalFields(sel);
   });
+
+  window.testWeather = function (btn) {
+    var lat    = document.getElementById('weather_latitude').value;
+    var lon    = document.getElementById('weather_longitude').value;
+    var units  = document.getElementById('weather_units').value;
+    var result = document.getElementById('weather-test-result');
+
+    var fd = new FormData();
+    fd.append('latitude', lat);
+    fd.append('longitude', lon);
+    fd.append('units', units);
+
+    btn.disabled = true;
+    result.style.display = 'inline';
+    result.style.color = 'var(--color-ink-muted)';
+    result.textContent = 'Test in corso\u2026';
+
+    fetch('/api/test-weather', { method: 'POST', body: fd })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        result.textContent = (data.ok ? '\u2713 ' : '\u2717 ') + data.message;
+        result.style.color = data.ok ? 'var(--color-ink)' : '#b00020';
+      })
+      .catch(function () {
+        result.textContent = '\u2717 Errore di rete.';
+        result.style.color = '#b00020';
+      })
+      .finally(function () { btn.disabled = false; });
+  };
 }());
 </script>
 {% endblock %}
 
+{% block footer_buttons %}{% endblock %}
 {% block footer_hint %}{% endblock %}

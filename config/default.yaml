@@ -5,6 +5,7 @@ timezone: "Europe/Rome"
 display:
   fullscreen: false
   type: hdmi
+  layout: landscape
   width: 1920
   height: 1080
   refresh_interval: 300
@@ -12,4 +13,9 @@ display:
   eink_model: 7in5_V2
   eink_palette: bw
   eink_dither: false
+weather:
+  enabled: false
+  latitude: 45.4654    # Milano — sostituire con le proprie coordinate
+  longitude: 9.1866
+  units: celsius       # celsius | fahrenheit
 calendars: []

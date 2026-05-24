@@ -56,6 +56,10 @@ family-planner/
 │   │   ├── state.py                     # NavigationState (dataclass immutabile) + View enum
 │   │   ├── state_manager.py             # StateManager: singleton thread-safe per NavigationState
 │   │   └── tokens.py                    # Design tokens Python
+│   ├── weather/
+│   │   ├── __init__.py
+│   │   ├── provider.py          # WeatherProvider: classe base astratta
+│   │   └── open_meteo.py        # OpenMeteoProvider: API Open-Meteo + cache in-memory TTL 1h
 │   └── display/
 │       ├── __init__.py
 │       ├── hdmi.py              # HdmiDisplay: finestra pygame — rendering PIL.Image diretto
@@ -95,9 +99,17 @@ server:
   host: "0.0.0.0"
   port: 8080
 
+weather:
+  enabled: true              # false → disabilita il provider, mostra solo la data
+  latitude: 45.4654          # coordinate GPS della posizione
+  longitude: 9.1866
+  units: "celsius"           # "celsius" | "fahrenheit"
+
 display:
   type: "hdmi"               # "hdmi" | "eink"
   layout: "landscape"        # "landscape" | "portrait"
+  width: 1024
+  height: 600
   width: 1024
   height: 600
   fullscreen: false          # true → finestra fullscreen; false → finestra dimensionata (sviluppo)
@@ -127,6 +139,8 @@ calendars:
 
 La configurazione è validata tramite **Pydantic v2** all'avvio; errori di schema bloccano il processo con un messaggio chiaro.
 
+> **Nota sicurezza**: il file di configurazione non contiene credenziali meteo (Open-Meteo non richiede API key). Le coordinate GPS sono considerate dati non sensibili in questo contesto.
+
 ---
 
 ## Flusso Applicativo
@@ -142,11 +156,15 @@ Avvio (main.py --config ...)
   (istanzia i provider definiti in config)
         │
         ▼
+  Inizializza OpenMeteoProvider  ← solo se weather.enabled: true
+  (cache in-memory TTL 1h, thread-safe)
+        │
+        ▼
   Inizializza StateManager
   (singleton thread-safe — condiviso tra renderer, rotte e loop display)
         │
         ▼
-  Inizializza PillowEinkRenderer  ← renderer unico per HDMI ed e-ink
+  Inizializza PillowEinkRenderer(config, weather_provider)  ← renderer unico per HDMI ed e-ink
         │
         ▼
   Avvia Display (condizionale sul tipo)
@@ -202,6 +220,76 @@ Interfaccia web per la configurazione: aggiunta/rimozione calendari, modifica pa
 
 ### `POST /config`
 Salva le modifiche nel file di configurazione e riavvia il server in modo graceful (SIGHUP o riavvio Uvicorn).
+
+---
+
+## Integrazione Meteo — Open-Meteo
+
+Il meteo è fornito da **Open-Meteo** (`https://api.open-meteo.com`) — API pubblica, gratuita, senza API key, GDPR-compliant, con aggiornamenti ogni ora.
+
+### Modulo `app/weather/`
+
+```
+app/weather/
+├── __init__.py          # esporta WeatherProvider, OpenMeteoProvider
+├── provider.py          # WeatherProvider: ABC thread-safe — get() → WeatherData
+└── open_meteo.py        # OpenMeteoProvider: fetch + cache in-memory TTL 1h
+```
+
+### API endpoint
+
+```
+GET https://api.open-meteo.com/v1/forecast
+    ?latitude=<lat>
+    &longitude=<lon>
+    &current=temperature_2m,weather_code
+    &daily=temperature_2m_max,temperature_2m_min
+    &temperature_unit=celsius
+    &timezone=auto
+    &forecast_days=1
+```
+
+### Cache in-memory
+
+`OpenMeteoProvider` mantiene una cache in-memory protetta da `threading.Lock`:
+- Il campo `_cached_at` registra il timestamp dell'ultimo fetch (`time.monotonic()`)
+- Se `now − cached_at < 3600s` e i dati sono presenti, viene restituita la cache senza chiamate di rete
+- Il fetch HTTP avviene **fuori dal lock** (`timeout=10s`) per non bloccare il thread di rendering
+- In caso di errore HTTP/parse, la cache stale è restituita; se non esiste ancora nessuna cache, viene restituito `WeatherData()` vuoto → il renderer mostra solo la data
+
+### Struttura `WeatherData` (`renderer/tokens.py`)
+
+```python
+@dataclass
+class WeatherData:
+    condition_icon: str | None = None   # nome icona Tabler (es. "sun", "cloud-rain")
+    description: str | None = None      # testo italiano (es. "Sereno", "Pioggia")
+    temp_current: float | None = None   # temperatura attuale
+    temp_max: float | None = None       # massima giornaliera
+    temp_min: float | None = None       # minima giornaliera
+```
+
+### Mappatura WMO 4677 → icone Tabler
+
+| Codici WMO | Condizione | Icona Tabler |
+|---|---|---|
+| 0, 1 | Sereno / Prevalentemente sereno | `sun` |
+| 2, 3, 45, 48 | Nuvoloso / Nebbia | `cloud` |
+| 51–67, 80–82, 95–99 | Pioggia / Rovesci / Temporale | `cloud-rain` |
+| 56, 57, 66, 67, 71–77, 85, 86 | Neve / Gelate | `snowflake` |
+
+Le icone PNG corrispondenti (`{nome}.png`, 24×24 px) devono essere presenti in `app/assets/icons/weather/`. Se il file manca, il renderer usa il campo `description` come testo alternativo. Se entrambi mancano, la zona destra del banner mostra solo la temperatura.
+
+### Rendering nel banner
+
+`_draw_weather()` segue questa priorità per la zona destra del banner:
+1. **Icona PNG** (se `condition_icon` è impostato e il file `app/assets/icons/weather/{icon}.png` esiste): 24×24 px, tintato con `palette["INK"]`, posizionato a sinistra della temperatura.
+2. **Testo description** (fallback se PNG mancante): resa in `--text-xs` / `INK_MUTED`, allineata a destra della temperatura.
+3. **Solo temperatura** (se `WeatherData` è vuoto): comportamento attuale — solo la data è mostrata se anche la temperatura è `None`.
+
+### Degradazione graceful
+
+In tutti i casi di errore (rete assente, API irraggiungibile, risposta malformata), `OpenMeteoProvider.get()` non rilancia eccezioni: restituisce la cache stale se disponibile, altrimenti `WeatherData()` vuoto. Il rendering non viene mai bloccato dalla mancanza di dati meteo.
 
 ---
 
@@ -357,7 +445,7 @@ dove `col_left = int(W × 0.38)` e `col_right = W − col_left`.
 
 **Navigazione**: `prev` retrocede di una pagina nella lista appuntamenti; `next` avanza; `today` reimposta `anchor_date` alla data corrente e `page_offset = 0`; `night` fa il toggle della modalità notte (solo HDMI).
 
-> **Componente meteo**: la struttura `WeatherData` (data corrente, icona condizione, temperatura, max/min) è preparata da `data_builders.py`. La sorgente dati meteo è un **punto aperto** — attualmente non è implementato alcun provider meteo; il campo è riservato a una futura integrazione.
+> **Componente meteo**: la struttura `WeatherData` (icona condizione, descrizione testuale, temperatura attuale, max/min giornalieri) è prodotta da `OpenMeteoProvider.get()` — chiamata dentro `PillowEinkRenderer.render()` se il provider è stato iniettato. In assenza di provider (o se `weather.enabled: false`), `WeatherData` rimane vuota e il banner mostra solo la data.
 
 ---
 
@@ -538,7 +626,7 @@ pydantic>=2.0
 eval_type_backport         # compatibilità type hints Python 3.9
 pyyaml
 caldav
-requests                   # HTTP per iCal URL provider
+requests                   # HTTP per iCal URL provider + Open-Meteo weather API
 icalendar
 pillow                     # renderer unico (PillowEinkRenderer) + post-processing (EinkRenderer)
 pygame                     # display HDMI — finestra SDL, rendering PIL.Image diretto
@@ -567,9 +655,10 @@ python-multipart           # form POST /config
                                     │            │Prov. │  │  Provider  │
                           ┌─────────▼──────────┐ └──────┘  └────────────┘
                           │  PillowEinkRenderer │
-                          │  (HDMI + e-ink)     │
-                          │  Pillow nativo      │
-                          │  state + events     │
+                          │  (HDMI + e-ink)     │◀──── OpenMeteoProvider
+                          │  Pillow nativo      │      cache in-memory
+                          │  state + events     │      TTL 1h
+                          │  + WeatherData      │      (opzionale)
                           └─────────┬───────────┘
                                     │ PIL.Image
                ┌────────────────────┴─────────────────────┐

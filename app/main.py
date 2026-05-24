@@ -51,6 +51,7 @@ from app.server.app import create_app
 if TYPE_CHECKING:
     from app.display.eink import EinkDisplay
     from app.renderer.eink_renderer import EinkRenderer
+    from app.weather.provider import WeatherProvider
 
 logger = logging.getLogger(__name__)
 
@@ -142,16 +143,36 @@ def main() -> None:
     )
 
     # ------------------------------------------------------------------
+    # Weather provider (optional — only when weather.enabled)
+    # ------------------------------------------------------------------
+    weather_provider: "WeatherProvider | None" = None
+    if config.weather.enabled:
+        from app.weather import OpenMeteoProvider
+
+        weather_provider = OpenMeteoProvider(
+            latitude=config.weather.latitude,
+            longitude=config.weather.longitude,
+            units=config.weather.units,
+        )
+        logger.info(
+            "Weather provider: Open-Meteo (lat=%.4f, lon=%.4f, units=%s)",
+            config.weather.latitude,
+            config.weather.longitude,
+            config.weather.units,
+        )
+
+    # ------------------------------------------------------------------
     # Renderer + state (shared between display pipeline and web server)
     # ------------------------------------------------------------------
     state_manager = StateManager()
-    renderer = PillowEinkRenderer(config)
+    renderer = PillowEinkRenderer(config, weather_provider=weather_provider)
 
     # ------------------------------------------------------------------
     # Display initialisation
     # ------------------------------------------------------------------
     display_obj: EinkDisplay | None = None
     eink_stop_event: threading.Event | None = None
+    _hdmi_ref: list = [None]
 
     if config.display.type == "eink":
         from app.display.eink import EinkDisplay
@@ -208,6 +229,9 @@ def main() -> None:
         # Signal the e-ink loop to stop (non-blocking — just sets an event).
         if eink_stop_event is not None:
             eink_stop_event.set()
+        # Signal the pygame window to close (if running).
+        if _hdmi_ref[0] is not None:
+            _hdmi_ref[0].stop()
         # Uvicorn handles SIGINT via its own asyncio signal handlers; setting
         # should_exit here is a belt-and-suspenders fallback for other signals.
         server.should_exit = True
@@ -229,6 +253,8 @@ def main() -> None:
                 cache_ttl=new_config.display.refresh_interval,
             )
             web_app.state.aggregator = new_aggregator
+            if _hdmi_ref[0] is not None:
+                _hdmi_ref[0].set_aggregator(new_aggregator)
             logger.info("Configuration reloaded successfully.")
         except Exception as exc:  # noqa: BLE001
             logger.error("Failed to reload configuration: %s", exc)
@@ -252,6 +278,7 @@ def main() -> None:
         from app.display.hdmi import HdmiDisplay
 
         hdmi = HdmiDisplay(config.display, renderer, aggregator, state_manager)
+        _hdmi_ref[0] = hdmi
 
         # Uvicorn in daemon thread — must start before run_blocking()
         uv_thread = threading.Thread(

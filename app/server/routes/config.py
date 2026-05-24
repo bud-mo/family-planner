@@ -15,7 +15,7 @@ from pydantic import ValidationError
 
 from app.calendar.caldav_provider import CalDavProvider
 from app.calendar.ical_provider import IcalProvider
-from app.config import AppConfig, CalendarConfig
+from app.config import AppConfig, CalendarConfig, WeatherConfig
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +61,12 @@ def _parse_config_form(form: Any, existing: AppConfig) -> dict:
     def _bool(key: str) -> bool:
         val = form.get(key)
         return val is not None and str(val).lower() not in ("", "false", "0", "off")
+
+    def _float(key: str, default: float) -> float:
+        try:
+            return float(form.get(key, default))
+        except (ValueError, TypeError):
+            return default
 
     cal_names = form.getlist("cal_name")
     cal_types = form.getlist("cal_type")
@@ -112,6 +118,7 @@ def _parse_config_form(form: Any, existing: AppConfig) -> dict:
         },
         "display": {
             "type": _str("display_type", "hdmi"),
+            "layout": _str("display_layout", "landscape"),
             "width": _int("display_width", 1920),
             "height": _int("display_height", 1080),
             "fullscreen": _bool("display_fullscreen"),
@@ -120,7 +127,14 @@ def _parse_config_form(form: Any, existing: AppConfig) -> dict:
             "eink_palette": _str("display_eink_palette", "bw"),
             "eink_dither": _bool("display_eink_dither"),
         },
+        "weather": {
+            "enabled": _bool("weather_enabled"),
+            "latitude": _float("weather_latitude", 45.4654),
+            "longitude": _float("weather_longitude", 9.1866),
+            "units": _str("weather_units", "celsius"),
+        },
         "calendars": calendars,
+        "timezone": existing.timezone,
     }
 
 
@@ -201,6 +215,34 @@ async def config_post(request: Request):
     _deferred_sighup()
 
     return RedirectResponse(url="/config?saved=1", status_code=303)
+
+
+@router.post("/api/test-weather")
+async def test_weather(request: Request) -> JSONResponse:
+    """Test connectivity to Open-Meteo and return current conditions."""
+    form = await request.form()
+    try:
+        lat = float(form.get("latitude", 45.4654))
+        lon = float(form.get("longitude", 9.1866))
+        units = str(form.get("units", "celsius")).strip()
+    except (TypeError, ValueError):
+        return JSONResponse({"ok": False, "message": "Coordinate non valide."})
+
+    from app.weather.open_meteo import OpenMeteoProvider
+
+    provider = OpenMeteoProvider(latitude=lat, longitude=lon, units=units)
+    data = provider._fetch()
+    if data is None:
+        return JSONResponse(
+            {"ok": False, "message": "Nessuna risposta da Open-Meteo. Verificare la connessione di rete."}
+        )
+    unit_sym = "\u00b0C" if units == "celsius" else "\u00b0F"
+    msg = (
+        f"{data.description}, "
+        f"{data.temp_current:.0f}{unit_sym} "
+        f"(\u2191{data.temp_max:.0f} \u2193{data.temp_min:.0f})"
+    )
+    return JSONResponse({"ok": True, "message": msg})
 
 
 @router.post("/api/test-connection")
