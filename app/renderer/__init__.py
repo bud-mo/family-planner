@@ -1,3 +1,3 @@
-from app.renderer.playwright_renderer import PlaywrightRenderer
+from app.renderer.pillow_eink_renderer import PillowEinkRenderer
 
-__all__ = ["PlaywrightRenderer"]
+__all__ = ["PillowEinkRenderer"]

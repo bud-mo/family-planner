@@ -22,8 +22,8 @@ class DisplayConfig(BaseModel):
     width: int = 1920
     height: int = 1080
     refresh_interval: int = 300
+    layout: Literal["portrait", "landscape"] = "landscape"
     show_buttons: bool = False      # show on-screen navigation overlay (for touchscreen / debug)
-    playwright_executable: str | None = None  # path to Chromium binary; null = Playwright bundle
     eink_model: str = "7in5_V2"
     eink_palette: Literal["bw", "bwr", "4gray"] = "bw"
     eink_dither: bool = True

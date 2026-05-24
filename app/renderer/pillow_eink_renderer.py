@@ -1,15 +1,10 @@
-"""Pillow-native e-ink renderer for Family Planner.
+"""Pillow-native renderer for Family Planner — Home view.
+
+Single-screen layout: weather banner · mini-calendar · agenda · footer.
 
 ``PillowEinkRenderer`` renders a ``PIL.Image`` directly from ``NavigationState``
 and a list of ``CalendarEvent`` objects, without involving a browser or network.
-
-It is designed for ``display.type == "eink"`` and replaces ``PlaywrightRenderer``
-in the e-ink display loop.  It does not import or start Chromium; all layout is
-computed in Python and painted with Pillow ``ImageDraw``.
-
-Does not inherit from ``Renderer`` — the public API accepts ``state`` and
-``events`` as explicit parameters rather than owning them internally (unlike
-``PlaywrightRenderer`` which manages its own headless browser state).
+It is the sole renderer for both HDMI (pygame) and e-ink (Waveshare) displays.
 
 Usage::
 
@@ -18,37 +13,34 @@ Usage::
     start, end = events_range_for_state(state)
     events = aggregator.get_events(start, end)
     img = renderer.render(state, events)      # PIL.Image RGB
-    processed = eink_post_processor.process(img)
-    display.push(processed)
 """
 from __future__ import annotations
 
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from PIL import Image, ImageDraw, ImageFont
 
-from app.calendar.data_builders import (
-    _GRID_END_HOUR,
-    _GRID_HEIGHT_PX,
-    _GRID_START_HOUR,
-    _build_month_grid,
-    _event_to_grid,
-)
-from app.renderer.state import NavigationState, View
+from app.calendar.data_builders import _build_month_grid
+from app.renderer.state import NavigationState, PAGE_DAYS
 from app.renderer.tokens import (
+    BANNER_HEIGHT,
+    CALENDAR_HEIGHT,
+    COL_LEFT_RATIO,
     FONT_BODY_REGULAR,
     FONT_BODY_SEMIBOLD,
     FONT_DISPLAY_REGULAR,
     FONT_MONO_REGULAR,
     FONTS_DIR,
     FOOTER_HEIGHT,
-    HEADER_HEIGHT,
+    Rect,
+    TEXT_BASE,
     TEXT_LG,
     TEXT_SM,
     TEXT_XS,
+    WeatherData,
     get_palette,
 )
 
@@ -61,6 +53,8 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Locale strings (private — not imported from other modules to avoid coupling)
 # ---------------------------------------------------------------------------
+# Locale strings
+# ---------------------------------------------------------------------------
 
 _MONTH_NAMES_IT: list[str] = [
     "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
@@ -70,36 +64,15 @@ _DAY_NAMES_IT: list[str] = ["LUN", "MAR", "MER", "GIO", "VEN", "SAB", "DOM"]
 _DAY_NAMES_FULL_IT: list[str] = [
     "Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica",
 ]
-_VIEW_LABELS_IT: dict[View, str] = {
-    View.ANNUAL: "ANNUALE",
-    View.MONTHLY: "MENSILE",
-    View.WEEKLY: "SETTIMANALE",
-    View.DAILY: "GIORNALIERO",
-    View.DETAIL: "DETTAGLIO",
-}
-
-# ---------------------------------------------------------------------------
-# Layout constants (px) — all values are absolute pixels for a fixed display
-# ---------------------------------------------------------------------------
-
-_DOW_HEADER_H: int = 20    # day-of-week header row height (monthly view)
-_COL_HEADER_H: int = 28    # day column header height (weekly view)
-_ALLDAY_H: int = 20        # all-day events strip height (weekly view)
-_TIME_COL_W: int = 48      # hour-label column width (weekly view)
-_MIN_EVENT_H: int = 12     # minimum timed-event block height (px)
-_DOT_RADIUS: int = 3       # event dot radius in monthly cells (px)
-_MAX_DOTS: int = 3         # max event dots per cell before showing "+"
-_DAILY_ROW_H: int = 24     # event row height in daily view (px)
-_TIME_COL_DAILY_W: int = 90  # time label column width in daily view (px)
-_DOT_D: int = 8            # event dot diameter in daily view (px)
 
 
 class PillowEinkRenderer:
-    """Pillow-native renderer: ``NavigationState`` + events → ``PIL.Image``.
+    """Renders the Home view as a ``PIL.Image``.
 
     Args:
-        config: Full application config.  ``config.display`` supplies canvas
-                dimensions; ``config.timezone`` localises event times.
+        config: Full application config. ``config.display`` supplies canvas
+                dimensions, layout, and display type; ``config.timezone``
+                localises event times.
 
     Raises:
         FileNotFoundError: If any required TTF font file is missing from
@@ -108,8 +81,9 @@ class PillowEinkRenderer:
 
     def __init__(self, config: "AppConfig") -> None:
         self._size: tuple[int, int] = (config.display.width, config.display.height)
+        self._layout: str = config.display.layout
+        self._display_type: str = config.display.type
 
-        # Timezone for localising event datetimes — None keeps event-native tz.
         tz_name: str = getattr(config, "timezone", "local")
         if tz_name and tz_name != "local":
             try:
@@ -123,12 +97,10 @@ class PillowEinkRenderer:
         else:
             self._tz = None
 
-        # Fonts are loaded once at construction — raise immediately if any TTF is missing
-        # rather than silently falling back to Pillow's default (unreadable on e-ink).
-        self._font_title: ImageFont.FreeTypeFont = self._load_font(FONT_DISPLAY_REGULAR, TEXT_LG)
-        self._font_body: ImageFont.FreeTypeFont = self._load_font(FONT_BODY_REGULAR, TEXT_SM)
+        self._font_display: ImageFont.FreeTypeFont = self._load_font(FONT_DISPLAY_REGULAR, TEXT_LG)
+        self._font_body: ImageFont.FreeTypeFont = self._load_font(FONT_BODY_REGULAR, TEXT_BASE)
         self._font_label: ImageFont.FreeTypeFont = self._load_font(FONT_BODY_SEMIBOLD, TEXT_XS)
-        self._font_mono: ImageFont.FreeTypeFont = self._load_font(FONT_MONO_REGULAR, TEXT_XS)
+        self._font_mono: ImageFont.FreeTypeFont = self._load_font(FONT_MONO_REGULAR, TEXT_SM)
 
     # ------------------------------------------------------------------
     # Public API
@@ -139,440 +111,475 @@ class PillowEinkRenderer:
         state: NavigationState,
         events: list["CalendarEvent"],
     ) -> Image.Image:
-        """Render the calendar view described by *state* to a ``PIL.Image``.
-
-        Args:
-            state: Current navigation state (view, selected date, night mode).
-            events: Events pre-fetched by the caller for the relevant time window.
-
-        Returns:
-            RGB ``PIL.Image`` at the configured display resolution.
-        """
+        """Render the Home view for *state* and *events* as an RGB ``PIL.Image``."""
+        W, H = self._size
         palette = get_palette(state.night_mode)
-        img = Image.new("RGB", self._size, palette["BG"])
+        img = Image.new("RGB", (W, H), palette["BG"])
         draw = ImageDraw.Draw(img)
 
-        title = self._compute_title(state)
-        self._draw_header(draw, title, palette)
-        self._draw_footer(draw, state, palette)
+        weather = WeatherData()  # placeholder — no weather provider in v0.5.0
 
-        if state.view == View.MONTHLY:
-            self._draw_monthly(draw, state, events, palette)
-        elif state.view == View.WEEKLY:
-            self._draw_weekly(draw, state, events, palette)
-        elif state.view == View.DAILY:
-            self._draw_daily(draw, state, events, palette)
-        else:
-            logger.warning(
-                "PillowEinkRenderer: view %r not yet implemented — falling back to monthly",
-                state.view,
+        if self._layout == "portrait":
+            weather_rect: Rect = (0, 0, W, BANNER_HEIGHT)
+            calendar_rect: Rect = (0, BANNER_HEIGHT, W, CALENDAR_HEIGHT)
+            agenda_rect: Rect = (
+                0,
+                BANNER_HEIGHT + CALENDAR_HEIGHT,
+                W,
+                H - BANNER_HEIGHT - CALENDAR_HEIGHT - FOOTER_HEIGHT,
             )
-            self._draw_monthly(draw, state, events, palette)
+            footer_rect: Rect = (0, H - FOOTER_HEIGHT, W, FOOTER_HEIGHT)
+        else:  # landscape
+            col_left = int(W * COL_LEFT_RATIO)
+            col_right = W - col_left
+            weather_rect = (0, 0, col_left, BANNER_HEIGHT)
+            calendar_rect = (0, BANNER_HEIGHT, col_left, H - BANNER_HEIGHT - FOOTER_HEIGHT)
+            agenda_rect = (col_left, 0, col_right, H - FOOTER_HEIGHT)
+            footer_rect = (0, H - FOOTER_HEIGHT, W, FOOTER_HEIGHT)
 
+        self._draw_weather(draw, weather_rect, weather, palette)
+        self._draw_mini_calendar(draw, calendar_rect, state, events, palette)
+        self._draw_agenda(draw, agenda_rect, state, events, palette)
+        self._draw_footer(draw, footer_rect, state, palette)
         return img
 
     # ------------------------------------------------------------------
-    # Title computation
+    # Weather banner
     # ------------------------------------------------------------------
 
-    def _compute_title(self, state: NavigationState) -> str:
-        sel = state.selected_date
-        if state.view == View.MONTHLY:
-            return f"{_MONTH_NAMES_IT[sel.month - 1]} {sel.year}"
-        if state.view == View.WEEKLY:
-            week_start = sel - timedelta(days=sel.weekday())
-            week_end = week_start + timedelta(days=6)
-            week_num = week_start.isocalendar()[1]
-            month_name = _MONTH_NAMES_IT[week_end.month - 1]
-            return (
-                f"Settimana {week_num} · "
-                f"{week_start.day}–{week_end.day} {month_name} {week_end.year}"
-            )
-        if state.view == View.DAILY:
-            dow = _DAY_NAMES_FULL_IT[sel.weekday()]
-            month_name = _MONTH_NAMES_IT[sel.month - 1]
-            return f"{dow} {sel.day} {month_name} {sel.year}"
-        return ""
-
-    # ------------------------------------------------------------------
-    # Chrome: header and footer
-    # ------------------------------------------------------------------
-
-    def _draw_header(
+    def _draw_weather(
         self,
         draw: ImageDraw.ImageDraw,
-        title: str,
+        rect: Rect,
+        weather: WeatherData,
         palette: dict[str, str],
     ) -> None:
-        w = self._size[0]
-        y_mid = HEADER_HEIGHT // 2
-        draw.text(
-            (16, y_mid), title,
-            font=self._font_title, fill=palette["INK"], anchor="lm",
-        )
-        draw.line(
-            [(0, HEADER_HEIGHT - 1), (w, HEADER_HEIGHT - 1)],
-            fill=palette["RULE_STRONG"],
-        )
-
-    def _draw_footer(
-        self,
-        draw: ImageDraw.ImageDraw,
-        state: NavigationState,
-        palette: dict[str, str],
-    ) -> None:
-        w, h = self._size
-        footer_top = h - FOOTER_HEIGHT
-        y_mid = footer_top + FOOTER_HEIGHT // 2
-
-        draw.line([(0, footer_top), (w, footer_top)], fill=palette["RULE"])
-
-        view_label = _VIEW_LABELS_IT.get(state.view, "")
-        draw.text(
-            (16, y_mid), view_label,
-            font=self._font_label, fill=palette["INK_MUTED"], anchor="lm",
-        )
-
-        sel = state.selected_date
-        date_str = f"{sel.day} {_MONTH_NAMES_IT[sel.month - 1]} {sel.year}"
-        draw.text(
-            (w - 16, y_mid), date_str,
-            font=self._font_mono, fill=palette["INK_MUTED"], anchor="rm",
-        )
-
-    # ------------------------------------------------------------------
-    # Monthly view (Fase 3)
-    # ------------------------------------------------------------------
-
-    def _draw_monthly(
-        self,
-        draw: ImageDraw.ImageDraw,
-        state: NavigationState,
-        events: list["CalendarEvent"],
-        palette: dict[str, str],
-    ) -> None:
-        w, h = self._size
+        x0, y0, w, h = rect
         today = date.today()
-        year, month = state.selected_date.year, state.selected_date.month
-        weeks = _build_month_grid(year, month, events, today)
-        n_weeks = len(weeks)
-
-        content_top = HEADER_HEIGHT
-        content_h = h - HEADER_HEIGHT - FOOTER_HEIGHT
-        grid_top = content_top + _DOW_HEADER_H
-        grid_h = content_h - _DOW_HEADER_H
-        cell_w = w / 7
-        cell_h = grid_h / n_weeks
-
-        # --- Day-of-week header row ---
-        for i, name in enumerate(_DAY_NAMES_IT):
-            x = i * cell_w + cell_w / 2
-            y = content_top + _DOW_HEADER_H // 2
-            draw.text(
-                (x, y), name,
-                font=self._font_label, fill=palette["INK_MUTED"], anchor="mm",
-            )
-
-        # --- Grid cells ---
-        for row_idx, week in enumerate(weeks):
-            for col_idx, cell in enumerate(week):
-                cx0 = col_idx * cell_w
-                cy0 = grid_top + row_idx * cell_h
-
-                # Today highlight: small square behind the day number.
-                if cell["is_today"]:
-                    sq = 18
-                    draw.rectangle(
-                        [cx0 + 3, cy0 + 2, cx0 + 3 + sq, cy0 + 2 + sq],
-                        fill=palette["BG_ALT"],
-                    )
-
-                # Day number.
-                ink = palette["INK"] if cell["is_current_month"] else palette["INK_FAINT"]
-                draw.text(
-                    (cx0 + 5, cy0 + 4),
-                    str(cell["day_number"]),
-                    font=self._font_body,
-                    fill=ink,
-                    anchor="lt",
-                )
-
-                # Event dots: up to _MAX_DOTS coloured circles, then "+" if more.
-                cell_events: list = cell["events"]
-                n_ev = len(cell_events)
-                if n_ev > 0:
-                    dot_y = cy0 + 22
-                    x_start = cx0 + 5
-                    shown = min(n_ev, _MAX_DOTS)
-                    for k in range(shown):
-                        cx = x_start + k * (_DOT_RADIUS * 2 + 3) + _DOT_RADIUS
-                        draw.ellipse(
-                            [
-                                cx - _DOT_RADIUS, dot_y - _DOT_RADIUS,
-                                cx + _DOT_RADIUS, dot_y + _DOT_RADIUS,
-                            ],
-                            fill=cell_events[k].color,
-                        )
-                    if n_ev > _MAX_DOTS:
-                        px = x_start + shown * (_DOT_RADIUS * 2 + 3)
-                        draw.text(
-                            (px, dot_y), "+",
-                            font=self._font_mono, fill=palette["INK_MUTED"], anchor="lm",
-                        )
-
-        # --- Grid lines ---
-        # Outer border in strong rule colour.
-        draw.rectangle(
-            [0, grid_top, w - 1, grid_top + round(grid_h) - 1],
-            outline=palette["RULE_STRONG"],
+        date_str = (
+            f"{_DAY_NAMES_FULL_IT[today.weekday()]}, "
+            f"{today.day} {_MONTH_NAMES_IT[today.month - 1]} {today.year}"
         )
-        # Vertical column separators.
-        for col in range(1, 7):
-            x = round(col * cell_w)
-            draw.line([(x, grid_top), (x, grid_top + round(grid_h))], fill=palette["RULE"])
-        # Horizontal row separators.
-        for row in range(1, n_weeks):
-            y = round(grid_top + row * cell_h)
-            draw.line([(0, y), (w, y)], fill=palette["RULE"])
+        y_mid = y0 + h // 2
+        draw.text(
+            (x0 + 12, y_mid),
+            date_str,
+            font=self._font_display,
+            fill=palette["INK"],
+            anchor="lm",
+        )
 
-    # ------------------------------------------------------------------
-    # Weekly view (Fase 4)
-    # ------------------------------------------------------------------
-
-    def _draw_weekly(
-        self,
-        draw: ImageDraw.ImageDraw,
-        state: NavigationState,
-        events: list["CalendarEvent"],
-        palette: dict[str, str],
-    ) -> None:
-        w, h = self._size
-        today = date.today()
-        sel = state.selected_date
-        week_start = sel - timedelta(days=sel.weekday())
-
-        day_col_w = (w - _TIME_COL_W) / 7
-        content_top = HEADER_HEIGHT
-        content_h = h - HEADER_HEIGHT - FOOTER_HEIGHT
-        allday_row_top = content_top + _COL_HEADER_H
-        grid_top = allday_row_top + _ALLDAY_H
-        grid_h = content_h - _COL_HEADER_H - _ALLDAY_H
-
-        # Scaling factor: _event_to_grid works in _GRID_HEIGHT_PX=700 space;
-        # we map proportionally to the actual grid_h available on this display.
-        scale = grid_h / _GRID_HEIGHT_PX
-        n_hours = _GRID_END_HOUR - _GRID_START_HOUR  # 14
-
-        all_day_events = [e for e in events if e.all_day]
-        timed_events = [e for e in events if not e.all_day]
-
-        # --- Day column headers ---
-        for i in range(7):
-            day = week_start + timedelta(days=i)
-            x0 = _TIME_COL_W + i * day_col_w
-            x1 = x0 + day_col_w
-            is_today = day == today
-
-            if is_today:
-                draw.rectangle(
-                    [x0, content_top, x1 - 1, allday_row_top - 1],
-                    fill=palette["BG_ALT"],
-                )
-
-            label = f"{_DAY_NAMES_IT[i]} {day.day}"
+        if weather.temp_current is not None:
+            temp_str = f"{weather.temp_current:.0f}°"
             draw.text(
-                (x0 + day_col_w / 2, content_top + _COL_HEADER_H // 2),
-                label,
-                font=self._font_label,
+                (x0 + w - 12, y_mid),
+                temp_str,
+                font=self._font_body,
                 fill=palette["INK"],
+                anchor="rm",
+            )
+            if weather.temp_max is not None and weather.temp_min is not None:
+                range_str = f"{weather.temp_max:.0f}° / {weather.temp_min:.0f}°"
+                draw.text(
+                    (x0 + w - 12, y_mid + 12),
+                    range_str,
+                    font=self._font_label,
+                    fill=palette["INK_MUTED"],
+                    anchor="rm",
+                )
+
+        draw.line(
+            [(x0, y0 + h - 1), (x0 + w, y0 + h - 1)],
+            fill=palette["RULE_STRONG"],
+            width=2,
+        )
+
+    # ------------------------------------------------------------------
+    # Mini-calendar
+    # ------------------------------------------------------------------
+
+    def _draw_mini_calendar(
+        self,
+        draw: ImageDraw.ImageDraw,
+        rect: Rect,
+        state: NavigationState,
+        events: list["CalendarEvent"],
+        palette: dict[str, str],
+    ) -> None:
+        x0, y0, w, h = rect
+        today = date.today()
+        year = state.anchor_date.year
+        month = state.anchor_date.month
+        weeks = _build_month_grid(year, month, events, today)
+
+        month_header_h = 20
+        dow_header_h = 16
+
+        # Month header
+        month_label = f"{_MONTH_NAMES_IT[month - 1].upper()} {year}"
+        draw.text(
+            (x0 + w // 2, y0 + month_header_h // 2),
+            month_label,
+            font=self._font_label,
+            fill=palette["INK"],
+            anchor="mm",
+        )
+
+        # DOW header
+        dow_y = y0 + month_header_h + dow_header_h // 2
+        cell_w = w / 7
+        for i, name in enumerate(_DAY_NAMES_IT):
+            cx = x0 + i * cell_w + cell_w / 2
+            draw.text(
+                (cx, dow_y),
+                name,
+                font=self._font_label,
+                fill=palette["INK_MUTED"],
                 anchor="mm",
             )
 
-        # --- All-day events strip ---
-        for evt in all_day_events:
-            day_idx = (evt.start.date() - week_start).days
-            if 0 <= day_idx <= 6:
-                x0 = _TIME_COL_W + round(day_idx * day_col_w) + 1
-                x1 = _TIME_COL_W + round((day_idx + 1) * day_col_w) - 2
-                y0 = allday_row_top + 2
-                y1 = grid_top - 2
-                draw.rectangle([x0, y0, x1, y1], fill=evt.color)
-                strip_w = x1 - x0
-                if strip_w > 32:
-                    txt_color = self._text_color_for_bg(evt.color)
-                    label = self._fit_text(draw, evt.title, self._font_mono, strip_w - 6)
-                    draw.text(
-                        (x0 + 3, (y0 + y1) // 2), label,
-                        font=self._font_mono, fill=txt_color, anchor="lm",
+        # Grid
+        grid_top = y0 + month_header_h + dow_header_h
+        grid_h = h - month_header_h - dow_header_h
+        n_rows = len(weeks)
+        cell_h = grid_h / n_rows
+
+        for row_idx, week in enumerate(weeks):
+            for col_idx, cell in enumerate(week):
+                cx0 = x0 + col_idx * cell_w
+                cy0 = grid_top + row_idx * cell_h
+                cx_mid = cx0 + cell_w / 2
+                cy_mid = cy0 + cell_h / 2
+
+                if cell["is_today"]:
+                    sq = 16
+                    half = sq // 2
+                    draw.rectangle(
+                        [cx_mid - half, cy_mid - half, cx_mid + half, cy_mid + half],
+                        fill=palette["ACCENT"],
                     )
+                    ink = palette["BG"]
+                else:
+                    ink = palette["INK"] if cell["is_current_month"] else palette["INK_FAINT"]
 
-        # Separator between all-day strip and main grid.
-        draw.line([(0, grid_top), (w, grid_top)], fill=palette["RULE_STRONG"])
+                draw.text(
+                    (cx_mid, cy_mid),
+                    str(cell["day_number"]),
+                    font=self._font_label,
+                    fill=ink,
+                    anchor="mm",
+                )
 
-        # --- Hour lines and labels ---
-        hour_h = grid_h / n_hours
-        for i in range(n_hours + 1):
-            hr = _GRID_START_HOUR + i
-            y = round(grid_top + i * hour_h)
-            draw.line([(_TIME_COL_W, y), (w, y)], fill=palette["RULE"])
-            draw.text(
-                (_TIME_COL_W - 4, y),
-                f"{hr:02d}:00",
-                font=self._font_mono,
-                fill=palette["INK_FAINT"],
-                anchor="rm",
+        # Bottom separator (portrait only)
+        if self._layout == "portrait":
+            draw.line(
+                [(x0, y0 + h - 1), (x0 + w, y0 + h - 1)],
+                fill=palette["RULE_STRONG"],
+                width=1,
             )
 
-        # --- Vertical column separators ---
-        # i=0: right edge of time column; i=1..6: between day cols; i=7: right edge.
-        for i in range(8):
-            x = round(_TIME_COL_W + i * day_col_w)
-            draw.line([(x, content_top), (x, grid_top + round(grid_h))], fill=palette["RULE"])
-
-        # --- Timed event rectangles ---
-        for evt in timed_events:
-            grid_info = _event_to_grid(evt, week_start, self._tz)
-            if grid_info is None:
-                continue
-
-            top_px = round(grid_info["top"] * scale)
-            height_px = max(_MIN_EVENT_H, round(grid_info["height"] * scale))
-            day_idx = grid_info["day_index"]
-
-            x0 = _TIME_COL_W + round(day_idx * day_col_w) + 1
-            x1 = _TIME_COL_W + round((day_idx + 1) * day_col_w) - 2
-            y0 = grid_top + top_px
-            y1 = min(y0 + height_px, grid_top + round(grid_h))  # clip to grid
-
-            draw.rectangle([x0, y0, x1, y1], fill=evt.color)
-
-            txt_color = self._text_color_for_bg(evt.color)
-            available_w = x1 - x0 - 6
-
-            if height_px >= 20 and available_w > 0:
-                title = self._fit_text(draw, grid_info["title"], self._font_body, available_w)
-                draw.text(
-                    (x0 + 3, y0 + 2), title,
-                    font=self._font_body, fill=txt_color, anchor="lt",
-                )
-            if height_px >= 30 and available_w > 0:
-                draw.text(
-                    (x0 + 3, y1 - 2), grid_info["start_str"],
-                    font=self._font_mono, fill=txt_color, anchor="lb",
-                )
-
     # ------------------------------------------------------------------
-    # Daily view (Fase 5)
+    # Agenda
     # ------------------------------------------------------------------
 
-    def _draw_daily(
+    def _draw_agenda(
         self,
         draw: ImageDraw.ImageDraw,
+        rect: Rect,
         state: NavigationState,
         events: list["CalendarEvent"],
         palette: dict[str, str],
     ) -> None:
-        w, h = self._size
-        target_date = state.selected_date
-        content_top = HEADER_HEIGHT
-        content_h = h - HEADER_HEIGHT - FOOTER_HEIGHT
+        x0, y0, w, h = rect
 
-        # --- Filter and sort events for the selected day ---
-        day_events: list["CalendarEvent"] = []
+        # Left column separator (landscape only)
+        if self._layout == "landscape":
+            draw.line([(x0, y0), (x0, y0 + h)], fill=palette["RULE_STRONG"], width=1)
+
+        padding_x = 12
+        separator_h = 16
+        event_row_h = 28
+        event_row_loc_h = 42
+        time_col_w = 56
+
+        # Group events by date within the PAGE_DAYS window
+        window_start = state.anchor_date
+        window_end = state.anchor_date + timedelta(days=PAGE_DAYS - 1)
+
+        days_events: dict[date, list] = {}
+        for d_offset in range(PAGE_DAYS):
+            days_events[window_start + timedelta(days=d_offset)] = []
+
         for evt in events:
-            local_date = (
-                evt.start.astimezone(self._tz).date()
-                if self._tz
-                else evt.start.date()
-            )
-            if local_date == target_date:
-                day_events.append(evt)
-        # All-day events first, then timed events ordered by start time.
-        day_events.sort(key=lambda e: (not e.all_day, e.start))
+            local_start = evt.start.astimezone(self._tz) if self._tz else evt.start
+            evt_date = local_start.date()
+            if window_start <= evt_date <= window_end:
+                days_events[evt_date].append(evt)
 
-        # --- Empty state ---
-        if not day_events:
+        for d in days_events:
+            days_events[d].sort(key=lambda e: (not e.all_day, e.start))
+
+        # Empty state
+        has_events = any(len(v) > 0 for v in days_events.values())
+        if not has_events:
             draw.text(
-                (w // 2, content_top + content_h // 2),
-                "Nessun evento",
-                font=self._font_body,
+                (x0 + w // 2, y0 + h // 2),
+                "Nessun appuntamento",
+                font=self._font_label,
                 fill=palette["INK_FAINT"],
                 anchor="mm",
             )
             return
 
-        # --- Calculate visible rows ---
-        max_rows = content_h // _DAILY_ROW_H
-        if len(day_events) > max_rows:
-            visible = day_events[: max_rows - 1]
-            n_hidden = len(day_events) - len(visible)
-        else:
-            visible = day_events
-            n_hidden = 0
+        # Build ordered list of items: (type, payload)
+        items: list[tuple[str, object]] = []
+        for d_offset in range(PAGE_DAYS):
+            day = window_start + timedelta(days=d_offset)
+            items.append(("separator", day))
+            for evt in days_events[day]:
+                items.append(("event", evt))
 
-        dot_r = _DOT_D // 2
-        time_x = 16 + _DOT_D + 8           # left edge of time column
-        title_x = time_x + _TIME_COL_DAILY_W + 8  # left edge of title
-        title_max_w = w - title_x - 16    # remaining width minus right margin
+        # First pass: determine what fits and count overflow
+        cur_y = y0
+        max_y = y0 + h
+        rendered: list[tuple[str, object]] = []
+        remaining_count = 0
+        in_overflow = False
 
-        for row_idx, evt in enumerate(visible):
-            y0 = content_top + row_idx * _DAILY_ROW_H
-            y_mid = y0 + _DAILY_ROW_H // 2
+        for item_type, item in items:
+            if in_overflow:
+                if item_type == "event":
+                    remaining_count += 1
+                continue
 
-            # Row separator (not on first row)
-            if row_idx > 0:
-                draw.line([(0, y0), (w, y0)], fill=palette["RULE"])
-
-            # Colour dot
-            dot_x = 16 + dot_r
-            draw.ellipse(
-                [dot_x - dot_r, y_mid - dot_r, dot_x + dot_r, y_mid + dot_r],
-                fill=evt.color,
-            )
-
-            # Time label
-            if evt.all_day:
-                time_str = "tutto il giorno"
+            if item_type == "separator":
+                if cur_y + separator_h > max_y:
+                    in_overflow = True
+                    continue
+                rendered.append((item_type, item))
+                cur_y += separator_h
             else:
-                if self._tz:
-                    local_start = evt.start.astimezone(self._tz)
-                    local_end = evt.end.astimezone(self._tz)
-                else:
-                    local_start = evt.start
-                    local_end = evt.end
-                time_str = (
-                    f"{local_start.strftime('%H:%M')}\u2013{local_end.strftime('%H:%M')}"
+                evt = item
+                row_h = event_row_loc_h if evt.location else event_row_h  # type: ignore[union-attr]
+                # Reserve one event_row_h for the overflow indicator
+                if cur_y + row_h > max_y - event_row_h:
+                    in_overflow = True
+                    remaining_count += 1
+                    continue
+                rendered.append((item_type, item))
+                cur_y += row_h
+
+        # Second pass: draw
+        cur_y = y0
+        for item_type, item in rendered:
+            if item_type == "separator":
+                self._draw_date_separator(
+                    draw, item, x0, cur_y, w, separator_h, padding_x, palette  # type: ignore[arg-type]
                 )
-            draw.text(
-                (time_x, y_mid),
-                time_str,
-                font=self._font_mono,
-                fill=palette["INK_MUTED"],
-                anchor="lm",
-            )
+                cur_y += separator_h
+            else:
+                evt = item
+                row_h = event_row_loc_h if evt.location else event_row_h  # type: ignore[union-attr]
+                self._draw_event_row(
+                    draw, evt, x0, cur_y, w, row_h, padding_x, time_col_w, palette  # type: ignore[arg-type]
+                )
+                cur_y += row_h
 
-            # Title (truncated to available width)
-            title = self._fit_text(draw, evt.title, self._font_body, title_max_w)
+        # Overflow indicator
+        if remaining_count > 0 and cur_y + event_row_h <= max_y:
             draw.text(
-                (title_x, y_mid),
-                title,
-                font=self._font_body,
-                fill=palette["INK"],
-                anchor="lm",
-            )
-
-        # --- Overflow indicator ---
-        if n_hidden > 0:
-            overflow_y0 = content_top + len(visible) * _DAILY_ROW_H
-            overflow_y_mid = overflow_y0 + _DAILY_ROW_H // 2
-            draw.line([(0, overflow_y0), (w, overflow_y0)], fill=palette["RULE"])
-            draw.text(
-                (w // 2, overflow_y_mid),
-                f"+ {n_hidden} altri",
+                (x0 + w // 2, cur_y + event_row_h // 2),
+                f"… altri {remaining_count} appuntamenti",
                 font=self._font_label,
                 fill=palette["INK_MUTED"],
                 anchor="mm",
             )
+
+    def _draw_date_separator(
+        self,
+        draw: ImageDraw.ImageDraw,
+        day: date,
+        x0: int,
+        y0: int,
+        w: int,
+        h: int,
+        padding_x: int,
+        palette: dict[str, str],
+    ) -> None:
+        today = date.today()
+        if day == today:
+            label = (
+                f"OGGI, {_DAY_NAMES_FULL_IT[day.weekday()].upper()} "
+                f"{day.day} {_MONTH_NAMES_IT[day.month - 1].upper()}"
+            )
+        else:
+            label = (
+                f"{_DAY_NAMES_FULL_IT[day.weekday()].upper()} "
+                f"{day.day} {_MONTH_NAMES_IT[day.month - 1].upper()}"
+            )
+
+        y_mid = y0 + h // 2
+        text_x = x0 + padding_x + 8
+
+        bbox = draw.textbbox((0, 0), label, font=self._font_label)
+        text_w = bbox[2] - bbox[0]
+
+        # Left rule
+        if text_x > x0 + padding_x + 2:
+            draw.line(
+                [(x0 + padding_x, y_mid), (text_x - 4, y_mid)],
+                fill=palette["RULE"],
+            )
+
+        draw.text(
+            (text_x, y_mid),
+            label,
+            font=self._font_label,
+            fill=palette["INK_MUTED"],
+            anchor="lm",
+        )
+
+        # Right rule
+        right_x = text_x + text_w + 4
+        if right_x < x0 + w - padding_x:
+            draw.line(
+                [(right_x, y_mid), (x0 + w - padding_x, y_mid)],
+                fill=palette["RULE"],
+            )
+
+    def _draw_event_row(
+        self,
+        draw: ImageDraw.ImageDraw,
+        evt: "CalendarEvent",
+        x0: int,
+        y0: int,
+        w: int,
+        row_h: int,
+        padding_x: int,
+        time_col_w: int,
+        palette: dict[str, str],
+    ) -> None:
+        # Top separator
+        draw.line([(x0, y0), (x0 + w, y0)], fill=palette["RULE"])
+
+        sep_x = x0 + padding_x + time_col_w
+        title_x = sep_x + 8
+        title_max_w = w - (title_x - x0) - padding_x
+
+        # Time
+        if evt.all_day:
+            time_str = "Tutto il giorno"
+            time_color = palette["INK_FAINT"]
+        else:
+            local_start = evt.start.astimezone(self._tz) if self._tz else evt.start
+            time_str = local_start.strftime("%H:%M")
+            time_color = palette["INK_MUTED"]
+
+        # Vertical position: centre, or upper third if location present
+        if evt.location:
+            time_y = y0 + row_h // 3
+        else:
+            time_y = y0 + row_h // 2
+
+        draw.text(
+            (sep_x - 4, time_y),
+            time_str,
+            font=self._font_mono,
+            fill=time_color,
+            anchor="rm",
+        )
+
+        # Vertical separator
+        draw.line([(sep_x, y0 + 4), (sep_x, y0 + row_h - 4)], fill=palette["RULE"])
+
+        # Title
+        title = self._fit_text(draw, evt.title, self._font_body, title_max_w)
+        draw.text(
+            (title_x, time_y),
+            title,
+            font=self._font_body,
+            fill=palette["INK"],
+            anchor="lm",
+        )
+
+        # Location (second line, if present)
+        if evt.location:
+            loc_y = y0 + row_h * 2 // 3
+            loc = self._fit_text(draw, evt.location, self._font_label, title_max_w)
+            draw.text(
+                (title_x, loc_y),
+                loc,
+                font=self._font_label,
+                fill=palette["INK_MUTED"],
+                anchor="lm",
+            )
+
+    # ------------------------------------------------------------------
+    # Footer
+    # ------------------------------------------------------------------
+
+    def _draw_footer(
+        self,
+        draw: ImageDraw.ImageDraw,
+        rect: Rect,
+        state: NavigationState,
+        palette: dict[str, str],
+    ) -> None:
+        x0, y0, w, h = rect
+
+        # Top separator
+        draw.line([(x0, y0), (x0 + w, y0)], fill=palette["RULE"])
+
+        y_mid = y0 + h // 2
+        button_padding = 16
+
+        buttons: list[tuple[str, bool]] = [
+            ("↑ Su", state.page_offset == 0),
+            ("↓ Giù", False),
+            ("← Oggi", False),
+        ]
+        if self._display_type == "hdmi":
+            buttons.append(("☾ Notte", False))
+
+        # Draw buttons left-to-right
+        cur_x = x0
+        for label, disabled in buttons:
+            ink = palette["INK_FAINT"] if disabled else palette["INK"]
+            bbox = draw.textbbox((0, 0), label, font=self._font_label)
+            text_w = bbox[2] - bbox[0]
+            btn_w = text_w + button_padding * 2
+            draw.text(
+                (cur_x + btn_w // 2, y_mid),
+                label,
+                font=self._font_label,
+                fill=ink,
+                anchor="mm",
+            )
+            cur_x += btn_w
+            draw.line([(cur_x, y0 + 4), (cur_x, y0 + h - 4)], fill=palette["RULE"])
+
+        # Status indicators (right-aligned)
+        status_parts: list[tuple[str, ImageFont.FreeTypeFont]] = [
+            (self._display_type, self._font_label),
+            (self._layout, self._font_label),
+        ]
+        if self._display_type == "hdmi":
+            mode_str = "☾ Notte" if state.night_mode else "☀ Giorno"
+            status_parts.append((mode_str, self._font_label))
+        status_parts.append((datetime.now().strftime("%H:%M"), self._font_mono))
+
+        right_x = x0 + w - 12
+        for text, font in reversed(status_parts):
+            bbox = draw.textbbox((0, 0), text, font=font)
+            text_w = bbox[2] - bbox[0]
+            draw.text(
+                (right_x, y_mid),
+                text,
+                font=font,
+                fill=palette["INK_MUTED"],
+                anchor="rm",
+            )
+            right_x -= text_w + 12
 
     # ------------------------------------------------------------------
     # Static helpers
@@ -588,30 +595,15 @@ class PillowEinkRenderer:
         return ImageFont.truetype(str(path), size)
 
     @staticmethod
-    def _text_color_for_bg(hex_color: str) -> str:
-        """Return white or dark ink for a given background hex colour.
-
-        Uses the ITU-R BT.601 luma formula for perceived luminance.
-        """
-        try:
-            c = hex_color.lstrip("#")
-            r, g, b = int(c[0:2], 16), int(c[2:4], 16), int(c[4:6], 16)
-            luminance = 0.299 * r + 0.587 * g + 0.114 * b
-            return "#FFFFFF" if luminance < 140 else "#111111"
-        except (ValueError, IndexError):
-            return "#111111"
-
-    @staticmethod
     def _fit_text(
         draw: ImageDraw.ImageDraw,
         text: str,
         font: ImageFont.FreeTypeFont,
         max_width: float,
     ) -> str:
-        """Truncate *text* to fit *max_width* pixels, appending '…' if needed.
-
-        Uses binary search for O(log n) truncation.
-        """
+        """Truncate *text* to fit *max_width* pixels, appending '…' if needed."""
+        if max_width <= 0:
+            return ""
         bbox = draw.textbbox((0, 0), text, font=font)
         if bbox[2] - bbox[0] <= max_width:
             return text

@@ -8,20 +8,19 @@ from fastapi.templating import Jinja2Templates
 
 from app.calendar.aggregator import CalendarAggregator
 from app.config import AppConfig
+from app.renderer.pillow_eink_renderer import PillowEinkRenderer
+from app.renderer.state_manager import StateManager
 from app.server.routes.config import router as config_router
 from app.server.routes.index import router as index_router
 from app.server.routes.state import router as state_router
-
-# Renderer type is imported lazily to avoid circular imports and to allow
-# either ImageRenderer (legacy) or PlaywrightRenderer to be injected.
-from typing import Any as _RendererType
 
 
 def create_app(
     config: AppConfig,
     aggregator: CalendarAggregator,
     config_path: Path,
-    renderer: _RendererType,
+    renderer: PillowEinkRenderer,
+    state_manager: StateManager,
 ) -> FastAPI:
     """Create and configure the FastAPI application.
 
@@ -30,6 +29,8 @@ def create_app(
         aggregator: Calendar event aggregator (shared with display layer).
         config_path: Absolute path to the YAML config file; used by POST /config
             to persist changes and trigger a graceful uvicorn reload.
+        renderer: Shared PillowEinkRenderer instance.
+        state_manager: Shared NavigationState owner.
 
     Returns:
         Configured FastAPI application instance ready for ``uvicorn.run()``.
@@ -49,6 +50,7 @@ def create_app(
     app.state.templates = templates
     app.state.config_path = config_path
     app.state.renderer = renderer
+    app.state.state_manager = state_manager
 
     app.include_router(index_router)
     app.include_router(config_router)

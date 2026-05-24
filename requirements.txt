@@ -8,6 +8,5 @@ caldav
 requests
 icalendar
 pillow
-playwright
 # playwright install chromium  # run once after pip install
 python-multipart
