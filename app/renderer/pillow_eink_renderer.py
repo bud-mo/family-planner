@@ -28,6 +28,8 @@ from app.renderer.emoji_icons import load_icon, split_text_emoji
 from app.renderer.state import NavigationState
 from app.renderer.tokens import (
     BANNER_HEIGHT,
+    BANNER_HOURLY_HEIGHT,
+    BANNER_MAIN_HEIGHT,
     CALENDAR_HEIGHT,
     COL_LEFT_RATIO,
     FONT_BODY_REGULAR,
@@ -36,6 +38,7 @@ from app.renderer.tokens import (
     FONT_MONO_REGULAR,
     FONTS_DIR,
     FOOTER_HEIGHT,
+    HourlySlot,
     Rect,
     TEXT_BASE,
     TEXT_LG,
@@ -116,6 +119,7 @@ class PillowEinkRenderer:
         self._font_label: ImageFont.FreeTypeFont = self._load_font(FONT_BODY_SEMIBOLD, TEXT_XS)
         self._font_event: ImageFont.FreeTypeFont = self._load_font(FONT_BODY_REGULAR, TEXT_XS)
         self._font_mono: ImageFont.FreeTypeFont = self._load_font(FONT_MONO_REGULAR, TEXT_SM)
+        self._font_mono_xs: ImageFont.FreeTypeFont = self._load_font(FONT_MONO_REGULAR, TEXT_XS)
         self._font_temp: ImageFont.FreeTypeFont = self._load_font(FONT_BODY_SEMIBOLD, 40)
 
     # ------------------------------------------------------------------
@@ -181,7 +185,7 @@ class PillowEinkRenderer:
             f"{_DAY_NAMES_FULL_IT[today.weekday()]}, "
             f"{today.day} {_MONTH_NAMES_IT[today.month - 1]} {today.year}"
         )
-        y_mid = y0 + h // 2
+        y_mid = y0 + BANNER_MAIN_HEIGHT // 2
         draw.text(
             (x0 + 12, y_mid),
             date_str,
@@ -254,11 +258,88 @@ class PillowEinkRenderer:
                     icon_y = y_mid - 20
                     img.paste(tinted, (icon_x, icon_y), mask=tinted)
 
+        self._draw_hourly_row(
+            draw, img, (x0, y0 + BANNER_MAIN_HEIGHT, w, BANNER_HOURLY_HEIGHT), weather, palette
+        )
         draw.line(
             [(x0, y0 + h - 1), (x0 + w, y0 + h - 1)],
             fill=palette["RULE_STRONG"],
             width=2,
         )
+
+    def _draw_hourly_row(
+        self,
+        draw: ImageDraw.ImageDraw,
+        img: Image.Image,
+        rect: Rect,
+        weather: WeatherData,
+        palette: dict[str, str],
+    ) -> None:
+        """Render the 6-cell bihourly forecast strip inside *rect*.
+
+        Layout per cell (72px total height)::
+
+            y+5   icona 24px (centrata)
+            y+33  orario (sinistra) · temperatura (destra) — baseline a y+44
+            y+48  chevron-up indicatore fascia corrente (solo cella 0)
+        """
+        if not weather.hourly_forecast:
+            return
+
+        x0, y0, w, _h = rect
+        cell_w = w // 6
+        r_ink, g_ink, b_ink = self._hex_to_rgb(palette["INK"])
+
+        for i, slot in enumerate(weather.hourly_forecast[:6]):
+            cx = x0 + i * cell_w + cell_w // 2
+            cell_x = x0 + i * cell_w
+
+            # Vertical separator (skip leftmost edge)
+            if i > 0:
+                draw.line(
+                    [(cell_x, y0), (cell_x, y0 + _h)],
+                    fill=palette["RULE"],
+                    width=1,
+                )
+
+            # Condition icon (24px) — top of cell
+            if slot.condition_icon is not None:
+                icon_img = load_icon(slot.condition_icon, 24)
+                if icon_img is not None:
+                    _, _, _, alpha = icon_img.split()
+                    tinted = Image.new("RGBA", icon_img.size, (r_ink, g_ink, b_ink, 255))
+                    tinted.putalpha(alpha)
+                    icon_x = cx - 12
+                    icon_y = y0 + 5
+                    img.paste(tinted, (icon_x, icon_y), mask=tinted)
+
+            # Time label — left-aligned, bottom of header band
+            draw.text(
+                (cell_x + 4, y0 + 44),
+                f"{slot.hour:02d}:00",
+                font=self._font_mono_xs,
+                fill=palette["INK_MUTED"],
+                anchor="lb",
+            )
+
+            # Temperature — top row, right-aligned, bottom of header band
+            if slot.temp is not None:
+                draw.text(
+                    (cell_x + cell_w - 4, y0 + 44),
+                    f"{slot.temp:.0f}°",
+                    font=self._font_label,
+                    fill=palette["INK"],
+                    anchor="rb",
+                )
+
+            # Upward chevron: indicator for the current slot (i == 0)
+            if i == 0:
+                chevron = load_icon("caret-up", 16)
+                if chevron is not None:
+                    _, _, _, alpha = chevron.split()
+                    tinted = Image.new("RGBA", chevron.size, (r_ink, g_ink, b_ink, 255))
+                    tinted.putalpha(alpha)
+                    img.paste(tinted, (cx - 8, y0 + _h - 10), mask=tinted)
 
     # ------------------------------------------------------------------
     # Mini-calendar helpers

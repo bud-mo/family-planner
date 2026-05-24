@@ -25,9 +25,16 @@ WEATHER_ICONS: frozenset[str] = frozenset({
 })
 
 # ---------------------------------------------------------------------------
+# Icone UI — usate direttamente nel renderer (non mappate da emoji)
+# ---------------------------------------------------------------------------
+UI_ICONS: frozenset[str] = frozenset({
+    "caret-up",
+})
+
+# ---------------------------------------------------------------------------
 # Unione di tutte le icone Tabler usate nel progetto
 # ---------------------------------------------------------------------------
-ALL_ICONS: frozenset[str] = frozenset(EMOJI_TO_ICON.values()) | WEATHER_ICONS
+ALL_ICONS: frozenset[str] = frozenset(EMOJI_TO_ICON.values()) | WEATHER_ICONS | UI_ICONS
 
 # ---------------------------------------------------------------------------
 # Icone per dimensione — unica fonte di verità per la generazione degli asset

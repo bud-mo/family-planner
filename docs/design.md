@@ -111,10 +111,12 @@ Quattro fasce orizzontali impilate:
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  BANNER METEO  (altezza fissa: 90px)                     │
+│  BANNER METEO  (altezza fissa: 148px)                    │
 │  Data · Icona meteo · Temperatura attuale · Max/Min      │
+│  ──────────────────────────────────────────────────────  │
+│  Previsioni biorarie: 6 celle · Icona 24px · Temp        │
 ├──────────────────────────────────────────────────────────┤
-│  CALENDARIO MENSILE  (altezza fissa: 250px)              │
+│  CALENDARIO MENSILE  (altezza fissa: 462px)              │
 │  Vista mensile visiva — nessuna interazione              │
 ├──────────────────────────────────────────────────────────┤
 │                                                          │
@@ -129,7 +131,7 @@ Quattro fasce orizzontali impilate:
 
 **Banner Meteo:** `border-bottom: 2px solid var(--color-rule-strong)`.  
 **Calendario Mensile:** `border-bottom: 1px solid var(--color-rule-strong)`.  
-**Lista Appuntamenti:** occupa l'altezza rimanente (`height − 90px − 250px − 40px`). Non scrolla.  
+**Lista Appuntamenti:** occupa l'altezza rimanente (`height − 162px − 462px − 40px`). Non scrolla.  
 **Footer:** `border-top: 1px solid var(--color-rule)`. Mostra solo gli indicatori di stato a destra (nessun pulsante di navigazione).
 
 ### Layout Landscape
@@ -140,8 +142,9 @@ Due colonne affiancate + footer full-width:
 ┌───────────────────────────────┬────────────────────────────────────────┐
 │  COLONNA SINISTRA  (38%)        │  COLONNA DESTRA  (62%)                 │
 │                                 │                                        │
-│  METEO  (90px)                  │  LISTA APPUNTAMENTI                    │
+│  METEO  (162px)                 │  LISTA APPUNTAMENTI                    │
 │  Data · Icona · Temperatura     │  (altezza intera content area)         │
+│  Previsioni biorarie (6 celle)  │                                        │
 │  ─────────────────────────────  │                                        │
 │  CALENDARIO MENSILE             │                                        │
 │  (altezza rimanente)            │                                        │
@@ -201,6 +204,24 @@ Il lato destro è un blocco a tre sotto-colonne allineato al margine destro:
 - **Lato sinistro:** data, `--font-display`, `--text-lg`, formato `"Giorno, DD Mese YYYY"`, `--color-ink`
 - Sfondo: `--color-bg` — nessun sfondo alternato nel banner
 - Aggiornamento dati meteo: ogni ora (TTL cache provider)
+
+**Fascia previsioni biorarie** (sotto la fascia data/meteo, altezza 72px):
+
+```
+┌────────┬────────┬────────┬────────┬────────┬────────┐
+│ 14:00  │ 16:00  │ 18:00  │ 20:00  │ 22:00  │ 00:00  │
+│  ⛅   │  ☁    │  🌧   │  ⛅   │  ⛅   │  ☁    │
+│  18°   │  17°   │  15°   │  14°   │  13°   │  12°   │
+│   ▼    │        │        │        │        │        │
+└────────┴────────┴────────┴────────┴────────┴────────┘
+```
+
+- **6 celle** di larghezza uguale (`width / 6`): fascia corrente + 5 successive (ogni 2 ore)
+- **Orario** (riga 1): `--font-mono`, `--text-xs` (11px), `--color-ink-muted`, centrato in cella
+- **Icona** (riga 2): Tabler 24px, tintata `--color-ink`, centrata in cella
+- **Temperatura** (riga 3): `--font-body` SemiBold, `--text-xs` (11px), `--color-ink`, centrata in cella
+- **Triangolo** (▼, solo cella corrente): triangolo pieno 10×8px, `--color-ink`, ancorato al bordo basso della fascia, centrato orizzontalmente
+- **Separatori verticali** tra celle: `1px solid var(--color-rule)` (non sui bordi estremi)
 
 #### Sezione Calendario Mensile
 
@@ -337,7 +358,9 @@ Quando `display.type = "eink"`:
   --color-rule-strong: #333333;
 
   /* Struttura */
-  --height-banner:   90px;      /* Banner meteo (portrait) / sezione meteo (landscape) */
+  --height-banner-main:   90px;      /* Fascia superiore: data e meteo corrente */
+  --height-banner-hourly: 58px;      /* Fascia inferiore: previsioni biorarie */
+  --height-banner:        148px;     /* Banner meteo totale (portrait) / sezione meteo (landscape) */
   --height-calendar: 462px;     /* Calendario mensile: 4 righe evento per cella (solo portrait) */
   --height-footer:   40px;
   --col-left-ratio:  38%;       /* Larghezza colonna sinistra in landscape */
@@ -356,10 +379,10 @@ Valori pixel specifici per i display supportati:
 |---|---|---|---|---|---|
 | HDMI 7" | 1024×600 | `landscape` | 389px | 634px | 560px altezza |
 | Inky Impression 13.3" | 1600×1200 | `landscape` | 608px | 991px | 1160px altezza |
-| HDMI portrait (ruotato) | 600×1024 | `portrait` | — | — | 342px altezza |
-| E-ink portrait (ruotato) | 1200×1600 | `portrait` | — | — | 1008px altezza |
+| HDMI portrait (ruotato) | 600×1024 | `portrait` | — | — | 374px altezza |
+| E-ink portrait (ruotato) | 1200×1600 | `portrait` | — | — | 950px altezza |
 
-Calcoli portrait: lista = `height − 90px − 462px − 40px`.  
+Calcoli portrait: lista = `height − 148px − 462px − 40px`.  
 Calcoli landscape: lista height = `height − 40px`; colonna sinistra = `width × 0.38`.
 
 ---

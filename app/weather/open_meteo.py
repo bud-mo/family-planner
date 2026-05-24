@@ -7,24 +7,29 @@ API endpoint:
     GET https://api.open-meteo.com/v1/forecast
     ?latitude=<lat>&longitude=<lon>
     &current=temperature_2m,weather_code
+    &hourly=temperature_2m,weather_code
     &daily=temperature_2m_max,temperature_2m_min
     &temperature_unit=celsius
     &timezone=auto
-    &forecast_days=1
+    &forecast_days=2
 
 The response ``current.weather_code`` follows WMO Weather Interpretation Codes
 (WMO 4677). These are mapped to Tabler icon names and Italian descriptions as
 defined in docs/design.md.
+
+``forecast_days=2`` (48 hourly slots) is required so that the 6 bihourly
+forecast cells never overflow past the end of today's data.
 """
 from __future__ import annotations
 
 import logging
 import threading
 import time
+from datetime import datetime
 
 import requests
 
-from app.renderer.tokens import WeatherData
+from app.renderer.tokens import HourlySlot, WeatherData
 from app.weather.provider import WeatherProvider
 
 logger = logging.getLogger(__name__)
@@ -160,10 +165,11 @@ class OpenMeteoProvider(WeatherProvider):
             "latitude": self._latitude,
             "longitude": self._longitude,
             "current": "temperature_2m,weather_code",
+            "hourly": "temperature_2m,weather_code",
             "daily": "temperature_2m_max,temperature_2m_min",
             "temperature_unit": self._units,
             "timezone": "auto",
-            "forecast_days": 1,
+            "forecast_days": 2,
         }
         try:
             resp = requests.get(_OPEN_METEO_URL, params=params, timeout=10)
@@ -177,13 +183,44 @@ class OpenMeteoProvider(WeatherProvider):
             current = data["current"]
             daily = data["daily"]
             code = int(current["weather_code"])
+            hourly_forecast = self._parse_hourly(data.get("hourly", {}))
             return WeatherData(
                 condition_icon=_WMO_TO_ICON.get(code),
                 description=_WMO_TO_DESC.get(code),
                 temp_current=float(current["temperature_2m"]),
                 temp_max=float(daily["temperature_2m_max"][0]),
                 temp_min=float(daily["temperature_2m_min"][0]),
+                hourly_forecast=hourly_forecast,
             )
         except (KeyError, IndexError, TypeError, ValueError) as exc:
             logger.warning("OpenMeteoProvider: response parse error: %s", exc)
             return None
+
+    @staticmethod
+    def _parse_hourly(hourly: dict) -> list[HourlySlot]:
+        """Extract 6 bihourly forecast slots starting from the current 2-hour window.
+
+        The hourly arrays from Open-Meteo contain one entry per hour, indexed
+        from midnight of today (index 0 = 00:00, index H = H:00). With
+        ``forecast_days=2`` we have 48 entries covering tomorrow as well, so
+        the 6 slots never overflow even at 23:xx.
+        """
+        temps = hourly.get("temperature_2m", [])
+        codes = hourly.get("weather_code", [])
+        if not temps or not codes:
+            return []
+
+        current_hour = datetime.now().hour
+        slot_start = (current_hour // 2) * 2  # round down to nearest even hour
+
+        slots: list[HourlySlot] = []
+        for offset in range(0, 12, 2):  # 0, 2, 4, 6, 8, 10 — 6 slots
+            idx = slot_start + offset
+            try:
+                temp = float(temps[idx])
+                icon = _WMO_TO_ICON.get(int(codes[idx]))
+            except (IndexError, TypeError, ValueError):
+                temp = None
+                icon = None
+            slots.append(HourlySlot(hour=idx % 24, condition_icon=icon, temp=temp))
+        return slots

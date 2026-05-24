@@ -9,6 +9,14 @@
         "/^source \\.venv/bin/activate && python -m pytest tests/ -q 2>&1$/": {
             "approve": true,
             "matchCommandLine": true
+        },
+        "/^python -m pytest tests/ -q 2>&1 \\| tail -15$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^python -m pytest tests/ -q 2>&1 \\| tail -5$/": {
+            "approve": true,
+            "matchCommandLine": true
         }
     }
 }

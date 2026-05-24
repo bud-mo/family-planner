@@ -5,7 +5,7 @@ Units are always pixels — no rem/em/viewport units.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -41,7 +41,9 @@ TEXT_2XL: int = 48
 # Layout structure (px)
 # ---------------------------------------------------------------------------
 
-BANNER_HEIGHT: int = 90       # banner meteo (portrait) / sezione meteo (landscape)
+BANNER_MAIN_HEIGHT: int = 90       # fascia superiore con data e meteo corrente
+BANNER_HOURLY_HEIGHT: int = 58    # fascia inferiore con previsioni biorarie
+BANNER_HEIGHT: int = BANNER_MAIN_HEIGHT + BANNER_HOURLY_HEIGHT  # altezza totale banner (148px)
 CALENDAR_HEIGHT: int = 462    # mini-calendario mensile — 4 righe evento per cella su griglie da 6 settimane (solo portrait)
 FOOTER_HEIGHT: int = 40
 COL_LEFT_RATIO: float = 0.38  # larghezza colonna sinistra in layout landscape
@@ -56,6 +58,15 @@ Rect = tuple[int, int, int, int]   # (x, y, width, height)
 
 
 @dataclass
+class HourlySlot:
+    """Previsione meteo per una fascia oraria di 2 ore."""
+
+    hour: int                            # ora di inizio fascia (0-23, es. 14 → "14:00")
+    condition_icon: str | None = None    # nome icona Tabler
+    temp: float | None = None            # temperatura prevista (°C)
+
+
+@dataclass
 class WeatherData:
     """Dati meteo per il banner. Tutti i campi sono None in assenza di un provider."""
 
@@ -64,6 +75,7 @@ class WeatherData:
     temp_current: float | None = None    # temperatura attuale (°C)
     temp_max: float | None = None        # massima giornaliera (°C)
     temp_min: float | None = None        # minima giornaliera (°C)
+    hourly_forecast: list[HourlySlot] = field(default_factory=list)  # previsioni biorarie (6 slot)
 
 # ---------------------------------------------------------------------------
 # Day palette

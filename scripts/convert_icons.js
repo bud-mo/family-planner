@@ -33,19 +33,22 @@ import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "..");
-const SOURCE_DIR = join(REPO_ROOT, "node_modules", "@tabler", "icons", "icons", "outline");
 const ICONS_BASE_DIR = join(REPO_ROOT, "app", "assets", "icons");
 const DEFAULT_SIZE = 24;
+
+// ---------------------------------------------------------------------------
+// Parse CLI arguments (early — needed to build SOURCE_DIR)
+// ---------------------------------------------------------------------------
+const argv = process.argv.slice(2);
+const variantArg = argv.find((a) => a.startsWith("--variant="));
+const variant = variantArg ? variantArg.split("=")[1] : "outline";
+const SOURCE_DIR = join(REPO_ROOT, "node_modules", "@tabler", "icons", "icons", variant);
 
 if (!existsSync(SOURCE_DIR)) {
   console.error(`ERROR: source directory not found:\n  ${SOURCE_DIR}`);
   process.exit(1);
 }
 
-// ---------------------------------------------------------------------------
-// Parse CLI arguments
-// ---------------------------------------------------------------------------
-const argv = process.argv.slice(2);
 const force = argv.includes("--force");
 const sizeArg = argv.find((a) => a.startsWith("--size="));
 const jsonArg = argv.find((a) => a.startsWith("--json="));
