@@ -39,6 +39,7 @@ from app.renderer.tokens import (
     Rect,
     TEXT_BASE,
     TEXT_LG,
+    TEXT_MD,
     TEXT_SM,
     TEXT_XL,
     TEXT_XS,
@@ -66,6 +67,10 @@ _MONTH_NAMES_IT: list[str] = [
 _DAY_NAMES_IT: list[str] = ["LUN", "MAR", "MER", "GIO", "VEN", "SAB", "DOM"]
 _DAY_NAMES_FULL_IT: list[str] = [
     "Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica",
+]
+_MONTH_NAMES_SHORT_IT: list[str] = [
+    "GEN", "FEB", "MAR", "APR", "MAG", "GIU",
+    "LUG", "AGO", "SET", "OTT", "NOV", "DIC",
 ]
 
 
@@ -107,6 +112,7 @@ class PillowEinkRenderer:
 
         self._font_display: ImageFont.FreeTypeFont = self._load_font(FONT_DISPLAY_REGULAR, TEXT_LG)
         self._font_body: ImageFont.FreeTypeFont = self._load_font(FONT_BODY_REGULAR, TEXT_BASE)
+        self._font_date_num: ImageFont.FreeTypeFont = self._load_font(FONT_BODY_REGULAR, TEXT_MD)
         self._font_label: ImageFont.FreeTypeFont = self._load_font(FONT_BODY_SEMIBOLD, TEXT_XS)
         self._font_mono: ImageFont.FreeTypeFont = self._load_font(FONT_MONO_REGULAR, TEXT_SM)
         self._font_temp: ImageFont.FreeTypeFont = self._load_font(FONT_BODY_SEMIBOLD, 40)
@@ -357,9 +363,9 @@ class PillowEinkRenderer:
             draw.line([(x0, y0), (x0, y0 + h)], fill=palette["RULE_STRONG"], width=1)
 
         padding_x = 12
-        separator_h = 16
-        event_row_h = 28
-        event_row_loc_h = 42
+        date_col_w = 52
+        event_row_h = 40
+        event_row_loc_h = 54
         time_col_w = 56
 
         # Group events across the full 30-day window (matches events_range_for_state)
@@ -392,65 +398,51 @@ class PillowEinkRenderer:
             )
             return
 
-        # Build ordered list of items: (type, payload) — skip days with no events
-        items: list[tuple[str, object]] = []
+        # Build ordered list: (day, event) — skip days with no events
+        items: list[tuple[date, object]] = []
         for d_offset in range(_WINDOW_DAYS):
             day = window_start + timedelta(days=d_offset)
             if not days_events[day]:
                 continue
-            items.append(("separator", day))
             for evt in days_events[day]:
-                items.append(("event", evt))
+                items.append((day, evt))
 
         # First pass: determine what fits and count overflow
         cur_y = y0
         max_y = y0 + h
-        rendered: list[tuple[str, object]] = []
+        rendered: list[tuple[date, object]] = []
         remaining_count = 0
         in_overflow = False
 
-        for item_type, item in items:
+        for day, evt in items:
             if in_overflow:
-                if item_type == "event":
-                    remaining_count += 1
+                remaining_count += 1
                 continue
-
-            if item_type == "separator":
-                if cur_y + separator_h > max_y:
-                    in_overflow = True
-                    continue
-                rendered.append((item_type, item))
-                cur_y += separator_h
-            else:
-                evt = item
-                row_h = event_row_loc_h if evt.location else event_row_h  # type: ignore[union-attr]
-                # Reserve one event_row_h for the overflow indicator
-                if cur_y + row_h > max_y - event_row_h:
-                    in_overflow = True
-                    remaining_count += 1
-                    continue
-                rendered.append((item_type, item))
-                cur_y += row_h
+            row_h_item = event_row_loc_h if evt.location else event_row_h  # type: ignore[union-attr]
+            # Reserve one event_row_h for the overflow indicator
+            if cur_y + row_h_item > max_y - event_row_h:
+                in_overflow = True
+                remaining_count += 1
+                continue
+            rendered.append((day, evt))
+            cur_y += row_h_item
 
         # Second pass: draw
         cur_y = y0
-        prev_was_separator = False
-        for item_type, item in rendered:
-            if item_type == "separator":
-                self._draw_date_separator(
-                    draw, item, x0, cur_y, w, separator_h, padding_x, palette  # type: ignore[arg-type]
-                )
-                cur_y += separator_h
-                prev_was_separator = True
-            else:
-                evt = item
-                row_h = event_row_loc_h if evt.location else event_row_h  # type: ignore[union-attr]
-                self._draw_event_row(
-                    draw, img, evt, x0, cur_y, w, row_h, padding_x, time_col_w, palette,  # type: ignore[arg-type]
-                    first_in_day=prev_was_separator,
-                )
-                cur_y += row_h
-                prev_was_separator = False
+        prev_day: date | None = None
+        is_first_rendered = True
+        for day, evt in rendered:
+            first_in_day = day != prev_day
+            row_h_item = event_row_loc_h if evt.location else event_row_h  # type: ignore[union-attr]
+            self._draw_event_row(
+                draw, img, evt, x0, cur_y, w, row_h_item,  # type: ignore[arg-type]
+                padding_x, time_col_w, date_col_w, palette,
+                day_date=day if first_in_day else None,
+                draw_top_separator=not is_first_rendered,
+            )
+            cur_y += row_h_item
+            prev_day = day
+            is_first_rendered = False
 
         # Overflow indicator
         if remaining_count > 0 and cur_y + event_row_h <= max_y:
@@ -460,58 +452,6 @@ class PillowEinkRenderer:
                 font=self._font_label,
                 fill=palette["INK_MUTED"],
                 anchor="mm",
-            )
-
-    def _draw_date_separator(
-        self,
-        draw: ImageDraw.ImageDraw,
-        day: date,
-        x0: int,
-        y0: int,
-        w: int,
-        h: int,
-        padding_x: int,
-        palette: dict[str, str],
-    ) -> None:
-        today = date.today()
-        if day == today:
-            label = (
-                f"OGGI, {_DAY_NAMES_FULL_IT[day.weekday()].upper()} "
-                f"{day.day} {_MONTH_NAMES_IT[day.month - 1].upper()}"
-            )
-        else:
-            label = (
-                f"{_DAY_NAMES_FULL_IT[day.weekday()].upper()} "
-                f"{day.day} {_MONTH_NAMES_IT[day.month - 1].upper()}"
-            )
-
-        y_mid = y0 + h // 2
-        text_x = x0 + padding_x + 8
-
-        bbox = draw.textbbox((0, 0), label, font=self._font_label)
-        text_w = bbox[2] - bbox[0]
-
-        # Left rule
-        if text_x > x0 + padding_x + 2:
-            draw.line(
-                [(x0 + padding_x, y_mid), (text_x - 4, y_mid)],
-                fill=palette["RULE"],
-            )
-
-        draw.text(
-            (text_x, y_mid),
-            label,
-            font=self._font_label,
-            fill=palette["INK_MUTED"],
-            anchor="lm",
-        )
-
-        # Right rule
-        right_x = text_x + text_w + 4
-        if right_x < x0 + w - padding_x:
-            draw.line(
-                [(right_x, y_mid), (x0 + w - padding_x, y_mid)],
-                fill=palette["RULE"],
             )
 
     def _draw_event_row(
@@ -525,16 +465,47 @@ class PillowEinkRenderer:
         row_h: int,
         padding_x: int,
         time_col_w: int,
+        date_col_w: int,
         palette: dict[str, str],
-        first_in_day: bool = False,
+        day_date: date | None = None,
+        draw_top_separator: bool = True,
     ) -> None:
-        # Top separator (omitted for the first event of each day)
-        if not first_in_day:
-            draw.line([(x0 + padding_x, y0), (x0 + w - padding_x, y0)], fill=palette["RULE"])
+        first_in_day = day_date is not None
 
-        sep_x = x0 + padding_x + time_col_w
-        title_x = sep_x + 8
-        title_max_w = w - (title_x - x0) - padding_x
+        # Horizontal separator:
+        #   - first rendered row: none
+        #   - day boundary: full-width (covers date column area)
+        #   - same-day continuation: starts after the date column
+        if draw_top_separator:
+            sep_x_start = x0 + padding_x if first_in_day else x0 + padding_x + date_col_w
+            draw.line([(sep_x_start, y0), (x0 + w, y0)], fill=palette["RULE"])
+
+        # --- Date column ---
+        if day_date is not None:
+            # Vertically centre the two-line block (day number + abbreviation)
+            date_content_h = TEXT_MD + 4 + TEXT_XS
+            date_top = y0 + (row_h - date_content_h) // 2
+            num_y = date_top + TEXT_MD // 2
+            label_y = date_top + TEXT_MD + 4 + TEXT_XS // 2
+            date_col_right = x0 + padding_x + date_col_w - 4
+            draw.text(
+                (date_col_right, num_y),
+                str(day_date.day),
+                font=self._font_date_num,
+                fill=palette["INK"],
+                anchor="rm",
+            )
+            draw.text(
+                (date_col_right, label_y),
+                f"{_MONTH_NAMES_SHORT_IT[day_date.month - 1]}, {_DAY_NAMES_IT[day_date.weekday()]}",
+                font=self._font_label,
+                fill=palette["INK_MUTED"],
+                anchor="rm",
+            )
+
+        # --- Time column ---
+        time_area_x = x0 + padding_x + date_col_w
+        sep_x = time_area_x + time_col_w
 
         # Vertical position: centre, or upper third if location present
         if evt.location:
@@ -542,33 +513,52 @@ class PillowEinkRenderer:
         else:
             time_y = y0 + row_h // 2
 
-        # Time (omitted for all-day events)
+        half_lh = (TEXT_SM + 5) // 2
+
         if not evt.all_day:
             local_start = evt.start.astimezone(self._tz) if self._tz else evt.start
+            local_end = evt.end.astimezone(self._tz) if self._tz else evt.end
             draw.text(
-                (sep_x - 4, time_y),
+                (sep_x - 4, time_y - half_lh),
                 local_start.strftime("%H:%M"),
                 font=self._font_mono,
                 fill=palette["INK_MUTED"],
                 anchor="rm",
             )
+            draw.text(
+                (sep_x - 4, time_y + half_lh),
+                local_end.strftime("%H:%M"),
+                font=self._font_mono,
+                fill=palette["INK_FAINT"],
+                anchor="rm",
+            )
 
-        # Vertical separator
-        draw.line([(sep_x, y0 + 4), (sep_x, y0 + row_h - 4)], fill=palette["RULE"])
+        # Vertical separator between time column and content — coloured with calendar colour
+        raw_color = getattr(evt, "color", "") or ""
+        if raw_color.startswith("#") and len(raw_color) == 7:
+            try:
+                sep_rgb: tuple[int, int, int] = self._hex_to_rgb(raw_color)
+            except ValueError:
+                sep_rgb = self._hex_to_rgb(palette["RULE"])
+        else:
+            sep_rgb = self._hex_to_rgb(palette["RULE"])
+        draw.line([(sep_x, y0 + 4), (sep_x, y0 + row_h - 4)], fill=sep_rgb, width=2)
 
-        # Title — emoji characters are replaced with inline Tabler icons
+        # --- Content ---
+        title_x = sep_x + 8
+        title_max_w = w - (title_x - x0) - 8
         icon_size_title = int(self._font_body.size * 0.75)
         title_segs = split_text_emoji(evt.title)
         title_segs = self._fit_mixed(draw, title_segs, self._font_body, icon_size_title, title_max_w)
         self._draw_mixed(draw, img, title_segs, title_x, time_y, self._font_body, palette["INK"], icon_size_title)
 
-        # Location (second line, if present)
         if evt.location:
             loc_y = y0 + row_h * 2 // 3
             icon_size_loc = int(self._font_label.size * 0.75)
             loc_segs = split_text_emoji(evt.location)
             loc_segs = self._fit_mixed(draw, loc_segs, self._font_label, icon_size_loc, title_max_w)
             self._draw_mixed(draw, img, loc_segs, title_x, loc_y, self._font_label, palette["INK_MUTED"], icon_size_loc)
+
 
     # ------------------------------------------------------------------
     # Footer

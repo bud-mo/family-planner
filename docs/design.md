@@ -249,35 +249,49 @@ Il calendario mensile è **puramente visivo** — non risponde a nessuna interaz
 
 #### Sezione Lista Appuntamenti
 
-Lista in stile Agenda, ordinata cronologicamente. Gli eventi sono raggruppati per giorno con separatori di data. La paginazione Su/Giù sostituisce l'intera pagina — nessuno scroll CSS.
+Lista in stile Agenda, ispirata a Google Calendar. La data di ogni giorno è visualizzata in una **colonna sinistra fissa** (52px), non come separatore orizzontale. Il primo evento di ogni giornata mostra il numero del giorno e l'abbreviazione mese+giorno; gli eventi successivi della stessa giornata lasciano la colonna data vuota. Ogni riga ha un **bordo colorato verticale sul lato destro** che indica il calendario di appartenenza. La paginazione Su/Giù sostituisce l'intera pagina — nessuno scroll CSS.
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│  ── OGGI, DOMENICA 24 MAGGIO ──────────────────────────────  │
-│  15:00  │  Riunione team                                     │
-│         │  Sala B                                            │
-│  ─────────────────────────────────────────────────────────   │
-│  17:30  │  Dentista                                          │
-│  ─────────────────────────────────────────────────────────   │
-│                                                              │
-│  ── LUNEDÌ 25 MAGGIO ──────────────────────────────────────  │
-│  09:00  │  Videocall con cliente                             │
-│  ─────────────────────────────────────────────────────────   │
-│  12:30  │  Pranzo con Marco                                  │
-│         │  Ristorante Al Porto                               │
-└──────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────┐
+│  24  │  15:00  │  Riunione team                             ▌  │
+│  MAG,DOM  │  16:00  │  Sala B                                  │
+│      │  ────────────────────────────────────────────────────  │
+│      │  17:30  │  Dentista                                  ▌  │
+│      │  18:30  │                                               │
+├────────────────────────────────────────────────────────────────┤
+│  25  │  09:00  │  Videocall con cliente                     ▌  │
+│  MAG,LUN  │  10:00  │                                          │
+│      │  ────────────────────────────────────────────────────  │
+│  12  │  12:30  │  Pranzo con Marco                          ▌  │
+│      │  13:30  │  Ristorante Al Porto                          │
+└────────────────────────────────────────────────────────────────┘
 ```
 
 **Regole visive:**
 
-- **Separatori di data:** testo uppercase, `--text-xs`, `--font-body`, `--color-ink-muted`; la data odierna mostra `"OGGI, GIORNO DD MESE"`, le successive solo `"GIORNO DD MESE"`; linee orizzontali `--color-rule` ai lati del testo
-- **Riga appuntamento:**
-  - Orario: `--font-mono`, `--text-sm`, `--color-ink-muted`, larghezza fissa `56px`, allineato a destra, `border-right: 1px solid var(--color-rule)`
+- **Colonna data (52px, sinistra):**
+  - Numero giorno: `--font-body`, `--text-md` (18px), `--color-ink`, allineato a destra nella colonna
+  - Abbreviazione mese+giorno: `--font-body` SemiBold, `--text-xs` (11px), `--color-ink-muted`, formato `"MAG, DOM"`, su riga separata sotto il numero
+  - Mostrata solo per il **primo evento di ogni giornata**; le righe successive lasciano la colonna vuota
+  - I due elementi sono centrati verticalmente nella riga come blocco unitario
+- **Colonna orario (56px):**
+  - Orario inizio: `--font-mono`, `--text-sm`, `--color-ink-muted`, allineato a destra, posizionato sopra la mezzeria verticale della riga
+  - Orario fine: `--font-mono`, `--text-sm`, `--color-ink-faint`, allineato a destra, posizionato sotto la mezzeria verticale della riga
+  - `border-right: 1px solid var(--color-rule)` separa la colonna orario dal contenuto
+- **Evento tutto-il-giorno:** al posto dell'orario, testo `"Tutto il giorno"` in `--color-ink-faint`, centrato verticalmente nella riga
+- **Contenuto (titolo + location):**
   - Nome evento: `--font-body`, `--text-base`, `font-weight: 600`, `--color-ink`
   - Location (se presente): `--text-xs`, `--color-ink-muted`, su riga separata sotto il nome
-  - Separatore tra eventi: `border-bottom: 1px solid var(--color-rule)`
-- **Evento tutto-il-giorno:** al posto dell'orario, testo `"Tutto il giorno"` in `--color-ink-faint`
+- **Separatore tra eventi:** `1px solid var(--color-rule)` sopra ogni riga che NON è la prima della giornata; la prima riga di ogni giornata non ha separatore sopra (la colonna data funge da separatore visivo)
+- **Bordo colorato a destra (3px):** rettangolo verticale all'estremo destro di ogni riga, colorato con il colore del calendario sorgente (`evt.color`); se il colore non è definito, usa `--color-rule`
 - **Lista vuota:** testo `"Nessun appuntamento"` centrato, `--color-ink-faint`, `--text-sm`
+
+**Altezze riga:**
+
+| Tipo riga | Altezza |
+|---|---|
+| Evento standard (senza location) | 40px |
+| Evento con location | 54px |
 
 ---
 
