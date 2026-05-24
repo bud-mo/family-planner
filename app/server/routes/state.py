@@ -7,7 +7,6 @@ Actions:
     "prev"  → navigate_prev  (pagina precedente)
     "next"  → navigate_next  (pagina successiva)
     "today" → navigate_today (torna a oggi)
-    "night" → toggle_night_mode
 """
 from __future__ import annotations
 
@@ -23,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-_VALID_ACTIONS = {"prev", "next", "today", "night"}
+_VALID_ACTIONS = {"prev", "next", "today"}
 
 
 # ---------------------------------------------------------------------------
@@ -35,7 +34,6 @@ def _state_to_dict(state: NavigationState) -> dict:
     return {
         "anchor_date": state.anchor_date.isoformat(),
         "page_offset": state.page_offset,
-        "night_mode": state.night_mode,
     }
 
 
@@ -77,8 +75,6 @@ async def state_post(request: Request) -> JSONResponse:
         new_state = state.navigate_next()
     elif action == "today":
         new_state = state.navigate_today()
-    else:  # "night"
-        new_state = state.toggle_night_mode()
 
     if new_state is not state:
         state_manager.set(new_state)

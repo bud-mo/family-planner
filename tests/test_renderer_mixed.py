@@ -218,19 +218,19 @@ class TestDrawMixed:
         # "OK" text must still be drawn (non-white pixels after x=4)
         assert _has_non_white_pixels(img, (4, 15, 80, 45))
 
-    def test_night_mode_icon_rendered_in_light_colour(self, renderer, font):
+    def test_icon_rendered_on_dark_background(self, renderer, font):
         from app.renderer.emoji_icons import load_icon
         if load_icon("heart", _icon_size()) is None:
             pytest.skip("heart.png not available")
 
-        night_ink = "#f5f5f0"  # light cream for night mode
-        night_bg  = "#1a1a1a"
-        img  = Image.new("RGB", (60, 40), night_bg)
+        light_ink = "#f5f5f0"
+        dark_bg   = "#1a1a1a"
+        img  = Image.new("RGB", (60, 40), dark_bg)
         draw = ImageDraw.Draw(img)
         sz   = _icon_size()
 
         segs = [("icon", "heart")]
-        renderer._draw_mixed(draw, img, segs, 4, 20, font, night_ink, sz)
+        renderer._draw_mixed(draw, img, segs, 4, 20, font, light_ink, sz)
 
         # At least one pixel in the icon region must differ from the dark background
         assert _has_non_white_pixels(img, (4, 20 - sz, 4 + sz + 2, 20 + sz))

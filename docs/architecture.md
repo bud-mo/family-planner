@@ -207,13 +207,12 @@ Restituisce il `NavigationState` corrente come JSON:
 ```json
 {
   "anchor_date": "2026-05-24",
-  "page_offset": 0,
-  "night_mode": false
+  "page_offset": 0
 }
 ```
 
 ### `POST /state`
-Applica un'azione di navigazione e restituisce il nuovo stato come JSON. Accetta `{"action": "prev"|"next"|"today"|"night"}`. Consente a script GPIO o automazioni di controllare la navigazione senza accedere al processo display direttamente. Non restituisce mai HTML — solo JSON.
+Applica un'azione di navigazione e restituisce il nuovo stato come JSON. Accetta `{"action": "prev"|"next"|"today"}`. Consente a script GPIO o automazioni di controllare la navigazione senza accedere al processo display direttamente. Non restituisce mai HTML — solo JSON.
 
 ### `GET /config`
 Interfaccia web per la configurazione: aggiunta/rimozione calendari, modifica parametri di visualizzazione, test della connessione ai provider.
@@ -391,7 +390,7 @@ run_blocking()
   loop ogni ~100 ms:
     state_manager.get() → PillowEinkRenderer.render(state, events) → pygame.Surface
     pygame.display.flip()
-    eventi tastiera: ↑/ArrowUp prev · ↓/ArrowDown next · Esc today · n night · q quit
+    eventi tastiera: ↑/ArrowUp prev · ↓/ArrowDown next · Esc today · q quit
 ```
 
 **Re-render**: ad ogni cambio di `NavigationState` o allo scadere di `refresh_interval` secondi (aggiornamento dati calendario).
@@ -443,7 +442,7 @@ L'interfaccia è costituita da un'**unica schermata Home** — non esiste gerarc
 
 dove `col_left = int(W × 0.38)` e `col_right = W − col_left`.
 
-**Navigazione**: `prev` retrocede di una pagina nella lista appuntamenti; `next` avanza; `today` reimposta `anchor_date` alla data corrente e `page_offset = 0`; `night` fa il toggle della modalità notte (solo HDMI).
+**Navigazione**: `prev` retrocede di una pagina nella lista appuntamenti; `next` avanza; `today` reimposta `anchor_date` alla data corrente e `page_offset = 0`.
 
 > **Componente meteo**: la struttura `WeatherData` (icona condizione, descrizione testuale, temperatura attuale, max/min giornalieri) è prodotta da `OpenMeteoProvider.get()` — chiamata dentro `PillowEinkRenderer.render()` se il provider è stato iniettato. In assenza di provider (o se `weather.enabled: false`), `WeatherData` rimane vuota e il banner mostra solo la data.
 
@@ -498,7 +497,7 @@ def _draw_footer(
 ```python
 def render(self, state: NavigationState, events: list) -> Image.Image:
     W, H = self._size
-    palette = get_palette(state.night_mode)
+    palette = get_palette()
     img = Image.new("RGB", (W, H), palette["BG"])
     draw = ImageDraw.Draw(img)
 

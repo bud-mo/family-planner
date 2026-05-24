@@ -79,39 +79,12 @@ COLOR_HOLIDAY: str = "#444444"
 COLOR_RULE: str = "#CCCCAA"
 COLOR_RULE_STRONG: str = "#333333"
 
-# ---------------------------------------------------------------------------
-# Night palette
-# ---------------------------------------------------------------------------
-
-NIGHT_COLOR_BG: str = "#0D0D0D"
-NIGHT_COLOR_BG_ALT: str = "#1A1A1A"
-NIGHT_COLOR_INK: str = "#E8E6E0"
-NIGHT_COLOR_INK_MUTED: str = "#888888"
-NIGHT_COLOR_INK_FAINT: str = "#444444"
-NIGHT_COLOR_ACCENT: str = "#E8E6E0"
-NIGHT_COLOR_HOLIDAY: str = "#AAAAAA"
-NIGHT_COLOR_RULE: str = "#2A2A2A"
-NIGHT_COLOR_RULE_STRONG: str = "#CCCCAA"
-
-
-def get_palette(night_mode: bool) -> dict[str, str]:
-    """Return the active colour palette as a flat dictionary.
+def get_palette() -> dict[str, str]:
+    """Return the day colour palette as a flat dictionary.
 
     Keys use canonical names without the ``COLOR_`` prefix for brevity,
     e.g. ``"BG"``, ``"INK"``, ``"ACCENT"`` …
     """
-    if night_mode:
-        return {
-            "BG": NIGHT_COLOR_BG,
-            "BG_ALT": NIGHT_COLOR_BG_ALT,
-            "INK": NIGHT_COLOR_INK,
-            "INK_MUTED": NIGHT_COLOR_INK_MUTED,
-            "INK_FAINT": NIGHT_COLOR_INK_FAINT,
-            "ACCENT": NIGHT_COLOR_ACCENT,
-            "HOLIDAY": NIGHT_COLOR_HOLIDAY,
-            "RULE": NIGHT_COLOR_RULE,
-            "RULE_STRONG": NIGHT_COLOR_RULE_STRONG,
-        }
     return {
         "BG": COLOR_BG,
         "BG_ALT": COLOR_BG_ALT,

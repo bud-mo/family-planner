@@ -15,7 +15,6 @@ PAGE_DAYS: int = 7  # giorni di avanzamento per navigate_next/navigate_prev
 class NavigationState:
     anchor_date: date = field(default_factory=date.today)
     page_offset: int = 0
-    night_mode: bool = False
 
     def navigate_next(self) -> NavigationState:
         """Avanza di PAGE_DAYS giorni nella lista appuntamenti."""
@@ -38,7 +37,3 @@ class NavigationState:
     def navigate_today(self) -> NavigationState:
         """Reimposta anchor_date a oggi e azzera page_offset."""
         return replace(self, anchor_date=date.today(), page_offset=0)
-
-    def toggle_night_mode(self) -> NavigationState:
-        """Toggle modalità notte (solo HDMI)."""
-        return replace(self, night_mode=not self.night_mode)

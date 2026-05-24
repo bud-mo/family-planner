@@ -77,29 +77,6 @@ La palette è limitata a **sei valori** per garantire la fedeltà su e-ink in sc
 
 **Su e-ink:** il renderer quantizza automaticamente verso i valori della palette fisica del display. I colori sopra sono progettati per collassare in modo prevedibile su palette BW, BWR e 4-gray.
 
-### Modalità Notte (solo display HDMI / tradizionale)
-
-La modalità notte si attiva **esclusivamente** quando `display.type = "hdmi"` nella configurazione. Su e-ink rimane sempre la modalità giorno.
-
-```css
-/* Sfondo */
---color-bg:          #0D0D0D;
---color-bg-alt:      #1A1A1A;
-
-/* Testo */
---color-ink:         #E8E6E0;
---color-ink-muted:   #888888;
---color-ink-faint:   #444444;
-
-/* Accenti */
---color-accent:      #E8E6E0;
---color-holiday:     #AAAAAA;
-
-/* Bordi */
---color-rule:        #2A2A2A;
---color-rule-strong: #CCCCAA;
-```
-
 ---
 
 ## Iconografia — Tabler Icons
@@ -116,7 +93,6 @@ Il set di icone adottato è **Tabler Icons** (versione SVG outline, stroke-width
 | `icon-chevron-down` | Pulsante Giù (footer) |
 | `icon-corner-up-left` | Pulsante Oggi / Ritorna (footer) |
 | `icon-check` | Pulsante Invio — disabilitato (footer) |
-| `icon-moon` | Indicatore modalità notte (footer) |
 | `icon-clock` | Orario appuntamento — lista |
 | `icon-map-pin` | Luogo appuntamento — lista |
 | `icon-star` | Festività / Giorno speciale — calendario mensile |
@@ -329,7 +305,6 @@ L'header separato è eliminato. Gli indicatori di stato sono incorporati nella p
 |---|---|
 | Tipo display | `e-ink` / `hdmi` — testo fisso |
 | Layout | `portrait` / `landscape` — testo fisso |
-| Modalità colore | `☀ Giorno` / `☾ Notte` — solo hdmi |
 | Ora corrente | `HH:MM` — aggiornato ad ogni refresh |
 
 ---
@@ -339,10 +314,9 @@ L'header separato è eliminato. Gli indicatori di stato sono incorporati nella p
 Quando `display.type = "eink"`:
 
 1. **Palette:** il renderer usa solo i valori quantizzati della palette del modello configurato. I colori sopra sono scelti per mappare in modo deterministico.
-2. **Nessuna modalità notte:** l'interfaccia è sempre in modalità giorno. Il toggle notte è nascosto.
-3. **Footer non interattivo:** il footer mostra la legenda testuale identica a quella HDMI, ma i tasti non sono cliccabili. I pulsanti fisici sono l'unico mezzo di interazione.
-4. **Dithering:** il post-processor applica Floyd-Steinberg alle aree di testo piccolo per migliorare la leggibilità su display a bassa risoluzione.
-5. **Refresh parziale:** nel layout landscape, il calendario mensile (colonna sinistra, sezione inferiore) è l'area più statica e ideale per partial refresh separato. La lista appuntamenti (colonna destra / area inferiore portrait) cambia ad ogni navigazione.
+2. **Footer non interattivo:** il footer mostra la legenda testuale identica a quella HDMI, ma i tasti non sono cliccabili. I pulsanti fisici sono l'unico mezzo di interazione.
+3. **Dithering:** il post-processor applica Floyd-Steinberg alle aree di testo piccolo per migliorare la leggibilità su display a bassa risoluzione.
+4. **Refresh parziale:** nel layout landscape, il calendario mensile (colonna sinistra, sezione inferiore) è l'area più statica e ideale per partial refresh separato. La lista appuntamenti (colonna destra / area inferiore portrait) cambia ad ogni navigazione.
 
 ---
 
@@ -381,18 +355,6 @@ Quando `display.type = "eink"`:
   --col-left-ratio:  38%;       /* Larghezza colonna sinistra in landscape */
   --border-radius:   0;         /* Mai arrotondare */
   --shadow:          none;      /* Mai ombreggiare */
-}
-
-[data-theme="night"] {
-  --color-bg:          #0D0D0D;
-  --color-bg-alt:      #1A1A1A;
-  --color-ink:         #E8E6E0;
-  --color-ink-muted:   #888888;
-  --color-ink-faint:   #444444;
-  --color-accent:      #E8E6E0;
-  --color-holiday:     #AAAAAA;
-  --color-rule:        #2A2A2A;
-  --color-rule-strong: #CCCCAA;
 }
 ```
 

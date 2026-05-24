@@ -122,7 +122,7 @@ class PillowEinkRenderer:
     ) -> Image.Image:
         """Render the Home view for *state* and *events* as an RGB ``PIL.Image``."""
         W, H = self._size
-        palette = get_palette(state.night_mode)
+        palette = get_palette()
         img = Image.new("RGB", (W, H), palette["BG"])
         draw = ImageDraw.Draw(img)
 
@@ -594,9 +594,6 @@ class PillowEinkRenderer:
             ("↓ Giù", False),
             ("← Oggi", False),
         ]
-        if self._display_type == "hdmi":
-            buttons.append(("☾ Notte", False))
-
         # Draw buttons left-to-right
         cur_x = x0
         for label, disabled in buttons:
@@ -619,9 +616,6 @@ class PillowEinkRenderer:
             (self._display_type, self._font_label),
             (self._layout, self._font_label),
         ]
-        if self._display_type == "hdmi":
-            mode_str = "☾ Notte" if state.night_mode else "☀ Giorno"
-            status_parts.append((mode_str, self._font_label))
         status_parts.append((datetime.now().strftime("%H:%M"), self._font_mono))
 
         right_x = x0 + w - 12

@@ -40,8 +40,6 @@ def _handle_key(key: int, state_manager: StateManager) -> None:
         new_state = state.navigate_next()
     elif key == pygame.K_ESCAPE:
         new_state = state.navigate_today()
-    elif key == pygame.K_n:
-        new_state = state.toggle_night_mode()
     if new_state is not None and new_state is not state:
         state_manager.set(new_state)
 
