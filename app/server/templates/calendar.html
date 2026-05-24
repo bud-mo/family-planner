@@ -51,7 +51,8 @@
 .week-container {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -85,6 +86,17 @@
 .week-header-cell--today {
   background: var(--color-accent);
   color: var(--color-bg);
+}
+
+.week-header-cell--selected {
+  background: var(--color-bg-alt);
+  border-bottom: 2px solid var(--color-ink);
+}
+
+.week-header-cell--today.week-header-cell--selected {
+  background: var(--color-accent);
+  color: var(--color-bg);
+  border-bottom: 2px solid var(--color-bg);
 }
 
 .week-header-num {
@@ -124,16 +136,20 @@
   text-overflow: ellipsis;
 }
 
-/* Scrollable grid body */
+/* Grid body — no scroll, fills available space */
 .week-body {
   flex: 1;
-  overflow-y: auto;
+  overflow: hidden;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .week-grid {
   display: grid;
   grid-template-columns: 52px repeat(7, 1fr);
-  height: {{ grid_height }}px;
+  flex: 1;
+  min-height: 0;
   position: relative;
 }
 
@@ -157,8 +173,11 @@
 /* Day columns */
 .week-day-col {
   position: relative;
-  height: {{ grid_height }}px;
   border-right: 1px solid var(--color-rule);
+}
+
+.week-day-col--selected {
+  background: var(--color-bg-alt);
 }
 
 .week-hour-line {
@@ -175,6 +194,7 @@
   position: absolute;
   left: 2px;
   right: 2px;
+  min-height: 20px;
   background: var(--color-bg-alt);
   border: 1px solid var(--color-rule-strong);
   padding: 2px 4px;
@@ -213,12 +233,7 @@
 
 {% block header_title %}
 <span class="week-nav">
-  <a href="/?week={{ week_offset - 1 }}" class="week-nav__btn" title="Settimana precedente">&#8249;</a>
   <span class="week-nav__title">{{ view_title }}</span>
-  <a href="/?week={{ week_offset + 1 }}" class="week-nav__btn" title="Settimana successiva">&#8250;</a>
-  {% if week_offset != 0 %}
-  <a href="/" class="week-nav__btn week-nav__today" title="Torna alla settimana corrente">Oggi</a>
-  {% endif %}
 </span>
 {% endblock %}
 
@@ -229,7 +244,7 @@
   <div class="week-headers">
     <div class="week-header-spacer"></div>
     {% for day in day_headers %}
-    <div class="week-header-cell{% if day.is_today %} week-header-cell--today{% endif %}">
+    <div class="week-header-cell{% if day.is_today %} week-header-cell--today{% endif %}{% if day.date == selected_date %} week-header-cell--selected{% endif %}">
       {{ day.name }}
       <span class="week-header-num">{{ day.number }}</span>
     </div>
@@ -255,23 +270,23 @@
       <!-- Time labels column -->
       <div class="week-time-col">
         {% for h in range(hour_labels | length) %}
-        <span class="week-time-label" style="top: {{ h * 50 }}px">{{ hour_labels[h] }}</span>
+        <span class="week-time-label" style="top: {{ (h / (hour_labels | length) * 100) | round(2) }}%">{{ hour_labels[h] }}</span>
         {% endfor %}
       </div>
 
       <!-- Seven day columns -->
       {% for i in range(7) %}
-      <div class="week-day-col">
+      <div class="week-day-col{% if day_headers[i].date == selected_date %} week-day-col--selected{% endif %}">
         <!-- Horizontal hour lines -->
         {% for h in range(hour_labels | length) %}
-        <div class="week-hour-line" style="top: {{ h * 50 }}px"></div>
+        <div class="week-hour-line" style="top: {{ (h / (hour_labels | length) * 100) | round(2) }}%"></div>
         {% endfor %}
 
         <!-- Timed events -->
         {% for ev in days_events[i] %}
         <div
           class="event"
-          style="top: {{ ev.top }}px; height: {{ ev.height }}px;"
+          style="top: {{ (ev.top / grid_height * 100) | round(2) }}%; height: {{ (ev.height / grid_height * 100) | round(2) }}%;"
           title="{{ ev.title }} · {{ ev.start_str }}–{{ ev.end_str }}"
         >
           <div class="event__title">{{ ev.title }}</div>
@@ -289,4 +304,4 @@
 </div>
 {% endblock %}
 
-{% block footer_hint %}↑↓ Naviga appuntamenti · ↵ Dettaglio · Esc Mese{% endblock %}
+{% block footer_hint %}↑↓ Giorno · ↵ Vista giornaliera · Esc Mese{% endblock %}

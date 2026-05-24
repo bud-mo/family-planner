@@ -1,12 +1,15 @@
 server:
   host: 0.0.0.0
   port: 8080
+timezone: "Europe/Rome"
 display:
   fullscreen: false
   type: hdmi
   width: 1920
   height: 1080
   refresh_interval: 300
+  show_buttons: false
+  playwright_executable: null
   eink_model: 7in5_V2
   eink_palette: bw
   eink_dither: false

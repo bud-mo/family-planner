@@ -8,5 +8,6 @@ caldav
 requests
 icalendar
 pillow
-pygame>=2.5
+playwright
+# playwright install chromium  # run once after pip install
 python-multipart

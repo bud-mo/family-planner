@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timedelta
+import re
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from icalendar import Calendar
@@ -11,6 +12,32 @@ from app.calendar.base import CalendarEvent, CalendarProvider, _to_aware_datetim
 from app.config import CalendarConfig
 
 logger = logging.getLogger(__name__)
+
+
+def _fix_rrule_until_tz(rrule_text: str, dtstart_tz) -> str:
+    """Convert a non-UTC RRULE UNTIL value to UTC.
+
+    Google Calendar exports RRULE UNTIL in the local timezone without the
+    trailing 'Z', violating RFC 5545 §3.3.10 which requires UTC when DTSTART
+    is timezone-aware.  This function rewrites the UNTIL component so that
+    dateutil can parse the rule correctly.
+    """
+
+    def _replace(m: re.Match) -> str:
+        val = m.group(1)
+        if val.endswith("Z"):
+            return m.group(0)  # already UTC
+        try:
+            naive = datetime.strptime(val, "%Y%m%dT%H%M%S")
+        except ValueError:
+            try:
+                naive = datetime.strptime(val, "%Y%m%d")
+            except ValueError:
+                return m.group(0)  # unrecognised format — leave unchanged
+        utc = naive.replace(tzinfo=dtstart_tz).astimezone(timezone.utc)
+        return f"UNTIL={utc.strftime('%Y%m%dT%H%M%SZ')}"
+
+    return re.sub(r"UNTIL=([0-9T]+Z?)", _replace, rrule_text)
 
 
 class IcsProvider(CalendarProvider):
@@ -130,19 +157,33 @@ class IcsProvider(CalendarProvider):
         try:
             rule = rrulestr(rrule_text, dtstart=ev_start, ignoretz=False)
         except Exception as exc:
-            logger.warning(
-                "IcsProvider '%s': cannot expand RRULE for '%s': %s",
-                self._config.name, title, exc,
-            )
-            # Fall back to single master occurrence if it overlaps the range
-            if ev_end > start and ev_start < end:
-                return [
-                    self._make_event(
-                        uid, title, ev_start, ev_end, all_day,
-                        location, description, attendees, recurrent=True,
+            # Google Calendar exports RRULE UNTIL in local time without 'Z'.
+            # Try to fix the UNTIL value before giving up.
+            rule = None
+            if ev_start.tzinfo is not None and "UNTIL=" in rrule_text:
+                try:
+                    fixed_text = _fix_rrule_until_tz(rrule_text, ev_start.tzinfo)
+                    rule = rrulestr(fixed_text, dtstart=ev_start, ignoretz=False)
+                    logger.debug(
+                        "IcsProvider '%s': fixed non-UTC RRULE UNTIL for '%s'",
+                        self._config.name, title,
                     )
-                ]
-            return []
+                except Exception:
+                    rule = None
+            if rule is None:
+                logger.warning(
+                    "IcsProvider '%s': cannot expand RRULE for '%s': %s",
+                    self._config.name, title, exc,
+                )
+                # Fall back to single master occurrence if it overlaps the range
+                if ev_end > start and ev_start < end:
+                    return [
+                        self._make_event(
+                            uid, title, ev_start, ev_end, all_day,
+                            location, description, attendees, recurrent=True,
+                        )
+                    ]
+                return []
 
         result: list[CalendarEvent] = []
         # Search window starts slightly before `start` to catch occurrences whose

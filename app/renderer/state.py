@@ -96,8 +96,6 @@ class NavigationState:
             return replace(self, selected_date=prev)
 
         if self.view == View.WEEKLY:
-            if events:
-                return self._select_adjacent_event(events, direction=-1)
             prev = self.selected_date - timedelta(days=1)
             return replace(self, selected_date=prev, selected_event_uid=None)
 
@@ -132,8 +130,6 @@ class NavigationState:
             return replace(self, selected_date=nxt)
 
         if self.view == View.WEEKLY:
-            if events:
-                return self._select_adjacent_event(events, direction=1)
             nxt = self.selected_date + timedelta(days=1)
             return replace(self, selected_date=nxt, selected_event_uid=None)
 

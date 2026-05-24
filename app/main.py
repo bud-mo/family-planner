@@ -3,8 +3,8 @@
 Wires together all subsystems:
   - Configuration (Pydantic / YAML)
   - Calendar aggregator (ICS + CalDAV)
-  - Renderer (Pillow ImageRenderer)
-  - Display (HDMI pygame loop *or* e-ink periodic push)
+  - Renderer (PlaywrightRenderer — headless Chromium for e-ink)
+  - Display (HDMI Playwright non-headless *or* e-ink periodic push)
   - Web server (FastAPI / Uvicorn)
 
 Usage::
@@ -33,6 +33,7 @@ if str(_project_root) not in _sys.path:
     _sys.path.insert(0, str(_project_root))
 
 import argparse
+import asyncio
 import logging
 import signal
 import threading
@@ -43,7 +44,7 @@ import uvicorn
 
 from app.calendar.aggregator import CalendarAggregator
 from app.config import load_config
-from app.renderer.image_renderer import ImageRenderer
+from app.renderer.playwright_renderer import PlaywrightRenderer
 from app.server.app import create_app
 
 if TYPE_CHECKING:
@@ -92,34 +93,43 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _eink_loop(
-    renderer: ImageRenderer,
-    eink_renderer: EinkRenderer,
-    display: EinkDisplay,
+    renderer: PlaywrightRenderer,
+    eink_renderer: "EinkRenderer",
+    display: "EinkDisplay",
+    port: int,
     interval: int,
     stop_event: threading.Event,
 ) -> None:
-    """Render and push to the e-ink panel every *interval* seconds.
+    """Connect the headless renderer, then push frames to the e-ink panel.
 
-    Runs in a daemon thread.  The loop exits as soon as *stop_event* is set.
+    Must run in its own daemon thread — Playwright sync API must be used
+    from the thread that called ``start()``.
     """
     logger.info("E-ink loop started (interval=%ds).", interval)
+    try:
+        renderer.start(port)  # waits for server, launches headless Chromium
+    except TimeoutError as exc:
+        logger.error("E-ink loop: %s — aborting.", exc)
+        return
+
     # Initial render immediately on start
     _eink_push(renderer, eink_renderer, display)
 
     while not stop_event.wait(timeout=interval):
         _eink_push(renderer, eink_renderer, display)
 
+    renderer.stop()
     logger.info("E-ink loop stopped.")
 
 
 def _eink_push(
-    renderer: ImageRenderer,
-    eink_renderer: EinkRenderer,
-    display: EinkDisplay,
+    renderer: PlaywrightRenderer,
+    eink_renderer: "EinkRenderer",
+    display: "EinkDisplay",
 ) -> None:
-    """Render one frame and push it to the e-ink panel."""
+    """Capture one screenshot and push it to the e-ink panel."""
     try:
-        image = renderer.render()
+        image = renderer.screenshot()
         processed = eink_renderer.process(image)
         display.push(processed)
     except Exception as exc:  # noqa: BLE001
@@ -144,6 +154,11 @@ def main() -> None:
     )
 
     # ------------------------------------------------------------------
+    # Renderer (shared between display pipeline and web server)
+    # ------------------------------------------------------------------
+    renderer = PlaywrightRenderer(config, aggregator)
+
+    # ------------------------------------------------------------------
     # Display initialisation
     # ------------------------------------------------------------------
     display_obj: HdmiDisplay | EinkDisplay | None = None
@@ -152,17 +167,12 @@ def main() -> None:
     if config.display.type == "hdmi":
         from app.display.hdmi import HdmiDisplay
 
-        renderer = ImageRenderer(aggregator, config.display)
-        display_obj = HdmiDisplay(config.display, renderer, aggregator)
-        # NOTE: do NOT call start() here — pygame must be initialised on the
-        # main thread on macOS (AppKit/Cocoa requires it).  display_obj.run()
-        # is called below after uvicorn is launched on a background thread.
+        display_obj = HdmiDisplay(config.display, port=config.server.port)
 
     elif config.display.type == "eink":
         from app.display.eink import EinkDisplay
         from app.renderer.eink_renderer import EinkRenderer
 
-        renderer = ImageRenderer(aggregator, config.display)
         eink_renderer = EinkRenderer(config.display)
         display_obj = EinkDisplay(config.display)
 
@@ -173,6 +183,7 @@ def main() -> None:
                 renderer,
                 eink_renderer,
                 display_obj,
+                config.server.port,
                 config.display.refresh_interval,
                 eink_stop_event,
             ),
@@ -190,7 +201,7 @@ def main() -> None:
     # ------------------------------------------------------------------
     # Web server
     # ------------------------------------------------------------------
-    web_app = create_app(config, aggregator, config_path)
+    web_app = create_app(config, aggregator, config_path, renderer)
 
     uv_config = uvicorn.Config(
         web_app,
@@ -209,12 +220,11 @@ def main() -> None:
 
     def _shutdown(signum: int, frame: object) -> None:
         logger.info("Signal %d received — initiating graceful shutdown.", signum)
-        # Stop the display before uvicorn begins draining connections.
+        # Signal the e-ink loop to stop (non-blocking — just sets an event).
         if eink_stop_event is not None:
             eink_stop_event.set()
-        if display_obj is not None:
-            display_obj.stop()
-        # Ask uvicorn to drain and exit.
+        # Uvicorn handles SIGINT via its own asyncio signal handlers; setting
+        # should_exit here is a belt-and-suspenders fallback for other signals.
         server.should_exit = True
 
     def _reload_config(signum: int, frame: object) -> None:
@@ -252,16 +262,27 @@ def main() -> None:
         config.server.host,
         config.server.port,
     )
-    if config.display.type == "hdmi" and display_obj is not None:
-        # On macOS, AppKit requires pygame to run on the main thread.
-        # Uvicorn runs in a background daemon thread instead.
-        server_thread = threading.Thread(target=server.run, name="uvicorn", daemon=True)
-        server_thread.start()
-        display_obj.run()          # blocks on main thread until pygame window closes
-        server.should_exit = True  # signal uvicorn to drain and exit
-        server_thread.join(timeout=10)
-    else:
-        server.run()
+    if display_obj is not None and config.display.type == "hdmi":
+        display_obj.start()  # launch Chromium in background; Uvicorn runs below
+
+    async def _serve() -> None:
+        """Run uvicorn with an exception handler that suppresses harmless
+        BrokenPipeError futures that arise when the browser connection closes
+        while uvicorn is still flushing HTTP write buffers on shutdown."""
+        loop = asyncio.get_running_loop()
+
+        def _exc_handler(
+            loop: asyncio.AbstractEventLoop, context: dict
+        ) -> None:
+            exc = context.get("exception")
+            if isinstance(exc, BrokenPipeError):
+                return  # harmless: client disconnected before write completed
+            loop.default_exception_handler(context)
+
+        loop.set_exception_handler(_exc_handler)
+        await server.serve()
+
+    asyncio.run(_serve())
 
     # ------------------------------------------------------------------
     # Post-exit cleanup

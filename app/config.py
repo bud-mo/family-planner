@@ -3,9 +3,10 @@ import logging
 import stat
 from pathlib import Path
 from typing import Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ValidationError, field_validator
 
 logger = logging.getLogger(__name__)
 
@@ -20,9 +21,9 @@ class DisplayConfig(BaseModel):
     type: Literal["hdmi", "eink"] = "hdmi"
     width: int = 1920
     height: int = 1080
-    width_mm: float | None = None   # physical panel width in mm (enables DPI-aware local window)
-    height_mm: float | None = None  # physical panel height in mm
     refresh_interval: int = 300
+    show_buttons: bool = False      # show on-screen navigation overlay (for touchscreen / debug)
+    playwright_executable: str | None = None  # path to Chromium binary; null = Playwright bundle
     eink_model: str = "7in5_V2"
     eink_palette: Literal["bw", "bwr", "4gray"] = "bw"
     eink_dither: bool = True
@@ -44,6 +45,21 @@ class AppConfig(BaseModel):
     server: ServerConfig = ServerConfig()
     display: DisplayConfig = DisplayConfig()
     calendars: list[CalendarConfig] = []
+    timezone: str = "Europe/Rome"
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, v: str) -> str:
+        if v == "local":
+            return v
+        try:
+            ZoneInfo(v)
+        except (KeyError, ZoneInfoNotFoundError):
+            raise ValueError(
+                f"Unknown timezone: {v!r}. "
+                "Use an IANA name (e.g. 'Europe/Rome') or 'local' for the system timezone."
+            )
+        return v
 
 
 def _check_file_permissions(path: Path) -> None:

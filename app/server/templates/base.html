@@ -1,8 +1,9 @@
 <!DOCTYPE html>
-<html lang="it" data-theme="day">
+<html lang="it" data-theme="{{ 'night' if (night_mode is defined and night_mode) else 'day' }}">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="refresh" content="{{ refresh_interval }}" />
   <title>{% block title %}Family Planner{% endblock %}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -10,6 +11,7 @@
     href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400&display=swap"
     rel="stylesheet"
   />
+  <script src="/assets/htmx.min.js" defer></script>
   <style>
     /* ------------------------------------------------------------------ */
     /* Design tokens                                                        */
@@ -171,6 +173,43 @@
     }
 
     /* ------------------------------------------------------------------ */
+    /* Navigation overlay (Playwright / touchscreen / GPIO)                */
+    /* ------------------------------------------------------------------ */
+    .nav-overlay {
+      position: fixed;
+      bottom: 0;
+      right: 0;
+      display: flex;
+      background: var(--color-bg-alt);
+      border-top: 1px solid var(--color-rule-strong);
+      border-left: 1px solid var(--color-rule-strong);
+      z-index: 200;
+    }
+
+    .nav-overlay--hidden {
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .nav-overlay__btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 44px;
+      height: 40px;
+      font-family: var(--font-body);
+      font-size: var(--text-md);
+      color: var(--color-ink);
+      background: none;
+      border: none;
+      border-left: 1px solid var(--color-rule);
+      cursor: pointer;
+    }
+
+    .nav-overlay__btn:first-child { border-left: none; }
+    .nav-overlay__btn:hover { background: var(--color-bg); }
+
+    /* ------------------------------------------------------------------ */
     /* Child-template extensions                                            */
     /* ------------------------------------------------------------------ */
     {% block extra_css %}{% endblock %}
@@ -191,7 +230,9 @@
 
 <footer class="site-footer">
   {% block footer_buttons %}
-  <button class="footer-btn" type="button" onclick="history.back()">
+  <button class="footer-btn" type="button"
+          hx-post="/state" hx-vals='{"action":"out"}'
+          hx-target="body" hx-swap="outerHTML">
     <!-- corner-up-left: Esci -->
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
          stroke="currentColor" stroke-width="1.5"
@@ -202,7 +243,9 @@
     </svg>
     Esci
   </button>
-  <button class="footer-btn" type="button">
+  <button class="footer-btn" type="button"
+          hx-post="/state" hx-vals='{"action":"prev"}'
+          hx-target="body" hx-swap="outerHTML">
     <!-- chevron-up: Su -->
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
          stroke="currentColor" stroke-width="1.5"
@@ -212,7 +255,9 @@
     </svg>
     Su
   </button>
-  <button class="footer-btn" type="button">
+  <button class="footer-btn" type="button"
+          hx-post="/state" hx-vals='{"action":"next"}'
+          hx-target="body" hx-swap="outerHTML">
     <!-- chevron-down: Giù -->
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
          stroke="currentColor" stroke-width="1.5"
@@ -222,7 +267,9 @@
     </svg>
     Giù
   </button>
-  <button class="footer-btn" type="button">
+  <button class="footer-btn" type="button"
+          hx-post="/state" hx-vals='{"action":"in"}'
+          hx-target="body" hx-swap="outerHTML">
     <!-- check: Invio -->
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
          stroke="currentColor" stroke-width="1.5"
@@ -235,6 +282,73 @@
   {% endblock %}
   <span class="footer-hint">{% block footer_hint %}{% endblock %}</span>
 </footer>
+
+<!-- Navigation overlay: always in DOM for Playwright / GPIO access -->
+<nav id="nav-overlay"
+     class="nav-overlay{% if not (show_buttons is defined and show_buttons) %} nav-overlay--hidden{% endif %}"
+     aria-label="Navigazione calendario">
+  <button id="btn-nav-out" class="nav-overlay__btn" type="button"
+          hx-post="/state" hx-vals='{"action":"out"}'
+          hx-target="body" hx-swap="outerHTML"
+          title="Esci">
+    <!-- corner-up-left -->
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" stroke-width="1.5"
+         stroke-linecap="round" stroke-linejoin="round">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+      <path d="M18 18v-6a3 3 0 0 0 -3 -3h-10" />
+      <polyline points="8 12 5 9 8 6" />
+    </svg>
+  </button>
+  <button id="btn-nav-prev" class="nav-overlay__btn" type="button"
+          hx-post="/state" hx-vals='{"action":"prev"}'
+          hx-target="body" hx-swap="outerHTML"
+          title="Precedente">
+    <!-- chevron-up -->
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" stroke-width="1.5"
+         stroke-linecap="round" stroke-linejoin="round">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+      <polyline points="6 15 12 9 18 15" />
+    </svg>
+  </button>
+  <button id="btn-nav-next" class="nav-overlay__btn" type="button"
+          hx-post="/state" hx-vals='{"action":"next"}'
+          hx-target="body" hx-swap="outerHTML"
+          title="Successivo">
+    <!-- chevron-down -->
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" stroke-width="1.5"
+         stroke-linecap="round" stroke-linejoin="round">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  </button>
+  <button id="btn-nav-in" class="nav-overlay__btn" type="button"
+          hx-post="/state" hx-vals='{"action":"in"}'
+          hx-target="body" hx-swap="outerHTML"
+          title="Entra">
+    <!-- check -->
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" stroke-width="1.5"
+         stroke-linecap="round" stroke-linejoin="round">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+      <path d="M5 12l5 5l10 -10" />
+    </svg>
+  </button>
+  <button id="btn-nav-night" class="nav-overlay__btn" type="button"
+          hx-post="/state" hx-vals='{"action":"night"}'
+          hx-target="body" hx-swap="outerHTML"
+          title="Modalità notte">
+    <!-- moon -->
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" stroke-width="1.5"
+         stroke-linecap="round" stroke-linejoin="round">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </button>
+</nav>
 
 </body>
 </html>

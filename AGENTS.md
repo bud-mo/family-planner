@@ -6,7 +6,7 @@ Questo file definisce le istruzioni sempre attive per tutti gli agenti AI che la
 
 ## Identità del Progetto
 
-**Family Planner** è un'applicazione Python embedded per Raspberry Pi che visualizza un calendario su display HDMI (pygame/SDL2) o e-ink Waveshare. Include un server web FastAPI per configurazione e anteprima browser. Il design segue l'estetica tipografica del *Wall Street Journal*: niente ombre, niente bordi arrotondati, niente animazioni.
+**Family Planner** è un'applicazione Python embedded per Raspberry Pi che visualizza un calendario su display HDMI o e-ink Waveshare. Include un server web FastAPI per configurazione e anteprima browser. Il rendering è basato su **Playwright** (Chromium headless/non-headless): i template HTML Jinja2 sono la fonte unica di rendering per entrambi i display. Il design segue l'estetica tipografica del *Wall Street Journal*: niente ombre, niente bordi arrotondati, niente animazioni.
 
 ---
 
@@ -16,11 +16,11 @@ Questo file definisce le istruzioni sempre attive per tutti gli agenti AI che la
 |---|---|
 | Python | 3.11+ |
 | Web server | FastAPI + Uvicorn |
-| Template | Jinja2 |
-| Rendering | Pillow (PIL) |
+| Template + navigazione | Jinja2 + HTMX |
+| Rendering | Playwright (Chromium) + Pillow (post-processing e-ink) |
 | CalDAV | `caldav` + `icalendar` |
 | Config | YAML + Pydantic v2 |
-| Display HDMI | pygame (SDL2) |
+| Display HDMI | Playwright non-headless (Chromium) |
 | Display e-ink | Waveshare (import dinamico) |
 | Target hardware | Raspberry Pi 3B+ / 4 / 5 |
 | OS target | Raspberry Pi OS Lite Bookworm 64-bit |
@@ -49,17 +49,20 @@ Questo file definisce le istruzioni sempre attive per tutti gli agenti AI che la
 ### Import e Dipendenze
 
 - Le librerie Waveshare **devono** essere importate dinamicamente, protette da `display.type == "eink"` — il codice deve girare su macOS/Linux senza le librerie hardware
-- Nessuna dipendenza da browser, Chromium, X11 o Wayland per il display HDMI — pygame possiede l'intera finestra
+- Su RPi, Playwright **deve** usare il Chromium di sistema (`executable_path=/usr/bin/chromium-browser`) — non il bundle Playwright, per evitare ~300 MB di overhead su disco
+- HTMX è incluso come asset locale in `base.html` — non è un pacchetto pip, non va aggiunto a `requirements.txt`
+- Pillow è usato **solo** per post-processing e-ink (`EinkRenderer`) — non per rendering del calendario
 
 ---
 
 ## Architettura — Regole Invarianti
 
-1. **Pipeline di rendering unificata**: `ImageRenderer` (Pillow) è condiviso da HDMI ed e-ink. Non duplicare logica di rendering per i due display.
+1. **Pipeline di rendering unificata**: `PlaywrightRenderer` è la fonte unica di rendering — `screenshot()` → `PIL.Image` condiviso da HDMI ed e-ink. I template HTML sono la fonte di verità del layout. Non duplicare logica di rendering in Python.
 2. **EinkRenderer** è solo post-processing: riceve un `PIL.Image` già composto e applica quantizzazione palette + dithering Floyd-Steinberg.
-3. **FastAPI non drive il display HDMI**: `HdmiDisplay` legge direttamente dall'`ImageRenderer` via loop interno pygame, senza passare per HTTP.
+3. **FastAPI è la fonte HTML per PlaywrightRenderer**: `GET /` produce il contenuto che Playwright renderizza per entrambi i display. `HdmiDisplay` usa Playwright non-headless; nessun subprocess Chromium separato.
 4. **Riavvio graceful**: `POST /config` salva il file YAML e riavvia Uvicorn con SIGHUP — non terminare il processo bruscamente.
 5. **Nessun scroll** nel layout, eccetto il pannello dettaglio appuntamento.
+6. **GPIO e touchscreen usano lo stesso meccanismo**: `page.click('#btn-nav-{action}')` — i pulsanti HTML di navigazione sono sempre presenti nel DOM; `show_buttons` controlla solo la visibilità CSS.
 
 ---
 
@@ -96,7 +99,7 @@ Usare `display.type: "hdmi"` e `fullscreen: false` per sviluppo su macOS/Linux.
 ### Prima di ogni modifica
 
 1. Leggere il file sorgente prima di editarlo
-2. Verificare che le modifiche a `ImageRenderer` siano compatibili con entrambi i display
+2. Verificare che le modifiche ai template HTML (Jinja2/CSS) siano visivamente corrette per entrambi i display — fare screenshot via `PlaywrightRenderer` sui `width`/`height` configurati
 3. Validare le modifiche allo schema config contro i modelli Pydantic in `app/config.py`
 
 ### Dopo ogni modifica critica

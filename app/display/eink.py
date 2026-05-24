@@ -7,11 +7,12 @@ imports cleanly and ``push()`` raises ``RuntimeError`` only when actually
 called (satisfying acceptance criterion #10).
 
 Usage (typical):
-    renderer = ImageRenderer(aggregator, config.display)
+    renderer = PlaywrightRenderer(config, aggregator)
     eink_renderer = EinkRenderer(config.display)
     display = EinkDisplay(config.display)
 
-    image = renderer.render()
+    renderer.start(port=8080)
+    image = renderer.screenshot()
     processed = eink_renderer.process(image)
     display.push(processed)
     display.stop()

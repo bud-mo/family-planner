@@ -1,7 +1,7 @@
 """Display drivers for Family Planner.
 
 Available drivers:
-- ``HdmiDisplay``: pygame-based HDMI window driver.
+- ``HdmiDisplay``: Chromium-based HDMI display driver (kiosk subprocess).
 - ``EinkDisplay``: Waveshare e-ink panel driver (lazy hardware import).
 """
 from app.display.eink import EinkDisplay
