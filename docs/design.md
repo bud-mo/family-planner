@@ -121,7 +121,7 @@ Il set di icone adottato è **Tabler Icons** (versione SVG outline, stroke-width
 | `icon-map-pin` | Luogo appuntamento — lista |
 | `icon-star` | Festività / Giorno speciale — calendario mensile |
 
-Dimensione standard icone: `16px` (inline con testo) / `20px` (pulsanti) / `24px` (intestazioni viste).
+Dimensione standard icone: `16px` (inline con testo) / `20px` (pulsanti) / `24px` (intestazioni viste) / `40px` (icona meteo banner).
 
 ---
 
@@ -231,17 +231,19 @@ Banner superiore in portrait, sezione superiore della colonna sinistra in landsc
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  Domenica, 24 Maggio 2026              ⛅  18°C  ↑22° ↓14°  │
+│  Domenica, 24 Maggio 2026         ⛅   18°  ↑22°            │
+│                                            ↓14°            │
 └──────────────────────────────────────────────────────────────┘
 ```
 
-**Regole visive:**
+Il lato destro è un blocco a tre sotto-colonne allineato al margine destro:
 
-- Data: `--font-display`, `--text-lg`, formato `"Giorno, DD Mese YYYY"`, `--color-ink`
-- Icona meteo: Tabler Icon `24px`, `currentColor`, allineata a destra
-- Temperatura attuale: `--font-body`, `--text-lg`, `font-weight: 600`, `--color-ink`
-- Max/Min: `--font-body`, `--text-sm`, `--color-ink-muted`, formato `"↑22° ↓14°"`
+- **Sotto-colonna 1 (sinistra):** icona condizione meteo Tabler `40px`, `currentColor`, centrata verticalmente nel banner
+- **Sotto-colonna 2 (centro):** temperatura attuale, `--font-body`, `40px`, `font-weight: 600`, `--color-ink`, centrata verticalmente, anchor destra
+- **Sotto-colonna 3 (destra):** max e min incolonnati verticalmente, `--font-body`, `--text-xs` (11px), `--color-ink-muted`, entrambi anchor destra; `↑max` a 1/3 dell'altezza del banner, `↓min` a 2/3
+- **Lato sinistro:** data, `--font-display`, `--text-lg`, formato `"Giorno, DD Mese YYYY"`, `--color-ink`
 - Sfondo: `--color-bg` — nessun sfondo alternato nel banner
+- Aggiornamento dati meteo: ogni ora (TTL cache provider)
 
 #### Sezione Calendario Mensile
 

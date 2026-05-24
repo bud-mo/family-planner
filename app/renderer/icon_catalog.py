@@ -28,3 +28,15 @@ WEATHER_ICONS: frozenset[str] = frozenset({
 # Unione di tutte le icone Tabler usate nel progetto
 # ---------------------------------------------------------------------------
 ALL_ICONS: frozenset[str] = frozenset(EMOJI_TO_ICON.values()) | WEATHER_ICONS
+
+# ---------------------------------------------------------------------------
+# Icone per dimensione — unica fonte di verità per la generazione degli asset
+#   16px: icone emoji usate nelle righe evento (~12px, caricate da 16px e scalate)
+#   24px: icone emoji (fallback generale)
+#   40px: solo icone meteo (usate esplicitamente a 40px nel banner meteo)
+# ---------------------------------------------------------------------------
+ICONS_BY_SIZE: dict[int, frozenset[str]] = {
+    16: ALL_ICONS,
+    24: ALL_ICONS,
+    40: WEATHER_ICONS,
+}

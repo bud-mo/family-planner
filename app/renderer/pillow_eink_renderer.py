@@ -40,6 +40,7 @@ from app.renderer.tokens import (
     TEXT_BASE,
     TEXT_LG,
     TEXT_SM,
+    TEXT_XL,
     TEXT_XS,
     WeatherData,
     get_palette,
@@ -108,6 +109,7 @@ class PillowEinkRenderer:
         self._font_body: ImageFont.FreeTypeFont = self._load_font(FONT_BODY_REGULAR, TEXT_BASE)
         self._font_label: ImageFont.FreeTypeFont = self._load_font(FONT_BODY_SEMIBOLD, TEXT_XS)
         self._font_mono: ImageFont.FreeTypeFont = self._load_font(FONT_MONO_REGULAR, TEXT_SM)
+        self._font_temp: ImageFont.FreeTypeFont = self._load_font(FONT_BODY_SEMIBOLD, 40)
 
     # ------------------------------------------------------------------
     # Public API
@@ -184,35 +186,65 @@ class PillowEinkRenderer:
         right_x = x0 + w - 12
 
         if weather.temp_current is not None:
-            temp_str = f"{weather.temp_current:.0f}°"
-            draw.text(
-                (right_x, y_mid),
-                temp_str,
-                font=self._font_body,
-                fill=palette["INK"],
-                anchor="rm",
-            )
-            if weather.temp_max is not None and weather.temp_min is not None:
-                range_str = f"\u2191{weather.temp_max:.0f}° \u2193{weather.temp_min:.0f}°"
+            # Horizontal layout (right-to-left):
+            #   [icon 40px] | [temp 40px] | [↑max / ↓min stacked]
+            has_maxmin = weather.temp_max is not None and weather.temp_min is not None
+
+            # Step 1: measure max/min column width (rightmost block)
+            maxmin_col_w = 0
+            if has_maxmin:
+                max_str = f"\u2191{weather.temp_max:.0f}°"
+                min_str = f"\u2193{weather.temp_min:.0f}°"
+                maxmin_col_w = max(
+                    int(draw.textlength(max_str, font=self._font_label)),
+                    int(draw.textlength(min_str, font=self._font_label)),
+                )
+
+            # Step 2: draw max/min stacked column, right-anchored at right_x
+            if has_maxmin:
+                # Centre the pair around banner midline — simulate justify-content: space-evenly.
+                # half_lh ≈ half the visual line-height of font_label (TEXT_XS=11 + 5px leading → 16px → 8px half).
+                _half_lh = (TEXT_XS + 5) // 2  # 8px for TEXT_XS=11
+                y_max = y_mid - _half_lh
+                y_min = y_mid + _half_lh
                 draw.text(
-                    (right_x, y_mid + 14),
-                    range_str,
+                    (right_x, y_max),
+                    max_str,
+                    font=self._font_label,
+                    fill=palette["INK_MUTED"],
+                    anchor="rm",
+                )
+                draw.text(
+                    (right_x, y_min),
+                    min_str,
                     font=self._font_label,
                     fill=palette["INK_MUTED"],
                     anchor="rm",
                 )
 
-            # Weather condition icon (24px Tabler Icons PNG).
+            # Step 3: draw current temperature, right-anchored left of max/min column
+            temp_gap = 8 if has_maxmin else 0
+            temp_right_x = right_x - maxmin_col_w - temp_gap
+            temp_str = f"{weather.temp_current:.0f}°"
+            draw.text(
+                (temp_right_x, y_mid),
+                temp_str,
+                font=self._font_temp,
+                fill=palette["INK"],
+                anchor="rm",
+            )
+            temp_w = int(draw.textlength(temp_str, font=self._font_temp))
+
+            # Step 4: draw condition icon (40px), left of temperature
             if weather.condition_icon is not None:
-                icon_img = load_icon(weather.condition_icon, 24)
+                icon_img = load_icon(weather.condition_icon, 40)
                 if icon_img is not None:
                     r, g, b = self._hex_to_rgb(palette["INK"])
                     _, _, _, alpha = icon_img.split()
                     tinted = Image.new("RGBA", icon_img.size, (r, g, b, 255))
                     tinted.putalpha(alpha)
-                    temp_w = int(draw.textlength(temp_str, font=self._font_body))
-                    icon_x = right_x - temp_w - 8 - 24
-                    icon_y = y_mid - 12
+                    icon_x = temp_right_x - temp_w - 10 - 40
+                    icon_y = y_mid - 20
                     img.paste(tinted, (icon_x, icon_y), mask=tinted)
 
         draw.line(
