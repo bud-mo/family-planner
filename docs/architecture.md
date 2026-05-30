@@ -51,6 +51,7 @@ family-planner/
 │   │   ├── base.py                      # Classe astratta Renderer
 │   │   ├── pillow_eink_renderer.py      # PillowEinkRenderer: rendering Pillow nativo (HDMI + e-ink)
 │   │   ├── eink_renderer.py             # Post-processing e-ink: resize, quantizzazione palette, dithering
+│   │   ├── rich_text.py                 # Parser HTML descrizioni CalDAV → RichSpan/RichLine
 │   │   ├── state.py                     # NavigationState (dataclass immutabile — anchor_date = oggi)
 │   │   └── tokens.py                    # Design tokens Python
 │   ├── weather/

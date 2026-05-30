@@ -23,6 +23,7 @@ FONT_DISPLAY_REGULAR = "PlayfairDisplay-Regular.ttf"
 FONT_DISPLAY_BOLD = "PlayfairDisplay-Bold.ttf"
 FONT_BODY_REGULAR = "IBMPlexSans-Regular.ttf"
 FONT_BODY_SEMIBOLD = "IBMPlexSans-SemiBold.ttf"
+FONT_BODY_ITALIC = "IBMPlexSans-Italic.ttf"
 FONT_MONO_REGULAR = "IBMPlexMono-Regular.ttf"
 
 # ---------------------------------------------------------------------------

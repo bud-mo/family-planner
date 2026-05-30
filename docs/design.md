@@ -22,6 +22,7 @@ Il calendario è concepito come una **pagina stampata interattiva**, non come un
 |---|---|---|
 | Titoli e intestazioni | **Playfair Display** | Regular / Bold |
 | Corpo e dati | **IBM Plex Sans** | Regular / Medium / SemiBold |
+| Corsivo descrizioni | **IBM Plex Sans** | Italic |
 | Monospazio (orari) | **IBM Plex Mono** | Regular |
 
 Tutte le famiglie appartengono al Google Fonts catalog, a rendering ottimizzato per schermo, incluso e-ink. Il fallback universale è `serif` per i titoli e `sans-serif` per il corpo.
@@ -291,12 +292,32 @@ Lista in stile Agenda, ispirata a Google Calendar. La data di ogni giorno è vis
 - **Bordo colorato a destra (3px):** rettangolo verticale all'estremo destro di ogni riga, colorato con il colore del calendario sorgente (`evt.color`); se il colore non è definito, usa `--color-rule`
 - **Lista vuota:** testo `"Nessun appuntamento"` centrato, `--color-ink-faint`, `--text-sm`
 
-**Altezze riga:**
+**Altezze riga (dinamiche):**
 
-| Tipo riga | Altezza |
+| Tipo riga | Formula | Esempio |
+|---|---|---|
+| Evento senza location e senza descrizione | 40 px | 40 px |
+| Evento con solo location | 40 + 14 = 54 px | 54 px |
+| Evento con N righe di descrizione (senza location) | 40 + N × 15 + 8 px | 1 riga → 63 px, 3 righe → 93 px |
+| Evento con location e N righe di descrizione | 40 + 14 + N × 15 + 8 px | 1 riga → 77 px, 10 righe → 212 px |
+
+I 8 px finali (solo quando è presente una descrizione) aggiungono un respiro visivo inferiore equivalente allo spazio bianco sopra il glifo del titolo.
+
+**Formattazione descrizione (rich text HTML):**
+
+La descrizione può contenere HTML proveniente da sorgenti CalDAV. Il renderer interpreta i seguenti tag:
+
+| Tag HTML | Effetto visivo |
 |---|---|
-| Evento standard (senza location) | 40px |
-| Evento con location | 54px |
+| `<b>`, `<strong>` | Testo in IBM Plex Sans SemiBold |
+| `<i>`, `<em>` | Testo in IBM Plex Sans Italic |
+| `<u>` | Testo con riga orizzontale sottostante (1 px, `--color-ink-faint`) |
+| `<a href="...">` | Testo in `--color-ink-muted` + sottolineatura |
+| `<br>`, `</p>`, `</div>`, `</li>` | A-capo |
+| `<ul><li>` | Riga con prefisso `• ` |
+| `<ol><li>` | Riga con prefisso `N. ` (contatore progressivo) |
+
+Tag non riconosciuti vengono eliminati silenziosamente. Il testo plain (senza tag) viene diviso su `\n`. Ogni riga è troncata con `…` se supera la larghezza disponibile.
 
 ---
 

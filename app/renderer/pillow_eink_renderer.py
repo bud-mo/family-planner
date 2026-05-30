@@ -26,12 +26,14 @@ from PIL import Image, ImageColor, ImageDraw, ImageFont
 from app.calendar.data_builders import _build_month_grid, _build_rolling_week_grid
 from app.renderer.emoji_icons import load_icon, split_text_emoji
 from app.renderer.state import NavigationState
+from app.renderer.rich_text import RichLine, RichSpan, parse_html_description
 from app.renderer.tokens import (
     BANNER_HEIGHT,
     BANNER_HOURLY_HEIGHT,
     BANNER_MAIN_HEIGHT,
     CALENDAR_HEIGHT,
     COL_LEFT_RATIO,
+    FONT_BODY_ITALIC,
     FONT_BODY_REGULAR,
     FONT_BODY_SEMIBOLD,
     FONT_DISPLAY_REGULAR,
@@ -121,6 +123,12 @@ class PillowEinkRenderer:
         self._font_mono: ImageFont.FreeTypeFont = self._load_font(FONT_MONO_REGULAR, TEXT_SM)
         self._font_mono_xs: ImageFont.FreeTypeFont = self._load_font(FONT_MONO_REGULAR, TEXT_XS)
         self._font_temp: ImageFont.FreeTypeFont = self._load_font(FONT_BODY_SEMIBOLD, 40)
+        # Description rich-text fonts (TEXT_XS = 11 px)
+        self._font_desc: ImageFont.FreeTypeFont = self._load_font(FONT_BODY_REGULAR, TEXT_XS)
+        self._font_desc_bold: ImageFont.FreeTypeFont = self._load_font(FONT_BODY_SEMIBOLD, TEXT_XS)
+        self._font_desc_italic: ImageFont.FreeTypeFont = self._load_font(FONT_BODY_ITALIC, TEXT_XS)
+        # Icon size for inline emoji in description lines
+        self._icon_size_desc: int = max(8, int(TEXT_XS * 0.75))
 
     # ------------------------------------------------------------------
     # Public API
@@ -564,6 +572,7 @@ class PillowEinkRenderer:
         date_col_w = 52
         event_row_h = 40
         event_row_loc_h = 54
+        event_row_loc_desc_h = 68
         time_col_w = 56
 
         # Group events across the full 30-day window (matches events_range_for_state)
@@ -608,35 +617,72 @@ class PillowEinkRenderer:
         # First pass: determine what fits and count overflow
         cur_y = y0
         max_y = y0 + h
-        rendered: list[tuple[date, object]] = []
+        # Each entry: (day, evt, max_desc_lines)  — 10 = full, 0 = no description
+        rendered: list[tuple[date, object, int]] = []
         remaining_count = 0
         in_overflow = False
+
+        _desc_max_w = w - (padding_x + date_col_w + time_col_w + 8 + 8)
+
+        def _row_height(evt: object, max_desc_lines: int = 10) -> int:
+            has_loc = bool(getattr(evt, "location", None))
+            desc_raw: str = getattr(evt, "description", None) or ""
+            if desc_raw and max_desc_lines > 0:
+                rich_lines = parse_html_description(desc_raw, max_lines=max_desc_lines)
+                wrapped = self._wrap_rich_lines(rich_lines, _desc_max_w, max_lines=max_desc_lines)
+                if wrapped:
+                    # 8 px bottom margin ≈ visual whitespace above title glyph
+                    return 40 + (14 if has_loc else 0) + len(wrapped) * 15 + 8
+            return 40 + (14 if has_loc else 0)
 
         for day, evt in items:
             if in_overflow:
                 remaining_count += 1
                 continue
-            row_h_item = event_row_loc_h if evt.location else event_row_h  # type: ignore[union-attr]
+
+            full_h = _row_height(evt, 10)
             # Reserve one event_row_h for the overflow indicator
-            if cur_y + row_h_item > max_y - event_row_h:
-                in_overflow = True
-                remaining_count += 1
-                continue
-            rendered.append((day, evt))
-            cur_y += row_h_item
+            available = max_y - cur_y - event_row_h
+
+            if full_h <= available:
+                # Event fits with full description
+                rendered.append((day, evt, 10))
+                cur_y += full_h
+            else:
+                # Try to fit with a truncated (or no) description
+                base_h = _row_height(evt, 0)  # height with no description
+                if base_h > available:
+                    # Not even the title fits — true overflow
+                    in_overflow = True
+                    remaining_count += 1
+                    continue
+
+                has_desc = bool(getattr(evt, "description", None))
+                if has_desc:
+                    # Max desc lines that fit: base_h + N*15 + 8 <= available
+                    max_lines_fit = max(0, (available - base_h - 8) // 15)
+                    max_lines_fit = min(10, max_lines_fit)
+                else:
+                    max_lines_fit = 0
+
+                effective_h = _row_height(evt, max_lines_fit)
+                rendered.append((day, evt, max_lines_fit))
+                cur_y += effective_h
+                # Do NOT set in_overflow: subsequent events may still fit
 
         # Second pass: draw
         cur_y = y0
         prev_day: date | None = None
         is_first_rendered = True
-        for day, evt in rendered:
+        for day, evt, max_desc_lines in rendered:
             first_in_day = day != prev_day
-            row_h_item = event_row_loc_h if evt.location else event_row_h  # type: ignore[union-attr]
+            row_h_item = _row_height(evt, max_desc_lines)
             self._draw_event_row(
                 draw, img, evt, x0, cur_y, w, row_h_item,  # type: ignore[arg-type]
                 padding_x, time_col_w, date_col_w, palette,
                 day_date=day if first_in_day else None,
                 draw_top_separator=not is_first_rendered,
+                max_desc_lines=max_desc_lines,
             )
             cur_y += row_h_item
             prev_day = day
@@ -667,6 +713,7 @@ class PillowEinkRenderer:
         palette: dict[str, str],
         day_date: date | None = None,
         draw_top_separator: bool = True,
+        max_desc_lines: int = 10,
     ) -> None:
         first_in_day = day_date is not None
 
@@ -705,11 +752,8 @@ class PillowEinkRenderer:
         time_area_x = x0 + padding_x + date_col_w
         sep_x = time_area_x + time_col_w
 
-        # Vertical position: centre, or upper third if location present
-        if evt.location:
-            time_y = y0 + row_h // 3
-        else:
-            time_y = y0 + row_h // 2
+        # Vertical position: title is centred in the first 40 px block (fixed)
+        time_y = y0 + 20
 
         half_lh = (TEXT_SM + 5) // 2
 
@@ -750,12 +794,27 @@ class PillowEinkRenderer:
         title_segs = self._fit_mixed(draw, title_segs, self._font_body, icon_size_title, title_max_w)
         self._draw_mixed(draw, img, title_segs, title_x, time_y, self._font_body, palette["INK"], icon_size_title)
 
-        if evt.location:
-            loc_y = y0 + row_h * 2 // 3
-            icon_size_loc = int(self._font_label.size * 0.75)
+        icon_size_sub = int(self._font_label.size * 0.75)
+        # Location line: centred in a 14 px block immediately after the 40 px title block
+        loc_y: int | None = (y0 + 47) if evt.location else None
+        # Description block starts after location (or after title if no location)
+        desc_block_y: int | None = None
+        if evt.description and max_desc_lines > 0:
+            desc_block_y = y0 + 40 + (14 if evt.location else 0)
+
+        if evt.location and loc_y is not None:
             loc_segs = split_text_emoji(evt.location)
-            loc_segs = self._fit_mixed(draw, loc_segs, self._font_label, icon_size_loc, title_max_w)
-            self._draw_mixed(draw, img, loc_segs, title_x, loc_y, self._font_label, palette["INK_MUTED"], icon_size_loc)
+            loc_segs = self._fit_mixed(draw, loc_segs, self._font_label, icon_size_sub, title_max_w)
+            self._draw_mixed(draw, img, loc_segs, title_x, loc_y, self._font_label, palette["INK_MUTED"], icon_size_sub)
+
+        if evt.description and desc_block_y is not None:
+            rich_lines = parse_html_description(evt.description, max_lines=max_desc_lines)
+            if rich_lines:
+                self._draw_rich_description(
+                    draw, rich_lines, title_x, desc_block_y, title_max_w, palette,
+                    max_lines=max_desc_lines,
+                    img=img,
+                )
 
 
     # ------------------------------------------------------------------
@@ -841,6 +900,191 @@ class PillowEinkRenderer:
         """Convert a ``#rrggbb`` colour string to an (r, g, b) tuple."""
         h = hex_color.lstrip("#")
         return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+
+    def _draw_rich_description(
+        self,
+        draw: ImageDraw.ImageDraw,
+        lines: list[RichLine],
+        x0: int,
+        y0: int,
+        max_w: int,
+        palette: dict[str, str],
+        max_lines: int = 10,
+        img: "Image.Image | None" = None,
+    ) -> None:
+        """Render *lines* as rich text starting at (*x0*, *y0* top-left).
+
+        Each line occupies ``self._font_desc.size + 4`` px vertically.
+        Spans use Bold / Italic / Regular fonts as indicated; underlines and
+        links are decorated with a 1 px horizontal rule below the text.
+        Long lines are wrapped at word boundaries by ``_wrap_rich_lines``.
+        Emoji sequences are rendered as inline icon images when *img* is provided.
+        """
+        visual_lines = self._wrap_rich_lines(lines, max_w, max_lines=max_lines)
+        line_h = self._font_desc.size + 4
+
+        for line_idx, line in enumerate(visual_lines):
+            cy = y0 + line_idx * line_h + line_h // 2
+            cx = float(x0)
+            for span in line:
+                if not span.text:
+                    continue
+                font = self._span_font(span)
+                color = palette["INK_MUTED"] if span.is_link else palette["INK_FAINT"]
+                r, g, b = self._hex_to_rgb(color)
+                for seg_type, content in split_text_emoji(span.text):
+                    if seg_type == "text":
+                        if not content:
+                            continue
+                        seg_w = font.getlength(content)
+                        draw.text((int(cx), cy), content, font=font, fill=color, anchor="lm")
+                        if span.underline or span.is_link:
+                            uy = cy + font.size // 2 + 1
+                            draw.line(
+                                [(int(cx), uy), (int(cx + seg_w), uy)], fill=color, width=1
+                            )
+                        cx += seg_w
+                    else:  # "icon"
+                        if img is not None:
+                            icon_img = load_icon(content, self._icon_size_desc)
+                            if icon_img is not None:
+                                colored = Image.new("RGBA", icon_img.size, (r, g, b, 255))
+                                _, _, _, alpha = icon_img.split()
+                                colored.putalpha(alpha)
+                                icon_top = cy - self._icon_size_desc // 2
+                                img.paste(colored, (int(cx), icon_top), mask=colored)
+                        cx += self._icon_size_desc + 1
+
+    def _span_font(self, span: RichSpan) -> ImageFont.FreeTypeFont:
+        """Return the correct description font for *span*'s inline style."""
+        if span.bold:
+            return self._font_desc_bold
+        if span.italic:
+            return self._font_desc_italic
+        return self._font_desc
+
+    def _measure_span_text(self, text: str, font: ImageFont.FreeTypeFont) -> float:
+        """Measure pixel width of *text*, treating emoji as inline icons."""
+        total = 0.0
+        for seg_type, content in split_text_emoji(text):
+            if seg_type == "text":
+                total += font.getlength(content)
+            else:  # icon
+                total += self._icon_size_desc + 1
+        return total
+
+    def _wrap_rich_lines(
+        self,
+        lines: list[RichLine],
+        max_w: int,
+        max_lines: int = 10,
+    ) -> list[RichLine]:
+        """Wrap logical RichLines into visual lines that fit within *max_w* px.
+
+        Words are split at space boundaries.  A single word wider than max_w
+        is placed alone on its line and truncated with '\u2026'.  Total output is
+        capped at *max_lines*.
+        """
+        from app.renderer.rich_text import RichSpan as _RS
+
+        wrapped: list[RichLine] = []
+
+        for line in lines:
+            if len(wrapped) >= max_lines:
+                break
+
+            # Tokenise: split each span's text at spaces into atomic tokens
+            tokens: list[tuple[str, bool, bool, bool, bool]] = []
+            for span in line:
+                if not span.text:
+                    continue
+                parts = span.text.split(" ")
+                for i, part in enumerate(parts):
+                    if i > 0:
+                        tokens.append((" ", span.bold, span.italic, span.underline, span.is_link))
+                    if part:
+                        tokens.append((part, span.bold, span.italic, span.underline, span.is_link))
+
+            current: list[_RS] = []
+            current_w = 0.0
+
+            def _flush() -> None:
+                nonlocal current, current_w
+                # Strip trailing space from the last span
+                if current:
+                    last = current[-1]
+                    stripped = last.text.rstrip(" ")
+                    if stripped != last.text:
+                        current[-1] = _RS(text=stripped, bold=last.bold, italic=last.italic,
+                                          underline=last.underline, is_link=last.is_link)
+                if any(s.text for s in current):
+                    wrapped.append(current)
+                current = []
+                current_w = 0.0
+
+            for text, bold, italic, underline, is_link in tokens:
+                if len(wrapped) >= max_lines:
+                    break
+                font = self._font_desc_bold if bold else (
+                    self._font_desc_italic if italic else self._font_desc
+                )
+                tw = self._measure_span_text(text, font)
+
+                # Skip leading space at the start of a new visual line
+                if text == " " and current_w == 0.0:
+                    continue
+
+                if current_w + tw <= max_w or current_w == 0.0:
+                    new_span = _RS(text=text, bold=bold, italic=italic,
+                                   underline=underline, is_link=is_link)
+                    # Merge with previous span if same style
+                    if (current
+                            and current[-1].bold == bold
+                            and current[-1].italic == italic
+                            and current[-1].underline == underline
+                            and current[-1].is_link == is_link):
+                        current[-1] = _RS(
+                            text=current[-1].text + text,
+                            bold=bold, italic=italic,
+                            underline=underline, is_link=is_link,
+                        )
+                    else:
+                        current.append(new_span)
+                    current_w += tw
+                else:
+                    _flush()
+                    if len(wrapped) >= max_lines:
+                        break
+                    if text == " ":
+                        pass  # dropped — leading space on new line
+                    else:
+                        # Truncate if even a single word exceeds max_w
+                        if tw > max_w:
+                            text = self._truncate_text(text, font, max_w)
+                            tw = font.getlength(text)
+                        current = [_RS(text=text, bold=bold, italic=italic,
+                                       underline=underline, is_link=is_link)]
+                        current_w = tw
+
+            if len(wrapped) < max_lines:
+                _flush()
+
+        return wrapped
+
+    def _truncate_text(self, text: str, font: ImageFont.FreeTypeFont, max_w: int) -> str:
+        """Return the longest prefix of *text* that fits in *max_w* px, with '\u2026'."""
+        ellipsis_w = font.getlength("\u2026")
+        budget = max_w - ellipsis_w
+        if budget <= 0:
+            return "\u2026"
+        lo, hi = 0, len(text)
+        while lo < hi:
+            mid = (lo + hi + 1) // 2
+            if font.getlength(text[:mid]) <= budget:
+                lo = mid
+            else:
+                hi = mid - 1
+        return (text[:lo] + "\u2026") if lo > 0 else "\u2026"
 
     @staticmethod
     def _measure_mixed(

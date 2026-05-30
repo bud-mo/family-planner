@@ -55,7 +55,10 @@ class HdmiDisplay:
     def set_aggregator(self, aggregator: CalendarAggregator) -> None:
         """Replace the calendar aggregator (called on config reload)."""
         self._aggregator = aggregator
-        self._stop_event.set()
+
+    def set_renderer(self, renderer: "PillowEinkRenderer") -> None:
+        """Replace the renderer (called on config reload)."""
+        self._renderer = renderer
 
     def run_blocking(self) -> None:
         """Open the pygame window and block until the user closes it.

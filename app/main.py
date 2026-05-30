@@ -252,6 +252,23 @@ def main() -> None:
             web_app.state.aggregator = new_aggregator
             if _hdmi_ref[0] is not None:
                 _hdmi_ref[0].set_aggregator(new_aggregator)
+            # Rebuild weather provider with updated settings.
+            new_weather_provider: "WeatherProvider | None" = None
+            if new_config.weather.enabled:
+                from app.weather import OpenMeteoProvider
+                new_weather_provider = OpenMeteoProvider(
+                    latitude=new_config.weather.latitude,
+                    longitude=new_config.weather.longitude,
+                    units=new_config.weather.units,
+                )
+            # Rebuild renderer so display/layout/timezone changes take effect.
+            new_renderer = PillowEinkRenderer(new_config, weather_provider=new_weather_provider)
+            web_app.state.renderer = new_renderer
+            if _hdmi_ref[0] is not None:
+                _hdmi_ref[0].set_renderer(new_renderer)
+            # Refresh template globals used by the browser preview.
+            web_app.state.templates.env.globals["refresh_interval"] = new_config.display.refresh_interval
+            web_app.state.templates.env.globals["show_buttons"] = new_config.display.show_buttons
             logger.info("Configuration reloaded successfully.")
         except Exception as exc:  # noqa: BLE001
             logger.error("Failed to reload configuration: %s", exc)
