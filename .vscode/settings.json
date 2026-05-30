@@ -17,6 +17,26 @@
         "/^python -m pytest tests/ -q 2>&1 \\| tail -5$/": {
             "approve": true,
             "matchCommandLine": true
+        },
+        "/^source \\.venv/bin/activate && python -m pytest tests/test_agenda_visual\\.py -v 2>&1$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^source \\.venv/bin/activate && python -m pytest tests/test_agenda_visual\\.py -v --tb=no -q 2>&1$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^source \\.venv/bin/activate && python -m pytest tests/test_agenda_visual\\.py --tb=no -q 2>&1$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^source \\.venv/bin/activate && python -m pytest tests/test_agenda_visual\\.py --tb=short -q 2>&1$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^source \\.venv/bin/activate && python -m pytest tests/test_weather_banner_visual\\.py -v 2>&1$/": {
+            "approve": true,
+            "matchCommandLine": true
         }
     }
 }

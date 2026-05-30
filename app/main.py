@@ -107,7 +107,10 @@ def _eink_loop(
     """
     from app.calendar.data_builders import events_range_for_state
 
-    logger.info("E-ink loop avviato (interval=%ds).", interval)
+    # Maximum time allowed for a single panel push (epd.init + Clear + display + sleep).
+    # Waveshare 7.5" V2 typically completes in 20-30 s; 120 s is a generous safety margin.
+    # If the BUSY pin hangs, the push thread stays alive but we keep the loop running.
+    _PUSH_TIMEOUT = 120
 
     while not stop_event.is_set():
         state = NavigationState()
@@ -116,7 +119,23 @@ def _eink_loop(
             events = aggregator.get_events(start, end)
             img = renderer.render(state, events)
             processed = eink_renderer.process(img)
-            display.push(processed)
+
+            push_thread = threading.Thread(
+                target=display.push,
+                args=(processed,),
+                daemon=True,
+                name="eink-push",
+            )
+            push_thread.start()
+            push_thread.join(timeout=_PUSH_TIMEOUT)
+            if push_thread.is_alive():
+                logger.error(
+                    "E-ink push did not complete within %ds — "
+                    "panel BUSY pin may be stuck. Skipping frame; "
+                    "the push thread will finish in the background "
+                    "once the panel responds.",
+                    _PUSH_TIMEOUT,
+                )
         except Exception as exc:  # noqa: BLE001
             logger.error("E-ink render/push error: %s", exc)
         stop_event.wait(timeout=interval)

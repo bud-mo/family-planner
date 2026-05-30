@@ -74,9 +74,24 @@ La palette è limitata a **sei valori** per garantire la fedeltà su e-ink in sc
 /* Bordi */
 --color-rule:        #CCCCAA;   /* linea color seppia — divisori orizzontali */
 --color-rule-strong: #333333;   /* linea scura — bordo elemento selezionato */
-```
+  /* Icone meteo */
+  --weather-sun:   #F5A623;   /* sole / cielo sereno */
+  --weather-cloud: #9CA3AF;   /* nuvola / coperto / nebbia */
+  --weather-rain:  #3B82F6;   /* pioggia / rovesci / temporale */
+  --weather-snow:  #93C5FD;   /* neve / grandine */```
 
 **Su e-ink:** il renderer quantizza automaticamente verso i valori della palette fisica del display. I colori sopra sono progettati per collassare in modo prevedibile su palette BW, BWR e 4-gray.
+
+### Palette Icone Meteo
+
+Le icone meteo sono tintate con colori specifici per condizione (anziché `--color-ink`), definiti in `app/renderer/tokens.py` come `WEATHER_ICON_COLORS`. Applicati sia all'icona principale nel banner superiore sia alle icone della fascia bioraria.
+
+| Token | Valore | Condizione |
+|---|---|---|
+| `--weather-sun` | `#F5A623` | Sole, cielo sereno |
+| `--weather-cloud` | `#9CA3AF` | Nuvola, nebbia, coperto |
+| `--weather-rain` | `#3B82F6` | Pioggia, rovesci, temporale |
+| `--weather-snow` | `#93C5FD` | Neve, grandine |
 
 ---
 
@@ -98,7 +113,7 @@ Il set di icone adottato è **Tabler Icons** (versione SVG outline, stroke-width
 | `icon-map-pin` | Luogo appuntamento — lista |
 | `icon-star` | Festività / Giorno speciale — calendario mensile |
 
-Dimensione standard icone: `16px` (inline con testo) / `20px` (pulsanti) / `24px` (intestazioni viste) / `40px` (icona meteo banner).
+Dimensione standard icone: `16px` (inline con testo) / `20px` (pulsanti) / `24px` (intestazioni viste) / `48px` (icona meteo banner).
 
 ---
 
@@ -112,10 +127,10 @@ Quattro fasce orizzontali impilate:
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  BANNER METEO  (altezza fissa: 148px)                    │
+│  BANNER METEO  (altezza fissa: 186px)                    │
 │  Data · Icona meteo · Temperatura attuale · Max/Min      │
 │  ──────────────────────────────────────────────────────  │
-│  Previsioni biorarie: 6 celle · Icona 24px · Temp        │
+│  Previsioni biorarie: 6 celle · Icona 48px · Temp        │
 ├──────────────────────────────────────────────────────────┤
 │  CALENDARIO MENSILE  (altezza fissa: 462px)              │
 │  Vista mensile visiva — nessuna interazione              │
@@ -132,7 +147,7 @@ Quattro fasce orizzontali impilate:
 
 **Banner Meteo:** `border-bottom: 2px solid var(--color-rule-strong)`.  
 **Calendario Mensile:** `border-bottom: 1px solid var(--color-rule-strong)`.  
-**Lista Appuntamenti:** occupa l'altezza rimanente (`height − 162px − 462px − 40px`). Non scrolla.  
+**Lista Appuntamenti:** occupa l'altezza rimanente (`height − 186px − 560px − 46px`). Non scrolla.  
 **Footer:** `border-top: 1px solid var(--color-rule)`. Mostra solo gli indicatori di stato a destra (nessun pulsante di navigazione).
 
 ### Layout Landscape
@@ -143,7 +158,7 @@ Due colonne affiancate + footer full-width:
 ┌───────────────────────────────┬────────────────────────────────────────┐
 │  COLONNA SINISTRA  (38%)        │  COLONNA DESTRA  (62%)                 │
 │                                 │                                        │
-│  METEO  (162px)                 │  LISTA APPUNTAMENTI                    │
+│  METEO  (186px)                 │  LISTA APPUNTAMENTI                    │
 │  Data · Icona · Temperatura     │  (altezza intera content area)         │
 │  Previsioni biorarie (6 celle)  │                                        │
 │  ─────────────────────────────  │                                        │
@@ -199,14 +214,14 @@ Banner superiore in portrait, sezione superiore della colonna sinistra in landsc
 
 Il lato destro è un blocco a tre sotto-colonne allineato al margine destro:
 
-- **Sotto-colonna 1 (sinistra):** icona condizione meteo Tabler `40px`, `currentColor`, centrata verticalmente nel banner
+- **Sotto-colonna 1 (sinistra):** icona condizione meteo Tabler `48px`, tintata con la palette colori meteo (`--weather-*`), centrata verticalmente nel banner
 - **Sotto-colonna 2 (centro):** temperatura attuale, `--font-body`, `40px`, `font-weight: 600`, `--color-ink`, centrata verticalmente, anchor destra
 - **Sotto-colonna 3 (destra):** max e min incolonnati verticalmente, `--font-body`, `--text-xs` (11px), `--color-ink-muted`, entrambi anchor destra; `↑max` a 1/3 dell'altezza del banner, `↓min` a 2/3
 - **Lato sinistro:** data, `--font-display`, `--text-lg`, formato `"Giorno, DD Mese YYYY"`, `--color-ink`
 - Sfondo: `--color-bg` — nessun sfondo alternato nel banner
 - Aggiornamento dati meteo: ogni ora (TTL cache provider)
 
-**Fascia previsioni biorarie** (sotto la fascia data/meteo, altezza 72px):
+**Fascia previsioni biorarie** (sotto la fascia data/meteo, altezza 96px):
 
 ```
 ┌────────┬────────┬────────┬────────┬────────┬────────┐
@@ -219,7 +234,7 @@ Il lato destro è un blocco a tre sotto-colonne allineato al margine destro:
 
 - **6 celle** di larghezza uguale (`width / 6`): fascia corrente + 5 successive (ogni 2 ore)
 - **Orario** (riga 1): `--font-mono`, `--text-xs` (11px), `--color-ink-muted`, centrato in cella
-- **Icona** (riga 2): Tabler 24px, tintata `--color-ink`, centrata in cella
+- **Icona** (riga 2): Tabler `48px`, tintata con la palette colori meteo (`--weather-*`), centrata in cella
 - **Temperatura** (riga 3): `--font-body` SemiBold, `--text-xs` (11px), `--color-ink`, centrata in cella
 - **Triangolo** (▼, solo cella corrente): triangolo pieno 10×8px, `--color-ink`, ancorato al bordo basso della fascia, centrato orizzontalmente
 - **Separatori verticali** tra celle: `1px solid var(--color-rule)` (non sui bordi estremi)
@@ -255,51 +270,51 @@ Il calendario mensile è **puramente visivo** — non risponde a nessuna interaz
 
 #### Sezione Lista Appuntamenti
 
-Lista in stile Agenda, ispirata a Google Calendar. La data di ogni giorno è visualizzata in una **colonna sinistra fissa** (52px), non come separatore orizzontale. Il primo evento di ogni giornata mostra il numero del giorno e l'abbreviazione mese+giorno; gli eventi successivi della stessa giornata lasciano la colonna data vuota. Ogni riga ha un **bordo colorato verticale sul lato destro** che indica il calendario di appartenenza. La paginazione Su/Giù sostituisce l'intera pagina — nessuno scroll CSS.
+Lista in stile Agenda, ispirata a Google Calendar. La data di ogni giorno è visualizzata in una **colonna sinistra fissa** (84px), non come separatore orizzontale. Il primo evento di ogni giornata mostra il numero del giorno e il giorno della settimana abbreviato sulla stessa riga del titolo; gli eventi successivi della stessa giornata lasciano la colonna data vuota. Ogni riga ha un **pallino colorato** all'inizio dell'area orario che indica il calendario di appartenenza. La paginazione Su/Giù sostituisce l'intera pagina — nessuno scroll CSS.
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
-│  24  │  15:00  │  Riunione team                             ▌  │
-│  MAG,DOM  │  16:00  │  Sala B                                  │
-│      │  ────────────────────────────────────────────────────  │
-│      │  17:30  │  Dentista                                  ▌  │
-│      │  18:30  │                                               │
+│  24 DOM      ●  Tutto il giorno   Riunione team                 │
+│             ●  15:00 - 16:00    Dentista                      │
+│           ──────────────────────────────────────────────────  │
+│             ●  17:30 - 18:30    Appuntamento                  │
+│                Sala B                                          │
 ├────────────────────────────────────────────────────────────────┤
-│  25  │  09:00  │  Videocall con cliente                     ▌  │
-│  MAG,LUN  │  10:00  │                                          │
-│      │  ────────────────────────────────────────────────────  │
-│  12  │  12:30  │  Pranzo con Marco                          ▌  │
-│      │  13:30  │  Ristorante Al Porto                          │
+│  25 LUN      ●  09:00 - 10:00    Videocall con cliente          │
+│             ●  12:30 - 13:30    Pranzo con Marco               │
+│                Ristorante Al Porto                             │
 └────────────────────────────────────────────────────────────────┘
 ```
 
+> Il piccolo spazio prima del pallino (8px) è il padding sinistra dell'area orario; un padding uguale (8px) separa la fine dell'orario dall'inizio del titolo.
+
 **Regole visive:**
 
-- **Colonna data (52px, sinistra):**
-  - Numero giorno: `--font-body`, `--text-md` (18px), `--color-ink`, allineato a destra nella colonna
-  - Abbreviazione mese+giorno: `--font-body` SemiBold, `--text-xs` (11px), `--color-ink-muted`, formato `"MAG, DOM"`, su riga separata sotto il numero
+- **Colonna data (84px, sinistra):**
+  - **Riga singola** alla stessa altezza del titolo evento (`y = y0+30`): numero giorno (`--font-body`, `--text-md`, `--color-ink`) + giorno settimana abbreviato (`--font-body` SemiBold, `--text-xs`, `--color-ink-muted`), entrambi allineati a destra nella colonna
+  - Il numero giorno è posizionato a un offset fisso dalla destra della colonna, calcolato sulla larghezza massima delle abbreviazioni (`LUN…DOM`) — garantisce l'allineamento verticale tra righe diverse
+  - Formato: `"31"` + `"DOM"` (solo giorno abbreviato, nessun mese)
   - Mostrata solo per il **primo evento di ogni giornata**; le righe successive lasciano la colonna vuota
-  - I due elementi sono centrati verticalmente nella riga come blocco unitario
-- **Colonna orario (56px):**
-  - Orario inizio: `--font-mono`, `--text-sm`, `--color-ink-muted`, allineato a destra, posizionato sopra la mezzeria verticale della riga
-  - Orario fine: `--font-mono`, `--text-sm`, `--color-ink-faint`, allineato a destra, posizionato sotto la mezzeria verticale della riga
-  - `border-right: 1px solid var(--color-rule)` separa la colonna orario dal contenuto
-- **Evento tutto-il-giorno:** al posto dell'orario, testo `"Tutto il giorno"` in `--color-ink-faint`, centrato verticalmente nella riga
+- **Colonna orario + pallino (200px):**
+  - **Padding sinistro 8px** tra il bordo destro della colonna data e il centro-sinistra del pallino
+  - Pallino (● 14px diametro): cerchio pieno, centrato verticalmente nella riga; colorato con `evt.color`; se non definito usa `--color-rule`
+  - Orario: `--font-mono`, `--text-xs`, `--color-ink`, allineato a sinistra a destra del pallino (gap 6px), centrato verticalmente; formato `"HH:MM - HH:MM"` su riga singola
+  - **Padding destro 8px** tra il bordo destro della colonna orario e il titolo dell'evento
+- **Evento tutto-il-giorno:** al posto dell'orario, testo `"Tutto il giorno"` in `--font-mono`, `--text-xs`, `--color-ink`, a destra del pallino, centrato verticalmente nella riga
 - **Contenuto (titolo + location):**
   - Nome evento: `--font-body`, `--text-base`, `font-weight: 600`, `--color-ink`
   - Location (se presente): `--text-xs`, `--color-ink-muted`, su riga separata sotto il nome
-- **Separatore tra eventi:** `1px solid var(--color-rule)` sopra ogni riga che NON è la prima della giornata; la prima riga di ogni giornata non ha separatore sopra (la colonna data funge da separatore visivo)
-- **Bordo colorato a destra (3px):** rettangolo verticale all'estremo destro di ogni riga, colorato con il colore del calendario sorgente (`evt.color`); se il colore non è definito, usa `--color-rule`
+- **Separatore tra eventi:** `1px solid var(--color-rule-strong)` sopra la **prima riga di ogni giornata** (confine di giorno); gli eventi successivi della stessa giornata non hanno separatore — il margine superiore di 30px e la colonna data forniscono separazione visiva sufficiente, anche su display e-ink BW dove `--color-rule` (#CCCCAA, luminanza ≈ 200) scompare durante la quantizzazione
 - **Lista vuota:** testo `"Nessun appuntamento"` centrato, `--color-ink-faint`, `--text-sm`
 
 **Altezze riga (dinamiche):**
 
 | Tipo riga | Formula | Esempio |
 |---|---|---|
-| Evento senza location e senza descrizione | 40 px | 40 px |
-| Evento con solo location | 40 + 14 = 54 px | 54 px |
-| Evento con N righe di descrizione (senza location) | 40 + N × 15 + 8 px | 1 riga → 63 px, 3 righe → 93 px |
-| Evento con location e N righe di descrizione | 40 + 14 + N × 15 + 8 px | 1 riga → 77 px, 10 righe → 212 px |
+| Evento senza location e senza descrizione | 60 px | 60 px |
+| Evento con solo location | 60 + 14 = 74 px | 74 px |
+| Evento con N righe di descrizione (senza location) | 60 + N × 22 + 8 px | 1 riga → 90 px, 3 righe → 134 px |
+| Evento con location e N righe di descrizione | 60 + 14 + N × 22 + 8 px | 1 riga → 104 px, 10 righe → 312 px |
 
 I 8 px finali (solo quando è presente una descrizione) aggiungono un respiro visivo inferiore equivalente allo spazio bianco sopra il glifo del titolo.
 
@@ -380,8 +395,8 @@ Quando `display.type = "eink"`:
 
   /* Struttura */
   --height-banner-main:   90px;      /* Fascia superiore: data e meteo corrente */
-  --height-banner-hourly: 58px;      /* Fascia inferiore: previsioni biorarie */
-  --height-banner:        148px;     /* Banner meteo totale (portrait) / sezione meteo (landscape) */
+  --height-banner-hourly: 96px;      /* Fascia inferiore: previsioni biorarie */
+  --height-banner:        186px;     /* Banner meteo totale (portrait) / sezione meteo (landscape) */
   --height-calendar: 462px;     /* Calendario mensile: 4 righe evento per cella (solo portrait) */
   --height-footer:   40px;
   --col-left-ratio:  38%;       /* Larghezza colonna sinistra in landscape */
@@ -403,8 +418,8 @@ Valori pixel specifici per i display supportati:
 | HDMI portrait (ruotato) | 600×1024 | `portrait` | — | — | 374px altezza |
 | E-ink portrait (ruotato) | 1200×1600 | `portrait` | — | — | 950px altezza |
 
-Calcoli portrait: lista = `height − 148px − 462px − 40px`.  
-Calcoli landscape: lista height = `height − 40px`; colonna sinistra = `width × 0.38`.
+Calcoli portrait: lista = `height − 186px − 560px − 46px`.  
+Calcoli landscape: lista height = `height − 46px`; colonna sinistra = `width × 0.50`.
 
 ---
 

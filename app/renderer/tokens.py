@@ -43,8 +43,8 @@ TEXT_2XL: int = 76
 # ---------------------------------------------------------------------------
 
 BANNER_MAIN_HEIGHT: int = 90        # fascia superiore con data e meteo corrente
-BANNER_HOURLY_HEIGHT: int = 62     # fascia inferiore con previsioni biorarie
-BANNER_HEIGHT: int = BANNER_MAIN_HEIGHT + BANNER_HOURLY_HEIGHT  # altezza totale banner (152px)
+BANNER_HOURLY_HEIGHT: int = 96     # fascia inferiore con previsioni biorarie
+BANNER_HEIGHT: int = BANNER_MAIN_HEIGHT + BANNER_HOURLY_HEIGHT  # altezza totale banner (186px)
 CALENDAR_HEIGHT: int = 560    # mini-calendario mensile — 4 righe evento per cella su griglie da 6 settimane (solo portrait)
 FOOTER_HEIGHT: int = 46
 COL_LEFT_RATIO: float = 0.50  # larghezza colonna sinistra in layout landscape
@@ -91,6 +91,18 @@ COLOR_ACCENT: str = "#1A1A1A"
 COLOR_HOLIDAY: str = "#444444"
 COLOR_RULE: str = "#CCCCAA"
 COLOR_RULE_STRONG: str = "#333333"
+
+# ---------------------------------------------------------------------------
+# Weather icon colour palette
+# ---------------------------------------------------------------------------
+
+WEATHER_ICON_COLORS: dict[str, str] = {
+    "sun":        "#F5A623",  # giallo-arancio (sole, cielo sereno)
+    "cloud":      "#9CA3AF",  # grigio (nuvola, nebbia, coperto)
+    "cloud-rain": "#3B82F6",  # blu (pioggia, rovesci, temporale)
+    "snowflake":  "#93C5FD",  # azzurro chiaro (neve, grandine)
+}
+
 
 def get_palette() -> dict[str, str]:
     """Return the day colour palette as a flat dictionary.

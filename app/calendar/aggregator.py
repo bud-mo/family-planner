@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from datetime import datetime
 
 from app.calendar.base import CalendarEvent, CalendarProvider
@@ -13,6 +13,10 @@ from app.calendar.ics_provider import IcsProvider
 from app.config import CalendarConfig
 
 logger = logging.getLogger(__name__)
+
+# Maximum time to wait for a single calendar provider to respond.
+# Must exceed the longest per-provider HTTP timeout (IcalProvider uses 15 s).
+_FETCH_TIMEOUT_SECONDS: int = 45
 
 
 def _make_provider(config: CalendarConfig) -> CalendarProvider:
@@ -82,7 +86,13 @@ class CalendarAggregator:
             }
             for future, provider in futures.items():
                 try:
-                    all_events.extend(future.result())
+                    all_events.extend(future.result(timeout=_FETCH_TIMEOUT_SECONDS))
+                except FutureTimeoutError:
+                    logger.error(
+                        "CalendarAggregator: provider %r timed out after %ds — skipping",
+                        type(provider).__name__,
+                        _FETCH_TIMEOUT_SECONDS,
+                    )
                 except Exception as exc:
                     logger.error(
                         "CalendarAggregator: provider %r failed: %s",

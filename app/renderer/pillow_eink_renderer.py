@@ -120,6 +120,11 @@ class PillowEinkRenderer:
         self._font_date_num: ImageFont.FreeTypeFont = self._load_font(FONT_BODY_REGULAR, TEXT_MD)
         self._font_label: ImageFont.FreeTypeFont = self._load_font(FONT_BODY_SEMIBOLD, TEXT_XS)
         self._font_event: ImageFont.FreeTypeFont = self._load_font(FONT_BODY_REGULAR, TEXT_XS)
+        # Pre-compute the widest Italian weekday abbreviation so the day number always
+        # sits at the same x position regardless of which day is rendered.
+        self._date_abbrev_slot_w: int = (
+            max(int(self._font_label.getlength(a)) for a in _DAY_NAMES_IT) + 2
+        )
         self._font_mono: ImageFont.FreeTypeFont = self._load_font(FONT_MONO_REGULAR, TEXT_SM)
         self._font_mono_xs: ImageFont.FreeTypeFont = self._load_font(FONT_MONO_REGULAR, TEXT_XS)
         self._font_temp: ImageFont.FreeTypeFont = self._load_font(FONT_BODY_SEMIBOLD, 40)
@@ -194,15 +199,15 @@ class PillowEinkRenderer:
             f"{today.day} {_MONTH_NAMES_IT[today.month - 1]} {today.year}"
         )
         # In narrow landscape columns, shorten the date to prevent overflow onto weather data
-        _max_date_w = int(w * 0.55)
+        _max_date_w = int(w * 0.65)
         if draw.textlength(date_str, font=self._font_display) > _max_date_w:
             date_str = (
-                f"{_DAY_NAMES_IT[today.weekday()]}, "
+                f"{_DAY_NAMES_FULL_IT[today.weekday()]}, "
                 f"{today.day} {_MONTH_NAMES_SHORT_IT[today.month - 1]} {today.year}"
             )
             if draw.textlength(date_str, font=self._font_display) > _max_date_w:
                 date_str = (
-                    f"{_DAY_NAMES_IT[today.weekday()]}, "
+                    f"{_DAY_NAMES_FULL_IT[today.weekday()]}, "
                     f"{today.day} {_MONTH_NAMES_SHORT_IT[today.month - 1]}"
                 )
         y_mid = y0 + BANNER_MAIN_HEIGHT // 2
@@ -322,19 +327,19 @@ class PillowEinkRenderer:
                     width=1,
                 )
 
-            # Condition icon (24px) — top of cell
+            # Condition icon (40px) — top of cell
             if slot.condition_icon is not None:
-                icon_img = load_icon(slot.condition_icon, 24)
+                icon_img = load_icon(slot.condition_icon, 40)
                 if icon_img is not None:
                     _, _, _, alpha = icon_img.split()
                     tinted = Image.new("RGBA", icon_img.size, (r_ink, g_ink, b_ink, 255))
                     tinted.putalpha(alpha)
-                    icon_x = cx - 12
+                    icon_x = cx - 20
                     icon_y = y0 + int(_h * 0.09)
                     img.paste(tinted, (icon_x, icon_y), mask=tinted)
 
             # Time label — left-aligned, bottom of header band
-            _text_y = y0 + int(_h * 0.76)
+            _text_y = y0 + int(_h * 0.88)
             draw.text(
                 (cell_x + 4, _text_y),
                 f"{slot.hour:02d}:00",
@@ -582,11 +587,12 @@ class PillowEinkRenderer:
             draw.line([(x0, y0), (x0, y0 + h)], fill=palette["RULE_STRONG"], width=1)
 
         padding_x = 12
-        date_col_w = 52
-        event_row_h = 40
-        event_row_loc_h = 54
-        event_row_loc_desc_h = 68
-        time_col_w = 56
+        date_col_w = 84
+        event_row_h = 60
+        event_row_loc_h = 74
+        event_row_loc_desc_h = 88
+        # time_col_w budget: left_pad(8) + dot(14) + gap(6) + text("Tutto il giorno"=165px) + right_gap(≥7) = 200
+        time_col_w = 200
 
         # Group events across the full 30-day window (matches events_range_for_state)
         _WINDOW_DAYS = 30
@@ -645,8 +651,9 @@ class PillowEinkRenderer:
                 wrapped = self._wrap_rich_lines(rich_lines, _desc_max_w, max_lines=max_desc_lines)
                 if wrapped:
                     # 8 px bottom margin ≈ visual whitespace above title glyph
-                    return 40 + (14 if has_loc else 0) + len(wrapped) * 15 + 8
-            return 40 + (14 if has_loc else 0)
+                    # line_h must match _draw_rich_description: font_desc.size + 4 = TEXT_XS + 4
+                    return 60 + (14 if has_loc else 0) + len(wrapped) * (TEXT_XS + 4) + 8
+            return 60 + (14 if has_loc else 0)
 
         for day, evt in items:
             if in_overflow:
@@ -672,8 +679,8 @@ class PillowEinkRenderer:
 
                 has_desc = bool(getattr(evt, "description", None))
                 if has_desc:
-                    # Max desc lines that fit: base_h + N*15 + 8 <= available
-                    max_lines_fit = max(0, (available - base_h - 8) // 15)
+                    # Max desc lines that fit: base_h + N*(TEXT_XS+4) + 8 <= available
+                    max_lines_fit = max(0, (available - base_h - 8) // (TEXT_XS + 4))
                     max_lines_fit = min(10, max_lines_fit)
                 else:
                     max_lines_fit = 0
@@ -734,30 +741,31 @@ class PillowEinkRenderer:
         #   - first rendered row: none
         #   - day boundary: full-width (covers date column area)
         #   - same-day continuation: starts after the date column
-        if draw_top_separator:
-            sep_x_start = x0 + padding_x if first_in_day else x0 + padding_x + date_col_w
-            draw.line([(sep_x_start, y0), (x0 + w, y0)], fill=palette["RULE"])
+        if draw_top_separator and first_in_day:
+            # Day-boundary separator: full-width, dark — survives e-ink BW quantisation.
+            # Same-day event continuations use no line; the 30 px top margin provides
+            # sufficient visual separation without relying on near-white RULE colour.
+            draw.line([(x0 + padding_x, y0), (x0 + w, y0)], fill=palette["RULE_STRONG"], width=1)
 
         # --- Date column ---
         if day_date is not None:
-            # Vertically centre the two-line block (day number + abbreviation)
-            date_content_h = TEXT_MD + 4 + TEXT_XS
-            date_top = y0 + (row_h - date_content_h) // 2
-            num_y = date_top + TEXT_MD // 2
-            label_y = date_top + TEXT_MD + 4 + TEXT_XS // 2
+            # Single line aligned with the event title (y0+30): "31 DOM" style.
+            # A fixed slot for the abbreviation (self._date_abbrev_slot_w) keeps
+            # the day number at a consistent x across all rendered rows.
             date_col_right = x0 + padding_x + date_col_w - 4
+            day_abbrev = _DAY_NAMES_IT[day_date.weekday()]
             draw.text(
-                (date_col_right, num_y),
-                str(day_date.day),
-                font=self._font_date_num,
-                fill=palette["INK"],
+                (date_col_right, y0 + 30),
+                day_abbrev,
+                font=self._font_label,
+                fill=palette["INK_MUTED"],
                 anchor="rm",
             )
             draw.text(
-                (date_col_right, label_y),
-                f"{_MONTH_NAMES_SHORT_IT[day_date.month - 1]}, {_DAY_NAMES_IT[day_date.weekday()]}",
-                font=self._font_label,
-                fill=palette["INK_MUTED"],
+                (date_col_right - self._date_abbrev_slot_w - 5, y0 + 30),
+                str(day_date.day),
+                font=self._font_date_num,
+                fill=palette["INK"],
                 anchor="rm",
             )
 
@@ -765,39 +773,46 @@ class PillowEinkRenderer:
         time_area_x = x0 + padding_x + date_col_w
         sep_x = time_area_x + time_col_w
 
-        # Vertical position: title is centred in the first 40 px block (fixed)
-        time_y = y0 + 20
+        # Vertical position: title is centred in the first 60 px block (fixed)
+        time_y = y0 + 30
 
-        half_lh = (TEXT_SM + 5) // 2
-
-        if not evt.all_day:
-            local_start = evt.start.astimezone(self._tz) if self._tz else evt.start
-            local_end = evt.end.astimezone(self._tz) if self._tz else evt.end
-            draw.text(
-                (sep_x - 4, time_y - half_lh),
-                local_start.strftime("%H:%M"),
-                font=self._font_mono,
-                fill=palette["INK_MUTED"],
-                anchor="rm",
-            )
-            draw.text(
-                (sep_x - 4, time_y + half_lh),
-                local_end.strftime("%H:%M"),
-                font=self._font_mono,
-                fill=palette["INK_FAINT"],
-                anchor="rm",
-            )
-
-        # Vertical separator between time column and content — coloured with calendar colour
+        # Coloured dot — calendar-colour indicator at the left of the time area
         raw_color = getattr(evt, "color", "") or ""
         if raw_color.startswith("#") and len(raw_color) == 7:
             try:
-                sep_rgb: tuple[int, int, int] = self._hex_to_rgb(raw_color)
+                dot_rgb: tuple[int, int, int] = self._hex_to_rgb(raw_color)
             except ValueError:
-                sep_rgb = self._hex_to_rgb(palette["RULE"])
+                dot_rgb = self._hex_to_rgb(palette["RULE"])
         else:
-            sep_rgb = self._hex_to_rgb(palette["RULE"])
-        draw.line([(sep_x, y0 + 4), (sep_x, y0 + row_h - 4)], fill=sep_rgb, width=2)
+            dot_rgb = self._hex_to_rgb(palette["RULE"])
+        dot_r = 7
+        time_col_pad = 8  # padding between date col and dot, mirrored on right (sep_x + 8)
+        dot_cx = time_area_x + time_col_pad + dot_r
+        draw.ellipse(
+            [(dot_cx - dot_r, time_y - dot_r), (dot_cx + dot_r, time_y + dot_r)],
+            fill=dot_rgb,
+        )
+
+        # Time text — single line to the right of the dot
+        time_text_x = time_area_x + time_col_pad + dot_r * 2 + 6
+        if evt.all_day:
+            draw.text(
+                (time_text_x, time_y),
+                "Tutto il giorno",
+                font=self._font_mono_xs,
+                fill=palette["INK"],
+                anchor="lm",
+            )
+        else:
+            local_start = evt.start.astimezone(self._tz) if self._tz else evt.start
+            local_end = evt.end.astimezone(self._tz) if self._tz else evt.end
+            draw.text(
+                (time_text_x, time_y),
+                f"{local_start.strftime('%H:%M')} - {local_end.strftime('%H:%M')}",
+                font=self._font_mono_xs,
+                fill=palette["INK"],
+                anchor="lm",
+            )
 
         # --- Content ---
         title_x = sep_x + 8
@@ -808,12 +823,12 @@ class PillowEinkRenderer:
         self._draw_mixed(draw, img, title_segs, title_x, time_y, self._font_body, palette["INK"], icon_size_title)
 
         icon_size_sub = int(self._font_label.size * 0.75)
-        # Location line: centred in a 14 px block immediately after the 40 px title block
-        loc_y: int | None = (y0 + 47) if evt.location else None
+        # Location line: centred in a 14 px block immediately after the 60 px title block
+        loc_y: int | None = (y0 + 67) if evt.location else None
         # Description block starts after location (or after title if no location)
         desc_block_y: int | None = None
         if evt.description and max_desc_lines > 0:
-            desc_block_y = y0 + 40 + (14 if evt.location else 0)
+            desc_block_y = y0 + 60 + (14 if evt.location else 0)
 
         if evt.location and loc_y is not None:
             loc_segs = split_text_emoji(evt.location)
