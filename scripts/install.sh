@@ -12,7 +12,7 @@ cd "$PROJECT_DIR"
 echo "=== Family Planner — Install ==="
 
 # 1. System dependencies
-echo "[1/5] Installing system dependencies..."
+echo "[1/7] Installing system dependencies..."
 sudo apt-get update -qq
 sudo apt-get install -y \
     python3-pip \
@@ -25,18 +25,30 @@ sudo apt-get install -y \
     python3-gpiozero \
     --no-install-recommends
 
-# 2. Create virtual environment
-echo "[2/5] Creating virtual environment..."
+# 2. Enable I2C and SPI interfaces
+echo "[2/7] Enabling I2C interface..."
+sudo raspi-config nonint do_i2c 0
+echo "    I2C enabled."
+
+echo "[3/7] Enabling SPI interface..."
+sudo raspi-config nonint do_spi 0
+echo "    SPI enabled."
+echo "    NOTE: I2C and SPI take effect at next boot (dtparam written to /boot/config.txt)."
+echo "    To activate immediately without reboot, run:"
+echo "      sudo modprobe i2c-dev && sudo dtoverlay spi0-2cs"
+
+# 4. Create virtual environment
+echo "[4/7] Creating virtual environment..."
 python3 -m venv venv
 source venv/bin/activate
 
-# 3. Install Python dependencies
-echo "[3/5] Installing Python packages..."
+# 5. Install Python dependencies
+echo "[5/7] Installing Python packages..."
 pip install --upgrade pip --quiet
 pip install -r requirements.txt --quiet
 
-# 4. Copy systemd service
-echo "[4/5] Installing systemd service..."
+# 6. Copy systemd service
+echo "[6/7] Installing systemd service..."
 SERVICE_SRC="$PROJECT_DIR/systemd/family-planner.service"
 SERVICE_DST="/etc/systemd/system/family-planner.service"
 
@@ -48,8 +60,8 @@ else
     echo "    WARNING: $SERVICE_SRC not found, skipping service installation."
 fi
 
-# 5. Secure config file
-echo "[5/5] Securing config file permissions..."
+# 7. Secure config file
+echo "[7/7] Securing config file permissions..."
 CONFIG_FILE="$PROJECT_DIR/config.yaml"
 if [[ -f "$CONFIG_FILE" ]]; then
     chmod 600 "$CONFIG_FILE"

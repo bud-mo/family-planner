@@ -193,6 +193,18 @@ class PillowEinkRenderer:
             f"{_DAY_NAMES_FULL_IT[today.weekday()]}, "
             f"{today.day} {_MONTH_NAMES_IT[today.month - 1]} {today.year}"
         )
+        # In narrow landscape columns, shorten the date to prevent overflow onto weather data
+        _max_date_w = int(w * 0.55)
+        if draw.textlength(date_str, font=self._font_display) > _max_date_w:
+            date_str = (
+                f"{_DAY_NAMES_IT[today.weekday()]}, "
+                f"{today.day} {_MONTH_NAMES_SHORT_IT[today.month - 1]} {today.year}"
+            )
+            if draw.textlength(date_str, font=self._font_display) > _max_date_w:
+                date_str = (
+                    f"{_DAY_NAMES_IT[today.weekday()]}, "
+                    f"{today.day} {_MONTH_NAMES_SHORT_IT[today.month - 1]}"
+                )
         y_mid = y0 + BANNER_MAIN_HEIGHT // 2
         draw.text(
             (x0 + 12, y_mid),
@@ -223,7 +235,7 @@ class PillowEinkRenderer:
             if has_maxmin:
                 # Centre the pair around banner midline — simulate justify-content: space-evenly.
                 # half_lh ≈ half the visual line-height of font_label (TEXT_XS=11 + 5px leading → 16px → 8px half).
-                _half_lh = (TEXT_XS + 5) // 2  # 8px for TEXT_XS=11
+                _half_lh = (TEXT_XS + 5) // 2  # half visual line-height of font_label
                 y_max = y_mid - _half_lh
                 y_min = y_mid + _half_lh
                 draw.text(
@@ -285,11 +297,11 @@ class PillowEinkRenderer:
     ) -> None:
         """Render the 6-cell bihourly forecast strip inside *rect*.
 
-        Layout per cell (72px total height)::
+        Layout per cell (proportional to _h)::
 
-            y+5   icona 24px (centrata)
-            y+33  orario (sinistra) · temperatura (destra) — baseline a y+44
-            y+48  chevron-up indicatore fascia corrente (solo cella 0)
+            y+9%  icona 24px (centrata)
+            y+76% orario (sinistra) · temperatura (destra) — baseline
+            y-10  chevron-up indicatore fascia corrente (solo cella 0)
         """
         if not weather.hourly_forecast:
             return
@@ -318,12 +330,13 @@ class PillowEinkRenderer:
                     tinted = Image.new("RGBA", icon_img.size, (r_ink, g_ink, b_ink, 255))
                     tinted.putalpha(alpha)
                     icon_x = cx - 12
-                    icon_y = y0 + 5
+                    icon_y = y0 + int(_h * 0.09)
                     img.paste(tinted, (icon_x, icon_y), mask=tinted)
 
             # Time label — left-aligned, bottom of header band
+            _text_y = y0 + int(_h * 0.76)
             draw.text(
-                (cell_x + 4, y0 + 44),
+                (cell_x + 4, _text_y),
                 f"{slot.hour:02d}:00",
                 font=self._font_mono_xs,
                 fill=palette["INK_MUTED"],
@@ -333,7 +346,7 @@ class PillowEinkRenderer:
             # Temperature — top row, right-aligned, bottom of header band
             if slot.temp is not None:
                 draw.text(
-                    (cell_x + cell_w - 4, y0 + 44),
+                    (cell_x + cell_w - 4, _text_y),
                     f"{slot.temp:.0f}°",
                     font=self._font_label,
                     fill=palette["INK"],
@@ -398,8 +411,8 @@ class PillowEinkRenderer:
         N_ROWS = 5
 
         # No top month header — the in-grid month separator provides context.
-        dow_header_h = 16
-        separator_h = 16  # height reserved for each between-row month separator
+        dow_header_h = 24
+        separator_h = 24  # height reserved for each between-row month separator
 
         # DOW header
         dow_y = y0 + dow_header_h // 2
@@ -427,8 +440,8 @@ class PillowEinkRenderer:
         cell_h = (grid_h - total_sep_h) / N_ROWS
 
         # Cell layout constants
-        day_area_h = 18    # height reserved for the day number at the top of each cell
-        event_line_h = 13  # TEXT_XS (11px) + 2px gap
+        day_area_h = 24    # height reserved for the day number at the top of each cell
+        event_line_h = 20  # TEXT_XS (18px) + 2px gap
         cell_pad_x = 3     # horizontal margin inside cell for event text
         max_event_lines = 4  # show up to 4 events; if more, show 3 + "+N"
 

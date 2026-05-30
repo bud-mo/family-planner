@@ -49,7 +49,7 @@ from app.renderer.state import NavigationState
 from app.server.app import create_app
 
 if TYPE_CHECKING:
-    from app.display.eink import EinkDisplay
+    from app.display.eink import EinkDisplay, InkyDisplay
     from app.renderer.eink_renderer import EinkRenderer
     from app.weather.provider import WeatherProvider
 
@@ -168,16 +168,20 @@ def main() -> None:
     # ------------------------------------------------------------------
     # Display initialisation
     # ------------------------------------------------------------------
-    display_obj: EinkDisplay | None = None
+    display_obj: "EinkDisplay | InkyDisplay | None" = None
     eink_stop_event: threading.Event | None = None
     _hdmi_ref: list = [None]
 
     if config.display.type == "eink":
-        from app.display.eink import EinkDisplay
         from app.renderer.eink_renderer import EinkRenderer
 
         eink_renderer = EinkRenderer(config.display)
-        display_obj = EinkDisplay(config.display)
+        if config.display.eink_model.startswith("inky_"):
+            from app.display.eink import InkyDisplay
+            display_obj = InkyDisplay(config.display)
+        else:
+            from app.display.eink import EinkDisplay
+            display_obj = EinkDisplay(config.display)
 
         eink_stop_event = threading.Event()
         eink_thread = threading.Thread(

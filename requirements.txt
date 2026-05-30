@@ -11,3 +11,4 @@ icalendar==6.3.2
 pillow==11.3.0
 # playwright install chromium  # run once after pip install
 python-multipart==0.0.20
+inky  # driver Pimoroni Inky Impression — importazione lazy, sicuro su macOS/Linux dev

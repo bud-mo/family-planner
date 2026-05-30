@@ -191,6 +191,11 @@
         <label class="field-label" for="server_port">port</label>
         <input class="field-input" type="number" id="server_port" name="server_port"
                value="{{ config.server.port }}" min="1" max="65535" required />
+
+        <label class="field-label" for="timezone">timezone</label>
+        <input class="field-input" type="text" id="timezone" name="timezone"
+               value="{{ config.timezone }}" placeholder="Europe/Rome"
+               pattern="[A-Za-z_/+-]+" required />
       </div>
     </section>
 
@@ -242,6 +247,7 @@
           <option value="bw"{% if config.display.eink_palette == "bw" %} selected{% endif %}>BW</option>
           <option value="bwr"{% if config.display.eink_palette == "bwr" %} selected{% endif %}>BWR</option>
           <option value="4gray"{% if config.display.eink_palette == "4gray" %} selected{% endif %}>4 Gray</option>
+          <option value="spectra6"{% if config.display.eink_palette == "spectra6" %} selected{% endif %}>Spectra 6</option>
         </select>
 
         <label class="field-label" for="display_eink_dither">dithering</label>
@@ -249,6 +255,13 @@
           <input type="checkbox" id="display_eink_dither" name="display_eink_dither"
                  {% if config.display.eink_dither %}checked{% endif %} />
           <label for="display_eink_dither">Floyd-Steinberg dithering</label>
+        </div>
+
+        <label class="field-label" for="display_show_buttons">show buttons</label>
+        <div class="field-checkbox-row">
+          <input type="checkbox" id="display_show_buttons" name="display_show_buttons"
+                 {% if config.display.show_buttons %}checked{% endif %} />
+          <label for="display_show_buttons">Mostra overlay di navigazione a schermo</label>
         </div>
       </div>
     </section>

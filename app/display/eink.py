@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import importlib
 import logging
+import time
 from typing import Any
 
 from PIL import Image
@@ -144,3 +145,137 @@ class EinkDisplay:
         self._epd = epd_class()
         logger.debug("EinkDisplay: loaded driver waveshare_epd.%s", module_name)
         return self._epd
+
+
+class InkyDisplay:
+    """Pushes a composed ``PIL.Image`` to a Pimoroni Inky e-ink panel.
+
+    Uses the ``inky`` Python library (``pip install inky``) which must be
+    installed on the Raspberry Pi.  On macOS/Linux without the library the
+    module imports cleanly; ``push()`` raises ``RuntimeError`` only when
+    actually called.
+
+    Supported models (via ``eink_model``): ``inky_impression_4``,
+    ``inky_impression_7``, ``inky_impression_13``.  The display is
+    auto-detected at runtime via its onboard EEPROM.
+    """
+
+    def __init__(self, config: DisplayConfig) -> None:
+        self._config = config
+        self._inky: Any | None = None
+
+    # ------------------------------------------------------------------
+    # Public interface
+    # ------------------------------------------------------------------
+
+    def push(self, image: Image.Image) -> None:
+        """Send *image* to the Inky panel.
+
+        Follows the official Pimoroni example: ``set_image(image)`` then ``show()``.
+        Accepts a palette-mode (``"P"``) image as returned by ``EinkRenderer``
+        with ``spectra6`` palette, or an ``"RGB"`` image — the Inky library handles
+        both.  If the image size does not match the hardware-reported panel
+        dimensions it is resized automatically before display.
+
+        Args:
+            image: A ``PIL.Image`` in ``"P"`` or ``"RGB"`` mode.
+
+        Raises:
+            RuntimeError: If the inky library is not installed or the display
+                          cannot be auto-detected.
+        """
+        inky = self._load_driver()
+
+        target_size = (inky.width, inky.height)
+        if image.size != target_size:
+            logger.warning(
+                "InkyDisplay: image size %s does not match panel %s — resizing",
+                image.size,
+                target_size,
+            )
+            # Palette images cannot be scaled with LANCZOS directly; convert
+            # through RGB first.  The Inky library handles RGB colour mapping.
+            rgb = image.convert("RGB")
+            image = rgb.resize(target_size, Image.Resampling.LANCZOS)
+
+        try:
+            logger.info("InkyDisplay: pushing image to panel %s", self._config.eink_model)
+            if self._config.eink_model == "inky_impression_13":
+                # The EL133UF1 driver (Inky Impression 13) has a race condition in
+                # _busy_wait(): the BUSY pin may not have asserted HIGH yet when it is
+                # first sampled after sending a command, causing _busy_wait() to return
+                # in ~0 ms.  This makes _update() send POF immediately after DRF,
+                # cutting off the ACeP refresh cycle before the panel updates.
+                # Fix: shadow _busy_wait on the instance with a 0.5 s pre-sleep so
+                # the pin has time to assert before the first GPIO read, then delegate
+                # to the original polling loop.
+                _original_busy_wait = inky._busy_wait
+
+                def _safe_busy_wait(timeout: float = 40.0) -> None:  # noqa: ANN001
+                    time.sleep(0.5)
+                    _original_busy_wait(timeout)
+
+                inky._busy_wait = _safe_busy_wait
+                try:
+                    try:
+                        inky.set_image(image, saturation=self._config.eink_saturation)
+                    except TypeError:
+                        inky.set_image(image)
+                    inky.show()
+                finally:
+                    # Restore original method so subsequent calls are unaffected.
+                    try:
+                        del inky._busy_wait
+                    except AttributeError:
+                        inky._busy_wait = _original_busy_wait
+            else:
+                try:
+                    inky.set_image(image, saturation=self._config.eink_saturation)
+                except TypeError:
+                    inky.set_image(image)
+                inky.show()
+            logger.info("InkyDisplay: image pushed successfully")
+        except Exception:
+            logger.exception(
+                "InkyDisplay: error during push to panel %s", self._config.eink_model
+            )
+            raise
+
+    def stop(self) -> None:
+        """No-op — the Inky library handles display sleep internally."""
+
+    # ------------------------------------------------------------------
+    # Private
+    # ------------------------------------------------------------------
+
+    def _load_driver(self) -> Any:
+        """Lazily import and initialise the Pimoroni Inky driver via auto-detect.
+
+        Returns:
+            An initialised Inky display object.
+
+        Raises:
+            RuntimeError: If the ``inky`` package is not installed or the
+                          display cannot be auto-detected via EEPROM.
+        """
+        if self._inky is not None:
+            return self._inky
+
+        try:
+            from inky.auto import auto  # type: ignore[import]
+        except ImportError as exc:
+            raise RuntimeError(
+                "InkyDisplay: inky library not installed. "
+                "Run: pip install inky  on the Raspberry Pi."
+            ) from exc
+
+        try:
+            self._inky = auto()
+        except Exception as exc:
+            raise RuntimeError(
+                f"InkyDisplay: failed to auto-detect Inky display: {exc}. "
+                "Ensure the display is connected and its EEPROM is readable."
+            ) from exc
+
+        logger.debug("InkyDisplay: auto-detected Inky display (%s)", self._config.eink_model)
+        return self._inky

@@ -134,7 +134,7 @@ def _parse_config_form(form: Any, existing: AppConfig) -> dict:
             "units": _str("weather_units", "celsius"),
         },
         "calendars": calendars,
-        "timezone": existing.timezone,
+        "timezone": _str("timezone", existing.timezone) or existing.timezone,
     }
 
 

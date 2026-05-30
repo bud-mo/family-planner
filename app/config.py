@@ -25,8 +25,9 @@ class DisplayConfig(BaseModel):
     layout: Literal["portrait", "landscape"] = "landscape"
     show_buttons: bool = False      # show on-screen navigation overlay (for touchscreen / debug)
     eink_model: str = "7in5_V2"
-    eink_palette: Literal["bw", "bwr", "4gray"] = "bw"
+    eink_palette: Literal["bw", "bwr", "4gray", "spectra6"] = "bw"
     eink_dither: bool = True
+    eink_saturation: float = 0.5
 
 
 class CalendarConfig(BaseModel):

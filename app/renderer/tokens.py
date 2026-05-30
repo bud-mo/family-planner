@@ -30,24 +30,24 @@ FONT_MONO_REGULAR = "IBMPlexMono-Regular.ttf"
 # Typographic scale (px)
 # ---------------------------------------------------------------------------
 
-TEXT_XS: int = 11
-TEXT_SM: int = 13
-TEXT_BASE: int = 15
-TEXT_MD: int = 18
-TEXT_LG: int = 24
-TEXT_XL: int = 32
-TEXT_2XL: int = 48
+TEXT_XS: int = 18
+TEXT_SM: int = 21
+TEXT_BASE: int = 24
+TEXT_MD: int = 28
+TEXT_LG: int = 38
+TEXT_XL: int = 50
+TEXT_2XL: int = 76
 
 # ---------------------------------------------------------------------------
 # Layout structure (px)
 # ---------------------------------------------------------------------------
 
-BANNER_MAIN_HEIGHT: int = 90       # fascia superiore con data e meteo corrente
-BANNER_HOURLY_HEIGHT: int = 58    # fascia inferiore con previsioni biorarie
-BANNER_HEIGHT: int = BANNER_MAIN_HEIGHT + BANNER_HOURLY_HEIGHT  # altezza totale banner (148px)
-CALENDAR_HEIGHT: int = 462    # mini-calendario mensile — 4 righe evento per cella su griglie da 6 settimane (solo portrait)
-FOOTER_HEIGHT: int = 40
-COL_LEFT_RATIO: float = 0.38  # larghezza colonna sinistra in layout landscape
+BANNER_MAIN_HEIGHT: int = 90        # fascia superiore con data e meteo corrente
+BANNER_HOURLY_HEIGHT: int = 62     # fascia inferiore con previsioni biorarie
+BANNER_HEIGHT: int = BANNER_MAIN_HEIGHT + BANNER_HOURLY_HEIGHT  # altezza totale banner (152px)
+CALENDAR_HEIGHT: int = 560    # mini-calendario mensile — 4 righe evento per cella su griglie da 6 settimane (solo portrait)
+FOOTER_HEIGHT: int = 46
+COL_LEFT_RATIO: float = 0.50  # larghezza colonna sinistra in layout landscape
 
 # Tipo geometria componente
 Rect = tuple[int, int, int, int]   # (x, y, width, height)
@@ -82,7 +82,7 @@ class WeatherData:
 # Day palette
 # ---------------------------------------------------------------------------
 
-COLOR_BG: str = "#F8F6F0"
+COLOR_BG: str = "#FFFFFF"
 COLOR_BG_ALT: str = "#EEECE6"
 COLOR_INK: str = "#111111"
 COLOR_INK_MUTED: str = "#666666"
