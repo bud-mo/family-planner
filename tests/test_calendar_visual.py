@@ -150,7 +150,7 @@ class TestCaso1GrigliaVuota:
         img, draw = _make_canvas()
         renderer._draw_mini_calendar(draw, (0, 0, _CANVAS_W, _CANVAS_H), state, events, palette)
 
-        out = _save(img, "caso_1_calendario_vuoto.png")
+        out = _save(img, "calendario_caso_1_calendario_vuoto.png")
         assert out.exists()
 
 
@@ -188,7 +188,7 @@ class TestCaso2EventoAllDay:
         img, draw = _make_canvas()
         renderer._draw_mini_calendar(draw, (0, 0, _CANVAS_W, _CANVAS_H), state, events, palette)
 
-        out = _save(img, "caso_2_evento_allday.png")
+        out = _save(img, "calendario_caso_2_evento_allday.png")
         assert out.exists()
 
 
@@ -225,7 +225,7 @@ class TestCaso3EventoOrarioColore:
         img, draw = _make_canvas()
         renderer._draw_mini_calendar(draw, (0, 0, _CANVAS_W, _CANVAS_H), state, events, palette)
 
-        out = _save(img, "caso_3_evento_orario_colore.png")
+        out = _save(img, "calendario_caso_3_evento_orario_colore.png")
         assert out.exists()
 
 
@@ -255,7 +255,7 @@ class TestCaso4OverflowEventi:
         img, draw = _make_canvas()
         renderer._draw_mini_calendar(draw, (0, 0, _CANVAS_W, _CANVAS_H), state, events, palette)
 
-        out = _save(img, "caso_4_overflow_eventi.png")
+        out = _save(img, "calendario_caso_4_overflow_eventi.png")
         assert out.exists()
 
 
@@ -310,7 +310,7 @@ class TestCaso5SeparatoreMese:
         img, draw = _make_canvas()
         renderer._draw_mini_calendar(draw, (0, 0, _CANVAS_W, _CANVAS_H), state, events, palette)
 
-        out = _save(img, "caso_5_separatore_mese.png")
+        out = _save(img, "calendario_caso_5_separatore_mese.png")
         assert out.exists()
 
 
@@ -372,5 +372,5 @@ class TestCaso6SchermolargoConBordi:
             draw, (0, 0, _CANVAS_W_WIDE, _CANVAS_H), state, events, palette
         )
 
-        out = _save(img, "caso_6_schermo_largo_bordi.png")
+        out = _save(img, "calendario_caso_6_schermo_largo_bordi.png")
         assert out.exists()

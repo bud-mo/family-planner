@@ -435,7 +435,7 @@ class PillowEinkRenderer:
 
         # No top month header — the in-grid month separator provides context.
         dow_header_h = 24
-        separator_h = 24  # height reserved for each between-row month separator
+        separator_h = 40  # height reserved for each between-row month separator
 
         # DOW header
         dow_y = y0 + dow_header_h // 2
@@ -466,11 +466,13 @@ class PillowEinkRenderer:
         day_area_h = 24    # height reserved for the day number at the top of each cell
         event_line_h = 20  # TEXT_XS (18px) + 2px gap
         cell_pad_x = 3     # horizontal margin inside cell for event text
-        max_event_lines = 4  # show up to 4 events; if more, show 3 + "+N"
+        dot_r = 3          # radius of the calendar-colour dot
 
-        # Color border: only on screens wide enough to absorb the 4px overhead per cell
-        show_border = self._size[0] >= 1024
-        text_x_offset = cell_pad_x + 4 if show_border else cell_pad_x  # border(2) + gap(2)
+        # Dynamic overflow limit: how many event lines fit in the available cell area
+        available_event_h = int(cell_h) - day_area_h - 1
+        max_event_lines = max(1, available_event_h // event_line_h)
+
+        text_x_offset = cell_pad_x + dot_r * 2 + 3  # dot_diam(6) + gap(3)
         max_text_w = int(cell_w) - text_x_offset - cell_pad_x
 
         cum_y = grid_top
@@ -510,7 +512,7 @@ class PillowEinkRenderer:
                     event_ink = palette["INK"]
                 else:
                     ink = palette["INK"]
-                    event_ink = palette["INK_MUTED"]
+                    event_ink = palette["INK"] if cell["date"] >= today else palette["INK_MUTED"]
 
                 draw.text(
                     (cx_mid, day_num_cy),
@@ -539,20 +541,18 @@ class PillowEinkRenderer:
                 for line_idx, evt in enumerate(events_to_show):
                     line_top = int(event_area_top + line_idx * event_line_h)
                     line_y = line_top + event_line_h // 2
-                    if show_border:
-                        border_x = int(cx0 + cell_pad_x)
-                        try:
-                            border_color: tuple | None = ImageColor.getrgb(evt.color) if evt.color else None
-                        except (ValueError, AttributeError):
-                            border_color = None
-                        if border_color is not None:
-                            draw.line(
-                                [(border_x, line_top + 1), (border_x, line_top + event_line_h - 2)],
-                                fill=border_color,
-                                width=2,
-                            )
+                    # Coloured dot — consistent with agenda view
+                    try:
+                        dot_fill: tuple = ImageColor.getrgb(evt.color) if evt.color else ImageColor.getrgb(palette["INK_FAINT"])
+                    except (ValueError, AttributeError):
+                        dot_fill = ImageColor.getrgb(palette["INK_FAINT"])
+                    dot_cx = int(cx0 + cell_pad_x) + dot_r
+                    draw.ellipse(
+                        [(dot_cx - dot_r, line_y - dot_r), (dot_cx + dot_r, line_y + dot_r)],
+                        fill=dot_fill,
+                    )
                     text = self._truncate_event_line(
-                        self._format_event_short(evt), self._font_event, max_text_w
+                        evt.title, self._font_event, max_text_w
                     )
                     if text:
                         draw.text(
@@ -567,11 +567,12 @@ class PillowEinkRenderer:
                     overflow_y = (
                         event_area_top + len(events_to_show) * event_line_h + event_line_h // 2
                     )
+                    overflow_fill = palette["INK"] if cell["date"] >= today else palette["INK_FAINT"]
                     draw.text(
-                        (cx0 + cell_pad_x, overflow_y),
+                        (cx0 + text_x_offset, overflow_y),
                         f"+{overflow_count}",
                         font=self._font_event,
-                        fill=palette["INK_FAINT"],
+                        fill=overflow_fill,
                         anchor="lm",
                     )
 
@@ -878,27 +879,17 @@ class PillowEinkRenderer:
         # Top separator
         draw.line([(x0, y0), (x0 + w, y0)], fill=palette["RULE"])
 
-        y_mid = y0 + h // 2
-
-        # Status indicators (right-aligned)
-        status_parts: list[tuple[str, ImageFont.FreeTypeFont]] = [
-            (self._display_type, self._font_label),
-            (self._layout, self._font_label),
-        ]
-        status_parts.append((datetime.now().strftime("%H:%M"), self._font_mono))
-
-        right_x = x0 + w - 12
-        for text, font in reversed(status_parts):
-            bbox = draw.textbbox((0, 0), text, font=font)
-            text_w = bbox[2] - bbox[0]
-            draw.text(
-                (right_x, y_mid),
-                text,
-                font=font,
-                fill=palette["INK_MUTED"],
-                anchor="rm",
-            )
-            right_x -= text_w + 12
+        # Status indicator (right-aligned, sollevato di un'altezza testo + 4px dal bordo)
+        status_text = f"Ultimo aggiornamento: {datetime.now().strftime('%H:%M')}"
+        _bbox = draw.textbbox((0, 0), status_text, font=self._font_label)
+        _text_h = _bbox[3] - _bbox[1]
+        draw.text(
+            (x0 + w - 12, y0 + h - 4 - _text_h),
+            status_text,
+            font=self._font_label,
+            fill=palette["INK_MUTED"],
+            anchor="rb",
+        )
 
     # ------------------------------------------------------------------
     # Static helpers

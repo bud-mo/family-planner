@@ -46,7 +46,7 @@ BANNER_MAIN_HEIGHT: int = 90        # fascia superiore con data e meteo corrente
 BANNER_HOURLY_HEIGHT: int = 127    # fascia inferiore con previsioni biorarie
 BANNER_HEIGHT: int = BANNER_MAIN_HEIGHT + BANNER_HOURLY_HEIGHT  # altezza totale banner
 CALENDAR_HEIGHT: int = 560    # mini-calendario mensile — 4 righe evento per cella su griglie da 6 settimane (solo portrait)
-FOOTER_HEIGHT: int = 46
+FOOTER_HEIGHT: int = 54
 COL_LEFT_RATIO: float = 0.50  # larghezza colonna sinistra in layout landscape
 
 # Tipo geometria componente

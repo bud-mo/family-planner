@@ -151,7 +151,7 @@ class TestCaso1SingleEventWithTime:
     def test_produces_png(self, renderer, palette, today_state, events, tmp_path):
         img, draw = _make_canvas(self.HEIGHT)
         renderer._draw_agenda(draw, img, (0, 0, _CANVAS_W, self.HEIGHT), today_state, events, palette)
-        out = _OUTPUT_DIR / "caso_1_singolo_con_orario.png"
+        out = _OUTPUT_DIR / "agenda_caso_1_singolo_con_orario.png"
         img.save(out)
         _to_spectra6(img).save(out.with_stem(out.stem + "_spectra6"))
         assert out.exists()
@@ -199,7 +199,7 @@ class TestCaso2SingleEventWithTimeAndDescription:
     def test_produces_png(self, renderer, palette, today_state, events):
         img, draw = _make_canvas(self.HEIGHT)
         renderer._draw_agenda(draw, img, (0, 0, _CANVAS_W, self.HEIGHT), today_state, events, palette)
-        out = _OUTPUT_DIR / "caso_2_singolo_con_orario_e_descrizione.png"
+        out = _OUTPUT_DIR / "agenda_caso_2_singolo_con_orario_e_descrizione.png"
         img.save(out)
         _to_spectra6(img).save(out.with_stem(out.stem + "_spectra6"))
         assert out.exists()
@@ -239,7 +239,7 @@ class TestCaso3AllDayEvent:
     def test_produces_png(self, renderer, palette, today_state, events):
         img, draw = _make_canvas(self.HEIGHT)
         renderer._draw_agenda(draw, img, (0, 0, _CANVAS_W, self.HEIGHT), today_state, events, palette)
-        out = _OUTPUT_DIR / "caso_3_tutto_il_giorno.png"
+        out = _OUTPUT_DIR / "agenda_caso_3_tutto_il_giorno.png"
         img.save(out)
         _to_spectra6(img).save(out.with_stem(out.stem + "_spectra6"))
         assert out.exists()
@@ -297,7 +297,7 @@ class TestCaso4TwoEventsWithDescription:
     def test_produces_png(self, renderer, palette, today_state, events):
         img, draw = _make_canvas(self.HEIGHT)
         renderer._draw_agenda(draw, img, (0, 0, _CANVAS_W, self.HEIGHT), today_state, events, palette)
-        out = _OUTPUT_DIR / "caso_4_due_eventi_con_descrizione.png"
+        out = _OUTPUT_DIR / "agenda_caso_4_due_eventi_con_descrizione.png"
         img.save(out)
         _to_spectra6(img).save(out.with_stem(out.stem + "_spectra6"))
         assert out.exists()
@@ -390,7 +390,7 @@ class TestCaso5FourEventsTwoDays:
     def test_produces_png(self, renderer, palette, today_state, events):
         img, draw = _make_canvas(self.HEIGHT)
         renderer._draw_agenda(draw, img, (0, 0, _CANVAS_W, self.HEIGHT), today_state, events, palette)
-        out = _OUTPUT_DIR / "caso_5_quattro_eventi_due_giornate.png"
+        out = _OUTPUT_DIR / "agenda_caso_5_quattro_eventi_due_giornate.png"
         img.save(out)
         _to_spectra6(img).save(out.with_stem(out.stem + "_spectra6"))
         assert out.exists()
@@ -455,7 +455,7 @@ class TestCaso6TwoEventsTwoDaysTitleVsDescription:
     def test_produces_png(self, renderer, palette, today_state, events):
         img, draw = _make_canvas(self.HEIGHT)
         renderer._draw_agenda(draw, img, (0, 0, _CANVAS_W, self.HEIGHT), today_state, events, palette)
-        out = _OUTPUT_DIR / "caso_6_due_eventi_due_giorni_titolo_vs_descrizione.png"
+        out = _OUTPUT_DIR / "agenda_caso_6_due_eventi_due_giorni_titolo_vs_descrizione.png"
         img.save(out)
         _to_spectra6(img).save(out.with_stem(out.stem + "_spectra6"))
         assert out.exists()
@@ -512,7 +512,7 @@ class TestCaso7TwoEventsTwoDaysWithLocation:
     def test_produces_png(self, renderer, palette, today_state, events):
         img, draw = _make_canvas(self.HEIGHT)
         renderer._draw_agenda(draw, img, (0, 0, _CANVAS_W, self.HEIGHT), today_state, events, palette)
-        out = _OUTPUT_DIR / "caso_7_due_eventi_due_giorni_con_luogo.png"
+        out = _OUTPUT_DIR / "agenda_caso_7_due_eventi_due_giorni_con_luogo.png"
         img.save(out)
         _to_spectra6(img).save(out.with_stem(out.stem + "_spectra6"))
         assert out.exists()
@@ -577,7 +577,7 @@ class TestCaso8TwoEventsTwoDaysLocationAndDescription:
     def test_produces_png(self, renderer, palette, today_state, events):
         img, draw = _make_canvas(self.HEIGHT)
         renderer._draw_agenda(draw, img, (0, 0, _CANVAS_W, self.HEIGHT), today_state, events, palette)
-        out = _OUTPUT_DIR / "caso_8_due_eventi_due_giorni_luogo_e_descrizione.png"
+        out = _OUTPUT_DIR / "agenda_caso_8_due_eventi_due_giorni_luogo_e_descrizione.png"
         img.save(out)
         _to_spectra6(img).save(out.with_stem(out.stem + "_spectra6"))
         assert out.exists()
