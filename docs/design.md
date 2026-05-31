@@ -374,6 +374,15 @@ Quando `display.type = "eink"`:
 2. **Footer non interattivo:** il footer mostra la legenda testuale identica a quella HDMI, ma i tasti non sono cliccabili. I pulsanti fisici sono l'unico mezzo di interazione.
 3. **Dithering:** il post-processor applica Floyd-Steinberg alle aree di testo piccolo per migliorare la leggibilità su display a bassa risoluzione.
 4. **Refresh parziale:** nel layout landscape, il calendario mensile (colonna sinistra, sezione inferiore) è l'area più statica e ideale per partial refresh separato. La lista appuntamenti (colonna destra / area inferiore portrait) cambia ad ogni navigazione.
+5. **Rotazione:** `display.rotation` (0 / 90 / 180 / 270°) viene applicata da `EinkRenderer` come ultimo step del post-processing. Il canvas logico generato da `PillowEinkRenderer` ha sempre dimensioni `display.width × display.height`; per rotazioni a 90°/270° le dimensioni sono scambiate prima del resize.
+
+### Pulsanti fisici (Inky Impression)
+
+| Pulsante | Azione |
+|---|---|
+| **A** | Ritorna alla schermata planner (esce dalla modalità artwork) |
+| **B** | Mostra modalità artwork (dipinto casuale — privacy) |
+| **D** | Shutdown — mostra artwork finale sul pannello poi spegne il sistema |
 
 ### Modelli supportati
 
@@ -396,7 +405,48 @@ I modelli `inky_impression_*` usano la classe `InkyDisplay` (invece di `EinkDisp
 
 ---
 
-## Token CSS di Riferimento
+## Schermata Artwork (Modalità Privacy)
+
+**Scopo:** nasconde il calendario di famiglia in presenza di ospiti o quando il dispositivo è incustodito, sostituendolo con un dipinto di dominio pubblico dell'**Art Institute of Chicago**.
+
+**Attivazione:** pulsante **B** (Inky Impression) / tasto `B` (pygame HDMI).
+
+**Layout:**
+
+```
+┌──────────────────────────────────────────────────────┐
+│                                                      │
+│       Dipinto (full-bleed crop, ImageOps.fit)         │
+│                                                      │
+│                                                      │
+├──────────────────────────────────────────────────────┤
+│     Titolo, Artista (Anno)                            │  ← didascalia centrata
+└──────────────────────────────────────────────────────┘
+```
+
+**Regole visive:**
+
+- Dipinto a **full-bleed** (`ImageOps.fit`): copre l'intero display, proporzioni preservate con crop centrato (LANCZOS)
+- **Didascalia** (opzionale, se i metadati sono disponibili): rettangolo solido `BG`, bordo superiore `1px INK_MUTED`, testo `"Titolo, Artista (Anno)"` in `--font-body` Italic, `--text-xs`, `--color-ink`
+  - Centrata orizzontalmente; posizionata `30px` dal bordo inferiore del display
+  - Larghezza massima 80% del display (`MAX_W = W × 0.80`); troncata con `…` se eccede
+  - Padding: `16px` orizzontale, `7px` verticale
+- **Nessun altro elemento UI**: non compaiono banner, calendari, footer, indicatori di stato
+- **Su e-ink**: il dipinto passa per `EinkRenderer.process()` — quantizzazione palette + dithering (raccomandato `eink_dither: true`)
+
+**Ritorno al planner:** pulsante **A** (e-ink) / `A` HDMI → il planner riprende immediatamente.
+
+---
+
+## Schermata di Spegnimento
+
+**Scopo:** lasciare sul pannello e-ink un'immagine esteticamente gradevole (invece di uno schermo bianco) prima dello spegnimento del Raspberry Pi.
+
+**Attivazione:** pulsante **D** (Inky Impression) / tasto `D` (pygame HDMI).
+
+**Comportamento:** identico alla schermata artwork — stessa query, stesso layout full-bleed con didascalia. Il pannello mantiene l'immagine dopo lo spegnimento (e-ink è bistabile).
+
+---
 
 ```css
 :root {

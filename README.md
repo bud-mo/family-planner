@@ -9,8 +9,11 @@ Un visualizzatore di calendario minimalista, ispirato alla tipografia del *Wall 
 - **Calendario + Meteo**: banner con data, icona meteo e temperature da **Open-Meteo** (nessuna API key richiesta)
 - **Sorgenti calendario**: Apple Calendar / iCloud (CalDAV), Google Calendar e feed iCal generici, file `.ics` locali
 - **Layout portrait e landscape**: selezionabile da configurazione, adattabile a qualsiasi risoluzione
+- **Rotazione schermo**: supporto a 0°/90°/180°/270° via `display.rotation` — il post-processor EinkRenderer ruota l'immagine finale prima dell'invio al pannello
+- **Modalità artwork (privacy)**: pressione del pulsante B (o tasto `B` su HDMI) mostra un dipinto casuale di dominio pubblico dall'**Art Institute of Chicago** al posto del calendario; pressione A ripristina il planner
+- **Schermata di spegnimento**: pressione del pulsante D (o tasto `D` su HDMI) mostra un'ultima artwork sul pannello prima dello spegnimento del dispositivo
 - **Display HDMI**: finestra pygame (SDL2) con ciclo di refresh configurabile — nessun browser richiesto
-- **Display e-ink Waveshare**: quantizzazione palette (BW / BWR / 4 grigi) e dithering Floyd-Steinberg opzionale
+- **Display e-ink Waveshare**: quantizzazione palette (BW / BWR / 4 grigi / Spectra 6) e dithering Floyd-Steinberg opzionale
 - **Server web FastAPI**: anteprima browser (`GET /`) e configurazione remota (`GET/POST /config`)
 - **Navigazione**: Su / Giù / Oggi tramite GPIO, tastiera pygame o richieste `POST /state`
 
@@ -128,8 +131,14 @@ display:
   fullscreen: false          # true → fullscreen; false → finestra dimensionata (sviluppo)
   refresh_interval: 300      # secondi tra un aggiornamento e l'altro
   show_buttons: false        # mostra pulsanti di navigazione (solo HDMI touchscreen)
+  rotation: 0                # rotazione schermo: 0 | 90 | 180 | 270
   # Solo per e-ink:
+  eink_model: 7in5_V2
+  eink_palette: bw           # bw | bwr | 4gray | spectra6
   eink_dither: true
+
+artwork:
+  query: "landscape painting"  # query per ricerca artwork (Art Institute of Chicago)
 
 calendars:
   - name: "Famiglia"
@@ -172,7 +181,8 @@ family-planner/
 ├── systemd/                 # Unit file systemd
 ├── docs/
 │   ├── architecture.md      # Architettura e stack tecnico
-│   └── design.md            # Design system (tipografia, palette, layout)
+│   ├── design.md            # Design system (tipografia, palette, layout)
+│   └── artworks.md          # Gestione artwork (Art Institute of Chicago API)
 └── requirements.txt
 ```
 
@@ -194,6 +204,8 @@ PillowEinkRenderer (Pillow nativo)
 ```
 
 La pipeline è condivisa: `PillowEinkRenderer` genera la stessa `PIL.Image` per entrambi i display. Solo il post-processing finale differisce. Il meteo è iniettato da `OpenMeteoProvider` (cache in-memory TTL 1h, API Open-Meteo senza chiave).
+
+`PillowEinkRenderer.render_artwork()` è un secondo entry point dello stesso renderer: recupera un dipinto casuale di dominio pubblico dall'**Art Institute of Chicago** via IIIF e lo restituisce come `PIL.Image` dello stesso formato — la modalità privacy e la schermata di spegnimento usano questa stessa pipeline.
 
 ---
 

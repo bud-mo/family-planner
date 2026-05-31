@@ -50,7 +50,10 @@ family-planner/
 │   │   ├── __init__.py
 │   │   ├── base.py                      # Classe astratta Renderer
 │   │   ├── pillow_eink_renderer.py      # PillowEinkRenderer: rendering Pillow nativo (HDMI + e-ink)
-│   │   ├── eink_renderer.py             # Post-processing e-ink: resize, quantizzazione palette, dithering
+│   │   │                                #   render() → schermata calendario
+│   │   │                                #   render_artwork() → dipinto ARTIC (privacy/shutdown)
+│   │   ├── eink_renderer.py             # Post-processing e-ink: resize, quantizzazione palette,
+│   │   │                                #   dithering Floyd-Steinberg, rotazione schermo
 │   │   ├── rich_text.py                 # Parser HTML descrizioni CalDAV → RichSpan/RichLine
 │   │   ├── state.py                     # NavigationState (dataclass immutabile — anchor_date = oggi)
 │   │   └── tokens.py                    # Design tokens Python
@@ -60,6 +63,7 @@ family-planner/
 │   │   └── open_meteo.py        # OpenMeteoProvider: API Open-Meteo + cache in-memory TTL 1h
 │   └── display/
 │       ├── __init__.py
+│       ├── buttons.py           # InkyButtonHandler: GPIO A/B/D su Pimoroni Inky (gpiod)
 │       ├── hdmi.py              # HdmiDisplay: finestra pygame — rendering PIL.Image diretto
 │       └── eink.py              # EinkDisplay: push immagine via SPI (libreria Waveshare)
 ├── config/
@@ -113,8 +117,12 @@ display:
   fullscreen: false          # true → finestra fullscreen; false → finestra dimensionata (sviluppo)
   refresh_interval: 300      # secondi tra un aggiornamento e l'altro
   show_buttons: false        # mostra/nasconde i pulsanti di navigazione (solo HDMI touchscreen)
+  rotation: 0                # rotazione schermo: 0 | 90 | 180 | 270
   # solo se type: "eink":
   eink_dither: true          # abilita dithering Floyd-Steinberg
+
+artwork:
+  query: "landscape painting"  # query per ricerca artwork (Art Institute of Chicago)
 
 calendars:
   - name: "Famiglia"
@@ -176,12 +184,18 @@ Avvio (main.py --config ...)
         │
         └── E-ink ──▶  PillowEinkRenderer(config)  [nessun browser, nessun display server]
                         Uvicorn sul main thread
+                        InkyButtonHandler.start() — daemon thread GPIO (gpiod)
+                          A → wake_event.set()  → skip sleep, re-render immediato (torna al planner)
+                          B → _perform_show_artwork() → fetch ARTIC → EinkRenderer → push
+                              (artwork_mode bloccante: sopprime i push del loop finché attiva)
+                          D → _perform_shutdown() → render_artwork() → push → sudo shutdown -h now
                         Loop daemon (ogni refresh_interval):
                           NavigationState() → anchor_date = oggi
                           aggregator.get_events(start, end) → eventi
                           PillowEinkRenderer.render(state, events) → PIL.Image
-                          EinkRenderer.process(img) → palette quantizzata
-                          EinkDisplay.push() → SPI → pannello Waveshare
+                          se NOT artwork_mode:
+                            EinkRenderer.process(img) → resize + palette + dithering + rotazione
+                            EinkDisplay.push() → SPI → pannello Waveshare
 ```
 
 ---
@@ -627,3 +641,75 @@ python-multipart           # form POST /config
                                              │    (Waveshare SPI)  │
                                              └────────────────────┘
 ```
+
+---
+
+## Modalità Artwork e Privacy
+
+### Razionale
+
+Il display mostra dati calendario di famiglia in un luogo condiviso. Per preservare la privacy quando ci sono ospiti o quando il dispositivo non è in uso, il pulsante **B** (Inky Impression) o il tasto `B` (pygame HDMI) sostituisce istantaneamente la schermata del planner con un dipinto di dominio pubblico recuperato dall'**Art Institute of Chicago**.
+
+### Flusso (e-ink)
+
+```
+Pulsante B premuto (GPIO callback — thread gpiod)
+    │
+    ▼
+artwork_mode.set()  ← il loop e-ink sopprime i push successivi
+    │
+    ▼
+threading.Thread("artwork-push").start()
+    │
+    ├─ PillowEinkRenderer.render_artwork()
+    │       └─ _fetch_artwork(W, H, query)
+    │               └─ POST artic.edu/api/v1/artworks/search
+    │               └─ GET IIIF image  (fino a _MAX_ATTEMPTS=5 tentativi)
+    │               └─ ImageOps.fit → PIL.Image RGB (W×H)
+    │               └─ _draw_artwork_caption()
+    ├─ EinkRenderer.process(img)  ← quantizzazione + rotazione
+    └─ EinkDisplay.push() → SPI → pannello
+```
+
+Pressione di **A** → `wake_event.set()` + `artwork_mode.clear()` → il loop normale riprende immediatamente, sovrascrivendo l'artwork con il planner aggiornato.
+
+### Flusso (HDMI)
+
+Tasto `D` → `shutdown_requested = True` → `render_artwork()` → `pygame.Surface` → `screen.blit` → `running = False` → `pygame.quit()`.
+
+### Schermata di spegnimento
+
+Pressione di **D** avvia `_perform_shutdown()`:
+
+1. `stop_event.set()` — ferma il loop e-ink
+2. `renderer.render_artwork()` → `EinkRenderer.process()` → `EinkDisplay.push()` (immagine statica finale sul pannello)
+3. `server.should_exit = True` — termina Uvicorn
+4. `subprocess.run(["sudo", "shutdown", "-h", "now"])` — spegne il sistema
+
+In caso di errore durante il fetch/push dell'artwork, il fallback è uno schermo bianco (`BG` palette), per garantire comunque lo spegnimento.
+
+---
+
+## Rotazione Schermo
+
+`display.rotation` accetta i valori `0`, `90`, `180`, `270` (gradi orari). La rotazione avviene in **`EinkRenderer.process()`**, come ultimo step del post-processing:
+
+```python
+# 1. Resize — per 90°/270° le dimensioni di input sono invertite rispetto alla
+#    risoluzione nativa del pannello.
+W, H = self._size
+resize_target = (H, W) if self._rotation in (90, 270) else (W, H)
+resized = image.resize(resize_target, Image.Resampling.LANCZOS)
+
+# 2. Quantizzazione palette (bw / bwr / 4gray / spectra6)
+result = self._quantise_*(resized, dither_mode)
+
+# 3. Rotazione — PIL usa convenzione antioraria; neghiamo il valore
+#    per ottenere la rotazione oraria attesa.
+if self._rotation:
+    result = result.rotate(-self._rotation, expand=True)
+```
+
+**Logica dimensioni**: se il pannello è 800×480 e `rotation=90`, il renderer Pillow genera un'immagine 480×800 (orientamento portrait), che viene poi ruotata di -90° → 800×480 fisici. La configurazione `display.width` e `display.height` descrive sempre il **canvas logico** (prima della rotazione).
+
+**Su HDMI**: la rotazione non è gestita da `HdmiDisplay` — la finestra pygame ha sempre le dimensioni `display.width × display.height`. Per ruotare un display fisico collegato via HDMI usare le impostazioni di sistema (Wayland/X11) o la configurazione del kernel RPi (`display_rotate` in `config.txt`).
