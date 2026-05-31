@@ -48,6 +48,7 @@ from app.renderer.tokens import (
     TEXT_SM,
     TEXT_XL,
     TEXT_XS,
+    WEATHER_ICON_COLORS,
     WeatherData,
     get_palette,
 )
@@ -128,6 +129,7 @@ class PillowEinkRenderer:
         self._font_mono: ImageFont.FreeTypeFont = self._load_font(FONT_MONO_REGULAR, TEXT_SM)
         self._font_mono_xs: ImageFont.FreeTypeFont = self._load_font(FONT_MONO_REGULAR, TEXT_XS)
         self._font_temp: ImageFont.FreeTypeFont = self._load_font(FONT_BODY_SEMIBOLD, 40)
+        self._font_hourly_temp: ImageFont.FreeTypeFont = self._load_font(FONT_BODY_SEMIBOLD, TEXT_SM)
         # Description rich-text fonts (TEXT_XS = 11 px)
         self._font_desc: ImageFont.FreeTypeFont = self._load_font(FONT_BODY_REGULAR, TEXT_XS)
         self._font_desc_bold: ImageFont.FreeTypeFont = self._load_font(FONT_BODY_SEMIBOLD, TEXT_XS)
@@ -271,16 +273,17 @@ class PillowEinkRenderer:
             )
             temp_w = int(draw.textlength(temp_str, font=self._font_temp))
 
-            # Step 4: draw condition icon (40px), left of temperature
+            # Step 4: draw condition icon (48px), left of temperature
             if weather.condition_icon is not None:
-                icon_img = load_icon(weather.condition_icon, 40)
+                icon_img = load_icon(weather.condition_icon, 48)
                 if icon_img is not None:
-                    r, g, b = self._hex_to_rgb(palette["INK"])
+                    icon_color = WEATHER_ICON_COLORS.get(weather.condition_icon, palette["INK"])
+                    r, g, b = self._hex_to_rgb(icon_color)
                     _, _, _, alpha = icon_img.split()
                     tinted = Image.new("RGBA", icon_img.size, (r, g, b, 255))
                     tinted.putalpha(alpha)
-                    icon_x = temp_right_x - temp_w - 10 - 40
-                    icon_y = y_mid - 20
+                    icon_x = temp_right_x - temp_w - 10 - 48
+                    icon_y = y_mid - 24
                     img.paste(tinted, (icon_x, icon_y), mask=tinted)
 
         self._draw_hourly_row(
@@ -302,11 +305,11 @@ class PillowEinkRenderer:
     ) -> None:
         """Render the 6-cell bihourly forecast strip inside *rect*.
 
-        Layout per cell (proportional to _h)::
+        Layout per cell (column, horizontally centred)::
 
-            y+9%  icona 24px (centrata)
-            y+76% orario (sinistra) · temperatura (destra) — baseline
-            y-10  chevron-up indicatore fascia corrente (solo cella 0)
+            y+4   orario (centrato, mono xs)
+            y+24  icona 48px (centrata)
+            y-4   temperatura (centrata, semibold sm) — baseline ancorata in basso
         """
         if not weather.hourly_forecast:
             return
@@ -314,6 +317,29 @@ class PillowEinkRenderer:
         x0, y0, w, _h = rect
         cell_w = w // 6
         r_ink, g_ink, b_ink = self._hex_to_rgb(palette["INK"])
+
+        _PAD_TOP = 4    # padding from cell top edge to time-label anchor
+        _PAD_BOTTOM = 27  # padding from last temp pixel to border (mirrors 27px gap above hourly row)
+        _BORDER_H = 2  # border line thickness at bottom of cell
+
+        # Measure actual text heights using tight font bounding boxes.
+        # getbbox(anchor="lb") returns offsets relative to the baseline:
+        #   [1] negative = ascent above baseline, [3] positive = descent below baseline
+        _time_h = (
+            self._font_mono_xs.getbbox("00:00")[3]
+            - self._font_mono_xs.getbbox("00:00")[1]
+        )
+        _temp_bbox = self._font_hourly_temp.getbbox("0°", anchor="lb")
+        _temp_ascent = -_temp_bbox[1]   # pixels above baseline
+        _temp_descent = _temp_bbox[3]   # pixels below baseline
+        _temp_h = _temp_ascent + _temp_descent
+
+        # anchor="mt" at y0+_PAD_TOP → text bottom at y0+_PAD_TOP+_time_h
+        _time_bottom = y0 + _PAD_TOP + _time_h
+        # Bottom pixel of temp text lands at y0+_h-_BORDER_H-_PAD_BOTTOM
+        _temp_baseline = y0 + _h - _BORDER_H - _PAD_BOTTOM - _temp_descent
+        _temp_top = _temp_baseline - _temp_ascent
+        _icon_y = (_time_bottom + _temp_top) // 2 - 24  # vertically centred 48px icon
 
         for i, slot in enumerate(weather.hourly_forecast[:6]):
             cx = x0 + i * cell_w + cell_w // 2
@@ -327,45 +353,37 @@ class PillowEinkRenderer:
                     width=1,
                 )
 
-            # Condition icon (40px) — top of cell
-            if slot.condition_icon is not None:
-                icon_img = load_icon(slot.condition_icon, 40)
-                if icon_img is not None:
-                    _, _, _, alpha = icon_img.split()
-                    tinted = Image.new("RGBA", icon_img.size, (r_ink, g_ink, b_ink, 255))
-                    tinted.putalpha(alpha)
-                    icon_x = cx - 20
-                    icon_y = y0 + int(_h * 0.09)
-                    img.paste(tinted, (icon_x, icon_y), mask=tinted)
-
-            # Time label — left-aligned, bottom of header band
-            _text_y = y0 + int(_h * 0.88)
+            # Time label — centered, top of cell
             draw.text(
-                (cell_x + 4, _text_y),
+                (cx, y0 + _PAD_TOP),
                 f"{slot.hour:02d}:00",
                 font=self._font_mono_xs,
                 fill=palette["INK_MUTED"],
-                anchor="lb",
+                anchor="mt",
             )
 
-            # Temperature — top row, right-aligned, bottom of header band
-            if slot.temp is not None:
-                draw.text(
-                    (cell_x + cell_w - 4, _text_y),
-                    f"{slot.temp:.0f}°",
-                    font=self._font_label,
-                    fill=palette["INK"],
-                    anchor="rb",
-                )
-
-            # Upward chevron: indicator for the current slot (i == 0)
-            if i == 0:
-                chevron = load_icon("caret-up", 16)
-                if chevron is not None:
-                    _, _, _, alpha = chevron.split()
-                    tinted = Image.new("RGBA", chevron.size, (r_ink, g_ink, b_ink, 255))
+            # Condition icon (48px) — centred between time text and temperature text
+            if slot.condition_icon is not None:
+                icon_img = load_icon(slot.condition_icon, 48)
+                if icon_img is not None:
+                    icon_color = WEATHER_ICON_COLORS.get(slot.condition_icon, palette["INK"])
+                    ir, ig, ib = self._hex_to_rgb(icon_color)
+                    _, _, _, alpha = icon_img.split()
+                    tinted = Image.new("RGBA", icon_img.size, (ir, ig, ib, 255))
                     tinted.putalpha(alpha)
-                    img.paste(tinted, (cx - 8, y0 + _h - 10), mask=tinted)
+                    img.paste(tinted, (cx - 24, _icon_y), mask=tinted)
+
+            # Temperature — number part centred on cx, degree symbol to the right
+            if slot.temp is not None:
+                num_str = f"{slot.temp:.0f}"
+                num_w = int(draw.textlength(num_str, font=self._font_hourly_temp))
+                draw.text(
+                    (cx - num_w // 2, _temp_baseline),
+                    f"{num_str}°",
+                    font=self._font_hourly_temp,
+                    fill=palette["INK"],
+                    anchor="lb",
+                )
 
     # ------------------------------------------------------------------
     # Mini-calendar helpers
@@ -589,8 +607,8 @@ class PillowEinkRenderer:
         padding_x = 12
         date_col_w = 84
         event_row_h = 60
-        event_row_loc_h = 74
-        event_row_loc_desc_h = 88
+        event_row_loc_h = 88
+        event_row_loc_desc_h = 94
         # time_col_w budget: left_pad(8) + dot(14) + gap(6) + text("Tutto il giorno"=165px) + right_gap(≥7) = 200
         time_col_w = 200
 
@@ -652,8 +670,8 @@ class PillowEinkRenderer:
                 if wrapped:
                     # 8 px bottom margin ≈ visual whitespace above title glyph
                     # line_h must match _draw_rich_description: font_desc.size + 4 = TEXT_XS + 4
-                    return 60 + (14 if has_loc else 0) + len(wrapped) * (TEXT_XS + 4) + 8
-            return 60 + (14 if has_loc else 0)
+                    return 60 + (20 if has_loc else 0) + len(wrapped) * (TEXT_XS + 4) + 8
+            return 60 + (28 if has_loc else 0)
 
         for day, evt in items:
             if in_overflow:
@@ -824,11 +842,11 @@ class PillowEinkRenderer:
 
         icon_size_sub = int(self._font_label.size * 0.75)
         # Location line: centred in a 14 px block immediately after the 60 px title block
-        loc_y: int | None = (y0 + 67) if evt.location else None
+        loc_y: int | None = (y0 + 70) if evt.location else None
         # Description block starts after location (or after title if no location)
         desc_block_y: int | None = None
         if evt.description and max_desc_lines > 0:
-            desc_block_y = y0 + 60 + (14 if evt.location else 0)
+            desc_block_y = y0 + 60 + (20 if evt.location else 0)
 
         if evt.location and loc_y is not None:
             loc_segs = split_text_emoji(evt.location)

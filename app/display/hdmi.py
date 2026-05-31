@@ -60,6 +60,24 @@ class HdmiDisplay:
         """Replace the renderer (called on config reload)."""
         self._renderer = renderer
 
+    @staticmethod
+    def probe() -> bool:
+        """Return True if pygame can open a display window in the current env.
+
+        Tries to initialise SDL and set a 1×1 mode; catches ``pygame.error``
+        (e.g. "kmsdrm not available", "wayland not available") and returns
+        False so the caller can fall back gracefully instead of crashing.
+        """
+        try:
+            pygame.init()
+            pygame.display.set_mode((1, 1))
+            pygame.quit()
+            return True
+        except pygame.error as exc:
+            logger.warning("HdmiDisplay.probe: display not available: %s", exc)
+            pygame.quit()
+            return False
+
     def run_blocking(self) -> None:
         """Open the pygame window and block until the user closes it.
 

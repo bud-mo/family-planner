@@ -11,6 +11,8 @@ Casi coperti:
   4. Due eventi nello stesso giorno con orario, titolo e descrizione
   5. Quattro eventi su due giornate: mix tutto-il-giorno / con orario, con e senza descrizione
   6. Due appuntamenti su due giorni diversi: primo solo titolo, secondo titolo e descrizione
+  7. Due eventi su due giorni: il primo ha un luogo impostato, il secondo no
+  8. Due eventi su due giorni: il primo ha descrizione e luogo, il secondo solo titolo
 """
 from __future__ import annotations
 
@@ -454,6 +456,128 @@ class TestCaso6TwoEventsTwoDaysTitleVsDescription:
         img, draw = _make_canvas(self.HEIGHT)
         renderer._draw_agenda(draw, img, (0, 0, _CANVAS_W, self.HEIGHT), today_state, events, palette)
         out = _OUTPUT_DIR / "caso_6_due_eventi_due_giorni_titolo_vs_descrizione.png"
+        img.save(out)
+        _to_spectra6(img).save(out.with_stem(out.stem + "_spectra6"))
+        assert out.exists()
+
+    def test_canvas_not_blank(self, renderer, palette, today_state, events):
+        img, draw = _make_canvas(self.HEIGHT)
+        renderer._draw_agenda(draw, img, (0, 0, _CANVAS_W, self.HEIGHT), today_state, events, palette)
+        bg = Image.new("RGB", (_CANVAS_W, self.HEIGHT), COLOR_BG)
+        assert list(img.getdata()) != list(bg.getdata())
+
+
+# ---------------------------------------------------------------------------
+# Caso 7 — Due eventi su due giorni: il primo ha un luogo impostato
+# ---------------------------------------------------------------------------
+
+
+class TestCaso7TwoEventsTwoDaysWithLocation:
+    """Due appuntamenti su giorni consecutivi.
+
+    Giorno 1 (oggi):   orario, titolo e luogo.
+    Giorno 2 (domani): orario e titolo (nessun luogo).
+    """
+
+    HEIGHT = 260
+
+    @pytest.fixture()
+    def events(self) -> list[CalendarEvent]:
+        return [
+            # Giorno 1 — con luogo
+            _evt(
+                uid="c7-e1",
+                title="Colloquio di lavoro",
+                start_h=10,
+                start_m=0,
+                end_h=11,
+                end_m=0,
+                location="Via Roma 42, Milano",
+                color="#E27B3E",
+                day_offset=0,
+            ),
+            # Giorno 2 — senza luogo
+            _evt(
+                uid="c7-e2",
+                title="Standup mattutino",
+                start_h=9,
+                start_m=0,
+                end_h=9,
+                end_m=30,
+                color="#4A90D9",
+                day_offset=1,
+            ),
+        ]
+
+    def test_produces_png(self, renderer, palette, today_state, events):
+        img, draw = _make_canvas(self.HEIGHT)
+        renderer._draw_agenda(draw, img, (0, 0, _CANVAS_W, self.HEIGHT), today_state, events, palette)
+        out = _OUTPUT_DIR / "caso_7_due_eventi_due_giorni_con_luogo.png"
+        img.save(out)
+        _to_spectra6(img).save(out.with_stem(out.stem + "_spectra6"))
+        assert out.exists()
+
+    def test_canvas_not_blank(self, renderer, palette, today_state, events):
+        img, draw = _make_canvas(self.HEIGHT)
+        renderer._draw_agenda(draw, img, (0, 0, _CANVAS_W, self.HEIGHT), today_state, events, palette)
+        bg = Image.new("RGB", (_CANVAS_W, self.HEIGHT), COLOR_BG)
+        assert list(img.getdata()) != list(bg.getdata())
+
+
+# ---------------------------------------------------------------------------
+# Caso 8 — Due eventi su due giorni: il primo ha descrizione e luogo
+# ---------------------------------------------------------------------------
+
+
+class TestCaso8TwoEventsTwoDaysLocationAndDescription:
+    """Due appuntamenti su giorni consecutivi.
+
+    Giorno 1 (oggi):   orario, titolo, luogo e descrizione HTML.
+    Giorno 2 (domani): orario e titolo (nessun luogo, nessuna descrizione).
+    """
+
+    HEIGHT = 320
+
+    @pytest.fixture()
+    def events(self) -> list[CalendarEvent]:
+        return [
+            # Giorno 1 — con luogo e descrizione
+            _evt(
+                uid="c8-e1",
+                title="Riunione con fornitore",
+                start_h=14,
+                start_m=0,
+                end_h=15,
+                end_m=30,
+                location="Sala Riunioni B, Via Montenapoleone 8, Milano",
+                description=(
+                    "<b>Punti all'ordine del giorno:</b>\n"
+                    "<ul>"
+                    "<li>Revisione contratto</li>"
+                    "<li>Tempi di consegna</li>"
+                    "<li>Prezzi e sconti</li>"
+                    "</ul>"
+                ),
+                color="#E27B3E",
+                day_offset=0,
+            ),
+            # Giorno 2 — solo titolo
+            _evt(
+                uid="c8-e2",
+                title="Standup mattutino",
+                start_h=9,
+                start_m=0,
+                end_h=9,
+                end_m=30,
+                color="#4A90D9",
+                day_offset=1,
+            ),
+        ]
+
+    def test_produces_png(self, renderer, palette, today_state, events):
+        img, draw = _make_canvas(self.HEIGHT)
+        renderer._draw_agenda(draw, img, (0, 0, _CANVAS_W, self.HEIGHT), today_state, events, palette)
+        out = _OUTPUT_DIR / "caso_8_due_eventi_due_giorni_luogo_e_descrizione.png"
         img.save(out)
         _to_spectra6(img).save(out.with_stem(out.stem + "_spectra6"))
         assert out.exists()

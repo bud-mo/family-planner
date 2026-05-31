@@ -176,6 +176,22 @@
   <div class="banner banner--error">Errore di validazione:<br>{{ error }}</div>
   {% endif %}
 
+  <!-- ---------------------------------------------------------------- -->
+  <!-- Backup / Ripristino                                               -->
+  <!-- ---------------------------------------------------------------- -->
+  <section class="config-section">
+    <h2 class="config-section__title">Backup / Ripristino</h2>
+    <div class="btn-row">
+      <a href="/api/config/download" class="btn">Scarica configurazione</a>
+      <form method="post" action="/api/config/upload"
+            enctype="multipart/form-data"
+            style="display:inline-flex; align-items:center; gap:8px;">
+        <input type="file" name="file" accept=".yaml,.yml" required />
+        <button type="submit" class="btn">Carica configurazione</button>
+      </form>
+    </div>
+  </section>
+
   <form method="post" action="/config">
 
     <!-- ---------------------------------------------------------------- -->
@@ -238,9 +254,18 @@
                value="{{ config.display.refresh_interval }}" min="10" required />
 
         <label class="field-label" for="display_eink_model">e-ink model</label>
-        <input class="field-input" type="text" id="display_eink_model"
-               name="display_eink_model"
-               value="{{ config.display.eink_model }}" />
+        <select class="field-select" id="display_eink_model" name="display_eink_model">
+          <optgroup label="Waveshare">
+            {% for m in ["7in5_V2","7in5","5in83_V2","5in83","4in2_V2","4in2","3in7","2in13_V3","2in13_V2","2in13","2in7","1in54_V2","1in54"] %}
+            <option value="{{ m }}"{% if config.display.eink_model == m %} selected{% endif %}>{{ m }}</option>
+            {% endfor %}
+          </optgroup>
+          <optgroup label="Inky Impression (Pimoroni)">
+            {% for m in ["inky_impression_4","inky_impression_7","inky_impression_13"] %}
+            <option value="{{ m }}"{% if config.display.eink_model == m %} selected{% endif %}>{{ m }}</option>
+            {% endfor %}
+          </optgroup>
+        </select>
 
         <label class="field-label" for="display_eink_palette">e-ink palette</label>
         <select class="field-select" id="display_eink_palette" name="display_eink_palette">

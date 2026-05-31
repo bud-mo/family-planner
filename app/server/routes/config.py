@@ -7,10 +7,11 @@ import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote_plus
 
 import yaml
-from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi import APIRouter, File, Request, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import ValidationError
 
 from app.calendar.caldav_provider import CalDavProvider
@@ -159,7 +160,9 @@ def _deferred_sighup(delay: float = 0.3) -> None:
 
 
 @router.get("/config", response_class=HTMLResponse)
-async def config_get(request: Request, saved: bool = False) -> HTMLResponse:
+async def config_get(
+    request: Request, saved: bool = False, error: str | None = None
+) -> HTMLResponse:
     templates = request.app.state.templates
     config: AppConfig = request.app.state.config
 
@@ -171,7 +174,7 @@ async def config_get(request: Request, saved: bool = False) -> HTMLResponse:
             "current_time": _current_time(),
             "config": _safe_config_dict(config),
             "saved": saved,
-            "error": None,
+            "error": error,
         },
     )
 
@@ -243,6 +246,50 @@ async def test_weather(request: Request) -> JSONResponse:
         f"(\u2191{data.temp_max:.0f} \u2193{data.temp_min:.0f})"
     )
     return JSONResponse({"ok": True, "message": msg})
+
+
+@router.get("/api/config/download")
+async def config_download(request: Request) -> FileResponse:
+    """Return the current config YAML file as a download."""
+    config_path: Path = request.app.state.config_path
+    return FileResponse(
+        path=str(config_path),
+        media_type="application/octet-stream",
+        filename="config.yaml",
+    )
+
+
+@router.post("/api/config/upload", response_model=None)
+async def config_upload(request: Request, file: UploadFile = File(...)):
+    """Upload a YAML config file, validate it, and apply it."""
+    config_path: Path = request.app.state.config_path
+
+    content = await file.read()
+    try:
+        raw = yaml.safe_load(content)
+        if not isinstance(raw, dict):
+            raise ValueError("Il file non contiene un documento YAML valido.")
+        new_config = AppConfig.model_validate(raw)
+    except (ValidationError, ValueError, yaml.YAMLError) as exc:
+        short_msg = str(exc).splitlines()[0][:200]
+        logger.warning("Config upload validation failed: %s", exc)
+        return RedirectResponse(
+            url=f"/config?error={quote_plus(short_msg)}", status_code=303
+        )
+
+    # Persist to disk.
+    config_path.write_text(
+        yaml.dump(new_config.model_dump(), allow_unicode=True, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    # Update in-memory config.
+    request.app.state.config = new_config
+
+    # Trigger uvicorn graceful reload.
+    _deferred_sighup()
+
+    return RedirectResponse(url="/config?saved=1", status_code=303)
 
 
 @router.post("/api/test-connection")

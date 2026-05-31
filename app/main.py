@@ -314,25 +314,32 @@ def main() -> None:
     if config.display.type == "hdmi":
         from app.display.hdmi import HdmiDisplay
 
-        hdmi = HdmiDisplay(config.display, renderer, aggregator)
-        _hdmi_ref[0] = hdmi
+        if not HdmiDisplay.probe():
+            logger.warning(
+                "HDMI display not available (pygame could not open a window). "
+                "Check SDL_VIDEODRIVER and display hardware. "
+                "Falling back to web-server-only mode."
+            )
+        else:
+            hdmi = HdmiDisplay(config.display, renderer, aggregator)
+            _hdmi_ref[0] = hdmi
 
-        # Uvicorn in daemon thread — must start before run_blocking()
-        uv_thread = threading.Thread(
-            target=server.run,
-            daemon=True,
-            name="uvicorn",
-        )
-        uv_thread.start()
+            # Uvicorn in daemon thread — must start before run_blocking()
+            uv_thread = threading.Thread(
+                target=server.run,
+                daemon=True,
+                name="uvicorn",
+            )
+            uv_thread.start()
 
-        hdmi.run_blocking()  # blocks main thread until window is closed
+            hdmi.run_blocking()  # blocks main thread until window is closed
 
-        # Shutdown after pygame exits
-        if eink_stop_event is not None:
-            eink_stop_event.set()
-        server.should_exit = True
-        logger.info("Family Planner stopped.")
-        return
+            # Shutdown after pygame exits
+            if eink_stop_event is not None:
+                eink_stop_event.set()
+            server.should_exit = True
+            logger.info("Family Planner stopped.")
+            return
 
     # E-ink / no display — Uvicorn runs on the main thread
     async def _serve() -> None:
