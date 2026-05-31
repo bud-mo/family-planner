@@ -43,6 +43,7 @@ class HdmiDisplay:
         self._renderer = renderer
         self._aggregator = aggregator
         self._stop_event = threading.Event()
+        self.shutdown_requested: bool = False
 
     # ------------------------------------------------------------------
     # Public interface
@@ -137,6 +138,20 @@ class HdmiDisplay:
                     running = False
                 elif event.type == pygame.KEYDOWN:
                     if event.key in (pygame.K_q, pygame.K_F4):
+                        running = False
+                    elif event.key == pygame.K_d:
+                        self.shutdown_requested = True
+                        try:
+                            artwork_img = self._renderer.render_artwork()
+                            artwork_surface = pygame.image.frombytes(
+                                artwork_img.tobytes(), artwork_img.size, "RGB"
+                            )
+                            screen.blit(artwork_surface, (0, 0))
+                            pygame.display.flip()
+                        except Exception:
+                            logger.exception(
+                                "HdmiDisplay: errore durante il rendering artwork (tasto D)."
+                            )
                         running = False
 
             clock.tick(10)  # ~100 ms per frame

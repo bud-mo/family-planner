@@ -187,20 +187,27 @@ def _perform_shutdown(
       3. Signal the web server to exit.
       4. Issue ``sudo shutdown -h now``.
     """
-    logger.info("Shutdown avviato dal pulsante D — rendering schermata di spegnimento.")
+    logger.info("Shutdown avviato dal pulsante D — rendering artwork prima dello spegnimento.")
     stop_event.set()
 
     try:
-        from app.renderer.tokens import get_palette
-        from PIL import Image
-
-        palette = get_palette()
-        W, H = renderer._size  # noqa: SLF001
-        img = Image.new("RGB", (W, H), palette["BG"])
+        img = renderer.render_artwork()
         processed = eink_renderer.process(img)
         display.push(processed)
+        logger.info("_perform_shutdown: artwork inviato al pannello.")
     except Exception:  # noqa: BLE001
-        logger.exception("_perform_shutdown: errore durante il rendering della schermata.")
+        logger.exception("_perform_shutdown: errore artwork, fallback a schermata bianca.")
+        try:
+            from app.renderer.tokens import get_palette
+            from PIL import Image
+
+            palette = get_palette()
+            W, H = renderer._size  # noqa: SLF001
+            img = Image.new("RGB", (W, H), palette["BG"])
+            processed = eink_renderer.process(img)
+            display.push(processed)
+        except Exception:  # noqa: BLE001
+            logger.exception("_perform_shutdown: errore anche nel fallback.")
 
     server.should_exit = True
     logger.info("_perform_shutdown: esecuzione sudo shutdown -h now")
@@ -232,6 +239,11 @@ def _perform_show_artwork(
     def _push() -> None:
         try:
             img = renderer.render_artwork()
+            if not artwork_mode.is_set():
+                # Button A was pressed during the fetch — skip the push to avoid
+                # a panel refresh that would immediately be overwritten by planner.
+                logger.info("artwork-push: annullato durante il fetch (pulsante A premuto).")
+                return
             processed = eink_renderer.process(img)
             display.push(processed)
             logger.info("Artwork inviato al pannello.")
@@ -349,12 +361,38 @@ def main() -> None:
                     )
 
                 elif button == "A":
-                    # Return to the planner: clear artwork mode and wake the loop
-                    # immediately so a fresh planner frame is pushed without delay.
+                    # Return to the planner.  We must not wake the eink loop
+                    # directly: if an artwork push is in progress the loop would
+                    # queue a planner push that starts immediately after the
+                    # artwork finishes, causing two back-to-back panel refreshes.
+                    # Instead we start a daemon thread that waits for the panel
+                    # to become free (_push_lock) and only then wakes the loop.
                     if _artwork_mode.is_set():
                         _artwork_mode.clear()
-                        logger.info("Modalità artwork disattivata (pulsante A) — ritorno al planner.")
-                    _wake_event.set()
+                        logger.info("Modalit\u00e0 artwork disattivata (pulsante A) \u2014 ritorno al planner.")
+
+                    def _return_to_planner() -> None:
+                        # Acquiring the lock blocks until any in-progress push
+                        # (artwork or planner) completes; releasing it immediately
+                        # leaves the panel free for the loop's next push.
+                        display_obj._push_lock.acquire()  # type: ignore[union-attr]
+                        display_obj._push_lock.release()  # type: ignore[union-attr]
+                        # The EL133UF1 ACeP controller continues internal processing
+                        # briefly after BUSY goes HIGH and inky.show() returns.
+                        # Starting a new refresh within ~1 s of the previous one
+                        # results in the new image being silently discarded by the
+                        # hardware (panel reports success but pixels do not update).
+                        # A short settling delay prevents this race.
+                        _PANEL_SETTLE_S = 5
+                        logger.info(
+                            "return-planner: attesa settling pannello (%ds)...", _PANEL_SETTLE_S
+                        )
+                        time.sleep(_PANEL_SETTLE_S)
+                        _wake_event.set()
+
+                    threading.Thread(
+                        target=_return_to_planner, daemon=True, name="return-planner"
+                    ).start()
 
                 elif button == "D":
                     # Shutdown: stop the loop and power off the device.
@@ -484,7 +522,17 @@ def main() -> None:
             if eink_stop_event is not None:
                 eink_stop_event.set()
             server.should_exit = True
-            logger.info("Family Planner stopped.")
+            if hdmi.shutdown_requested:
+                logger.info("Tasto D: esecuzione sudo shutdown -h now")
+                result = subprocess.run(["sudo", "shutdown", "-h", "now"], check=False)  # noqa: S603 S607
+                if result.returncode != 0:
+                    logger.error(
+                        "sudo shutdown fallito (exit %d). "
+                        "Verificare che sudoers sia configurato con setup-autostart.sh.",
+                        result.returncode,
+                    )
+            else:
+                logger.info("Family Planner stopped.")
             return
 
     # E-ink / no display — Uvicorn runs on the main thread

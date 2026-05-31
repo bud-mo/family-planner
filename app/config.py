@@ -49,11 +49,19 @@ class WeatherConfig(BaseModel):
     units: Literal["celsius", "fahrenheit"] = "celsius"
 
 
+_ARTWORK_QUERY_DEFAULT: str = "landscape painting"
+
+
+class ArtworkConfig(BaseModel):
+    query: str = _ARTWORK_QUERY_DEFAULT
+
+
 class AppConfig(BaseModel):
     server: ServerConfig = ServerConfig()
     display: DisplayConfig = DisplayConfig()
     calendars: list[CalendarConfig] = []
     weather: WeatherConfig = WeatherConfig()
+    artwork: ArtworkConfig = ArtworkConfig()
     timezone: str = "Europe/Rome"
 
     @field_validator("timezone")

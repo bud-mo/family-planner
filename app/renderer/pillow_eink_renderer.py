@@ -72,15 +72,22 @@ _ARTIC_IIIF_TPL: str = (
 )
 
 
-def _fetch_artwork(width: int, height: int) -> "tuple[Image.Image, str] | None":
-    """Fetch a random public-domain landscape painting from the Art Institute
-    of Chicago and resize it to cover *width* × *height* exactly.
+_ARTWORK_QUERY_DEFAULT: str = "landscape painting"
 
-    Issues a POST search for landscape paintings (public domain, with image)
-    then downloads the chosen artwork via the IIIF endpoint, requesting
-    *width* pixels wide (height is computed server-side, preserving aspect
-    ratio).  The resulting image is then crop-filled to the exact target size
-    via ``ImageOps.fit``.
+
+def _fetch_artwork(
+    width: int,
+    height: int,
+    query: str = _ARTWORK_QUERY_DEFAULT,
+) -> "tuple[Image.Image, str] | None":
+    """Fetch a random public-domain artwork matching *query* from the Art
+    Institute of Chicago and resize it to cover *width* × *height* exactly.
+
+    Issues a POST search using *query* (public domain, with image) then
+    downloads the chosen artwork via the IIIF endpoint, requesting *width*
+    pixels wide (height is computed server-side, preserving aspect ratio).
+    The resulting image is then crop-filled to the exact target size via
+    ``ImageOps.fit``.
 
     Some IIIF images return 403 even when marked public domain — up to
     ``_MAX_ATTEMPTS`` candidates are tried before giving up.
@@ -111,7 +118,7 @@ def _fetch_artwork(width: int, height: int) -> "tuple[Image.Image, str] | None":
         resp = session.post(
             _ARTIC_SEARCH_URL,
             json={
-                "q": "landscape painting",
+                "q": query,
                 "query": {
                     "bool": {
                         "must": [
@@ -212,6 +219,8 @@ class PillowEinkRenderer:
         self._layout: str = config.display.layout
         self._display_type: str = config.display.type
         self._weather_provider = weather_provider
+        _artwork_cfg = getattr(config, "artwork", None)
+        self._artwork_query: str = _artwork_cfg.query if _artwork_cfg is not None else _ARTWORK_QUERY_DEFAULT
 
         tz_name: str = getattr(config, "timezone", "local")
         if tz_name and tz_name != "local":
@@ -307,7 +316,7 @@ class PillowEinkRenderer:
         palette = get_palette()
         W, H = self._size
         img = Image.new("RGB", (W, H), palette["BG"])
-        result = _fetch_artwork(W, H)
+        result = _fetch_artwork(W, H, self._artwork_query)
         if result is not None:
             artwork_img, caption = result
             img.paste(artwork_img)

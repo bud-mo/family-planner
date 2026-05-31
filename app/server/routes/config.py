@@ -16,7 +16,7 @@ from pydantic import ValidationError
 
 from app.calendar.caldav_provider import CalDavProvider
 from app.calendar.ical_provider import IcalProvider
-from app.config import AppConfig, CalendarConfig, WeatherConfig
+from app.config import AppConfig, ArtworkConfig, CalendarConfig, WeatherConfig
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +133,9 @@ def _parse_config_form(form: Any, existing: AppConfig) -> dict:
             "latitude": _float("weather_latitude", 45.4654),
             "longitude": _float("weather_longitude", 9.1866),
             "units": _str("weather_units", "celsius"),
+        },
+        "artwork": {
+            "query": _str("artwork_query", "landscape painting") or "landscape painting",
         },
         "calendars": calendars,
         "timezone": _str("timezone", existing.timezone) or existing.timezone,

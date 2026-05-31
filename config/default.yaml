@@ -19,4 +19,6 @@ weather:
   latitude: 45.4654    # Milano — sostituire con le proprie coordinate
   longitude: 9.1866
   units: celsius       # celsius | fahrenheit
+artwork:
+  query: "landscape painting"
 calendars: []

@@ -329,6 +329,26 @@
     </section>
 
     <!-- ---------------------------------------------------------------- -->
+    <!-- Artwork                                                           -->
+    <!-- ---------------------------------------------------------------- -->
+    <section class="config-section">
+      <h2 class="config-section__title">Artwork</h2>
+      <div class="field-grid">
+        <label class="field-label" for="artwork_query">query</label>
+        <div style="display:flex; gap:8px; align-items:center; max-width:360px;">
+          <input class="field-input" type="text" id="artwork_query" name="artwork_query"
+                 value="{{ config.artwork.query }}"
+                 style="flex:1; max-width:none;"
+                 placeholder="landscape painting" required />
+          <button type="button" class="btn"
+                  onclick="document.getElementById('artwork_query').value='landscape painting'">
+            Default
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------------------------------------------------------------- -->
     <!-- Calendari                                                          -->
     <!-- ---------------------------------------------------------------- -->
     <section class="config-section">
