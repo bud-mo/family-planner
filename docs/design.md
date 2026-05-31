@@ -35,17 +35,17 @@ Tutte le famiglie appartengono al Google Fonts catalog, a rendering ottimizzato 
 
 ### Scala Tipografica
 
-La scala è fissa in pixel per garantire coerenza sul display fisico (nessun `rem` dipendente dal viewport):
+La scala è fissa in pixel per garantire coerenza sul display fisico (nessun `rem` dipendente dal viewport). I valori sono calibrati per display ad alta risoluzione (Inky Impression 13.3" 1600×1200 e simili):
 
 | Token | Dimensione | Utilizzo |
 |---|---|---|
-| `--text-xs`  | 11px | Etichette secondarie, note |
-| `--text-sm`  | 13px | Orari, metadati appuntamento |
-| `--text-base`| 15px | Corpo testo, nomi eventi |
-| `--text-md`  | 18px | Numero giorno selezionato |
-| `--text-lg`  | 24px | Data nel banner meteo, intestazione calendario |
-| `--text-xl`  | 32px | Titolo sezione, elemento prominente |
-| `--text-2xl` | 48px | Uso eccezionale |
+| `--text-xs`  | 18px | Etichette secondarie, note, orari |
+| `--text-sm`  | 21px | Metadati appuntamento, temperatura bioraria |
+| `--text-base`| 24px | Corpo testo, nomi eventi |
+| `--text-md`  | 28px | Numero giorno selezionato |
+| `--text-lg`  | 38px | Data nel banner meteo, intestazione calendario |
+| `--text-xl`  | 50px | Titolo sezione, elemento prominente |
+| `--text-2xl` | 76px | Uso eccezionale |
 
 Line-height uniforme: `1.3`. Letter-spacing per titoli: `0.03em`.
 
@@ -59,7 +59,7 @@ La palette è limitata a **sei valori** per garantire la fedeltà su e-ink in sc
 
 ```css
 /* Sfondo */
---color-bg:          #F8F6F0;   /* bianco avorio — carta giornale */
+--color-bg:          #FFFFFF;   /* bianco puro — massimo contrasto su e-ink */
 --color-bg-alt:      #EEECE6;   /* grigio chiarissimo — righe alternate, fasce */
 
 /* Testo */
@@ -80,7 +80,22 @@ La palette è limitata a **sei valori** per garantire la fedeltà su e-ink in sc
   --weather-rain:  #3B82F6;   /* pioggia / rovesci / temporale */
   --weather-snow:  #93C5FD;   /* neve / grandine */```
 
-**Su e-ink:** il renderer quantizza automaticamente verso i valori della palette fisica del display. I colori sopra sono progettati per collassare in modo prevedibile su palette BW, BWR e 4-gray.
+**Su e-ink:** il renderer quantizza automaticamente verso i valori della palette fisica del display. I colori sopra sono scelti per mappare in modo deterministico.
+
+### Palette Spectra 6 (Pimoroni Inky Impression)
+
+Quando `eink_palette: "spectra6"` è configurato, il post-processor quantizza verso la palette a 6 colori del pannello Pimoroni Inky Impression. Il `PillowEinkRenderer` genera comunque un'immagine RGB standard; l'`EinkRenderer` la converte in modalità palette `"P"` prima dell'invio all'hardware.
+
+| Indice | Nome | RGB | Utilizzo |
+|---|---|---|---|
+| 0 | Nero | `#000000` | Testo, bordi |
+| 1 | Bianco | `#FFFFFF` | Sfondo |
+| 2 | Rosso | `#FF0000` | Accenti, icona meteo `sun` |
+| 3 | Verde | `#00FF00` | (riservato) |
+| 4 | Blu | `#0000FF` | Icona meteo `cloud-rain` |
+| 5 | Giallo | `#FFFF00` | (riservato) |
+
+Il dithering Floyd-Steinberg (`eink_dither: true`) è raccomandato con questa palette per attenuare le transizioni cromatiche nelle fotografie e nelle aree sfumate.
 
 ### Palette Icone Meteo
 
@@ -127,12 +142,12 @@ Quattro fasce orizzontali impilate:
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  BANNER METEO  (altezza fissa: 186px)                    │
+│  BANNER METEO  (altezza fissa: 217px)                    │
 │  Data · Icona meteo · Temperatura attuale · Max/Min      │
 │  ──────────────────────────────────────────────────────  │
 │  Previsioni biorarie: 6 celle · Icona 48px · Temp        │
 ├──────────────────────────────────────────────────────────┤
-│  CALENDARIO MENSILE  (altezza fissa: 462px)              │
+│  CALENDARIO MENSILE  (altezza fissa: 560px)              │
 │  Vista mensile visiva — nessuna interazione              │
 ├──────────────────────────────────────────────────────────┤
 │                                                          │
@@ -140,14 +155,14 @@ Quattro fasce orizzontali impilate:
 │  Dal prossimo appuntamento in poi — stile Agenda         │
 │                                                          │
 ├──────────────────────────────────────────────────────────┤
-│  FOOTER  (altezza fissa: 40px)                           │
+│  FOOTER  (altezza fissa: 54px)                           │
 │  Indicatori di stato                                     │
 └──────────────────────────────────────────────────────────┘
 ```
 
 **Banner Meteo:** `border-bottom: 2px solid var(--color-rule-strong)`.  
 **Calendario Mensile:** `border-bottom: 1px solid var(--color-rule-strong)`.  
-**Lista Appuntamenti:** occupa l'altezza rimanente (`height − 186px − 560px − 46px`). Non scrolla.  
+**Lista Appuntamenti:** occupa l'altezza rimanente (`height − 217px − 560px − 54px`). Non scrolla.  
 **Footer:** `border-top: 1px solid var(--color-rule)`. Mostra solo gli indicatori di stato a destra (nessun pulsante di navigazione).
 
 ### Layout Landscape
@@ -156,9 +171,9 @@ Due colonne affiancate + footer full-width:
 
 ```
 ┌───────────────────────────────┬────────────────────────────────────────┐
-│  COLONNA SINISTRA  (38%)        │  COLONNA DESTRA  (62%)                 │
+│  COLONNA SINISTRA  (50%)        │  COLONNA DESTRA  (50%)                 │
 │                                 │                                        │
-│  METEO  (186px)                 │  LISTA APPUNTAMENTI                    │
+│  METEO  (217px)                 │  LISTA APPUNTAMENTI                    │
 │  Data · Icona · Temperatura     │  (altezza intera content area)         │
 │  Previsioni biorarie (6 celle)  │                                        │
 │  ─────────────────────────────  │                                        │
@@ -166,17 +181,17 @@ Due colonne affiancate + footer full-width:
 │  (altezza rimanente)            │                                        │
 │                                 │                                        │
 ├───────────────────────────────┴────────────────────────────────────────┤
-│  FOOTER  (40px, full width)                                              │
+│  FOOTER  (54px, full width)                                              │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Separatore colonne:** `border-right: 1px solid var(--color-rule-strong)` sulla colonna sinistra, altezza `height − 40px`.  
+**Separatore colonne:** `border-right: 1px solid var(--color-rule-strong)` sulla colonna sinistra, altezza `height − 54px`.  
 **Sezione Meteo:** `border-bottom: 1px solid var(--color-rule)`.  
-**Colonna sinistra:** larghezza `38%` (≈ rapporto aureo editoriale). Esempio: 1024×600 → 389px sinistra, 634px destra.  
-**Lista Appuntamenti:** occupa tutta l'altezza della content area (`height − 40px`).  
+**Colonna sinistra:** larghezza `50%` (metà esatta). Esempio: 1024×600 → 512px sinistra, 512px destra; 1600×1200 → 800px sinistra, 800px destra.  
+**Lista Appuntamenti:** occupa tutta l'altezza della content area (`height − 54px`).  
 **Footer:** `border-top: 1px solid var(--color-rule)`. Full width, mostra solo gli indicatori di stato a destra.
 
-Il footer è la fascia inferiore fissa (altezza `40px`). Non contiene pulsanti di navigazione. Mostra esclusivamente gli **indicatori di stato** allineati a destra, in `--text-xs`, `--color-ink-muted`:
+Il footer è la fascia inferiore fissa (altezza `54px`). Non contiene pulsanti di navigazione. Mostra esclusivamente gli **indicatori di stato** allineati a destra, in `--text-xs`, `--color-ink-muted`:
 
 | Indicatore | Contenuto |
 |---|---|
@@ -214,29 +229,26 @@ Banner superiore in portrait, sezione superiore della colonna sinistra in landsc
 
 Il lato destro è un blocco a tre sotto-colonne allineato al margine destro:
 
-- **Sotto-colonna 1 (sinistra):** icona condizione meteo Tabler `48px`, tintata con la palette colori meteo (`--weather-*`), centrata verticalmente nel banner
-- **Sotto-colonna 2 (centro):** temperatura attuale, `--font-body`, `40px`, `font-weight: 600`, `--color-ink`, centrata verticalmente, anchor destra
-- **Sotto-colonna 3 (destra):** max e min incolonnati verticalmente, `--font-body`, `--text-xs` (11px), `--color-ink-muted`, entrambi anchor destra; `↑max` a 1/3 dell'altezza del banner, `↓min` a 2/3
+- **Sotto-colonna 1 (sinistra):** icona condizione meteo Tabler `48px`, tintata con la palette colori meteo (`--weather-*`), centrata verticalmente nel banner- **Sotto-colonna 2 (centro):** temperatura attuale, `--font-body`, `40px`, `font-weight: 600`, `--color-ink`, centrata verticalmente, anchor destra
+- **Sotto-colonna 3 (destra):** max e min incolonnati verticalmente, `--font-body`, `--text-xs` (18px), `--color-ink-muted`, entrambi anchor destra; `↑max` a 1/3 dell'altezza del banner, `↓min` a 2/3
 - **Lato sinistro:** data, `--font-display`, `--text-lg`, formato `"Giorno, DD Mese YYYY"`, `--color-ink`
 - Sfondo: `--color-bg` — nessun sfondo alternato nel banner
 - Aggiornamento dati meteo: ogni ora (TTL cache provider)
 
-**Fascia previsioni biorarie** (sotto la fascia data/meteo, altezza 96px):
+**Fascia previsioni biorarie** (sotto la fascia data/meteo, altezza 127px):
 
 ```
 ┌────────┬────────┬────────┬────────┬────────┬────────┐
 │ 14:00  │ 16:00  │ 18:00  │ 20:00  │ 22:00  │ 00:00  │
 │  ⛅   │  ☁    │  🌧   │  ⛅   │  ⛅   │  ☁    │
 │  18°   │  17°   │  15°   │  14°   │  13°   │  12°   │
-│   ▼    │        │        │        │        │        │
 └────────┴────────┴────────┴────────┴────────┴────────┘
 ```
 
 - **6 celle** di larghezza uguale (`width / 6`): fascia corrente + 5 successive (ogni 2 ore)
-- **Orario** (riga 1): `--font-mono`, `--text-xs` (11px), `--color-ink-muted`, centrato in cella
-- **Icona** (riga 2): Tabler `48px`, tintata con la palette colori meteo (`--weather-*`), centrata in cella
-- **Temperatura** (riga 3): `--font-body` SemiBold, `--text-xs` (11px), `--color-ink`, centrata in cella
-- **Triangolo** (▼, solo cella corrente): triangolo pieno 10×8px, `--color-ink`, ancorato al bordo basso della fascia, centrato orizzontalmente
+- **Orario** (riga 1, in alto, centrato): `--font-mono`, `--text-xs` (18px), `--color-ink-muted`, anchor `mt` a 4px dal bordo superiore della cella
+- **Icona** (riga 2, centrata verticalmente tra orario e temperatura): Tabler `48px`, tintata con la palette colori meteo (`--weather-*`), centrata orizzontalmente in cella
+- **Temperatura** (riga 3, in basso, centrata): `--font-body` SemiBold, `--text-sm` (21px), `--color-ink`, baseline ancorata a 27px dal bordo inferiore della cella
 - **Separatori verticali** tra celle: `1px solid var(--color-rule)` (non sui bordi estremi)
 
 #### Sezione Calendario Mensile
@@ -363,6 +375,25 @@ Quando `display.type = "eink"`:
 3. **Dithering:** il post-processor applica Floyd-Steinberg alle aree di testo piccolo per migliorare la leggibilità su display a bassa risoluzione.
 4. **Refresh parziale:** nel layout landscape, il calendario mensile (colonna sinistra, sezione inferiore) è l'area più statica e ideale per partial refresh separato. La lista appuntamenti (colonna destra / area inferiore portrait) cambia ad ogni navigazione.
 
+### Modelli supportati
+
+| `eink_model` | Driver | Risoluzione | Palette |
+|---|---|---|---|
+| `7in5_V2` | `waveshare_epd.epd7in5_V2` | 800×480 | `bw`, `bwr`, `4gray` |
+| `7in5` | `waveshare_epd.epd7in5` | 640×384 | `bw`, `bwr` |
+| `4in2` / `4in2_V2` | `waveshare_epd.epd4in2*` | 400×300 | `bw`, `bwr` |
+| `5in83_V2` | `waveshare_epd.epd5in83_V2` | 648×480 | `bw`, `bwr`, `4gray` |
+| `3in7` | `waveshare_epd.epd3in7` | 280×480 | `4gray` |
+| `inky_impression_4` | `inky` (Pimoroni) | 600×400 | `spectra6` |
+| `inky_impression_7` | `inky` (Pimoroni) | 800×480 | `spectra6` |
+| `inky_impression_13` | `inky` (Pimoroni) | 1600×1200 | `spectra6` |
+
+### Pimoroni Inky Impression (Spectra 6)
+
+I modelli `inky_impression_*` usano la classe `InkyDisplay` (invece di `EinkDisplay`) che fa uso della libreria `inky` di Pimoroni. Il rendering pipeline è identico: `PillowEinkRenderer` → `EinkRenderer.process()` (quantizzazione `spectra6`) → `InkyDisplay.push()`.
+
+**Fix `_busy_wait` per Inky 13.3":** la versione 2.4.0 della libreria `inky` ha un bug in `_busy_wait()` per il pannello EL133UF1 (BUSY è active-low, ma la condizione del loop è invertita). `InkyDisplay.push()` corregge il bug sostituendo `_busy_wait()` sull'istanza con un'implementazione corretta prima di chiamare `show()`.
+
 ---
 
 ## Token CSS di Riferimento
@@ -374,16 +405,16 @@ Quando `display.type = "eink"`:
   --font-body:    'IBM Plex Sans', Helvetica Neue, Arial, sans-serif;
   --font-mono:    'IBM Plex Mono', Courier New, monospace;
 
-  --text-xs:   11px;
-  --text-sm:   13px;
-  --text-base: 15px;
-  --text-md:   18px;
-  --text-lg:   24px;
-  --text-xl:   32px;
-  --text-2xl:  48px;
+  --text-xs:   18px;
+  --text-sm:   21px;
+  --text-base: 24px;
+  --text-md:   28px;
+  --text-lg:   38px;
+  --text-xl:   50px;
+  --text-2xl:  76px;
 
   /* Colori (modalità giorno) */
-  --color-bg:          #F8F6F0;
+  --color-bg:          #FFFFFF;
   --color-bg-alt:      #EEECE6;
   --color-ink:         #111111;
   --color-ink-muted:   #666666;
@@ -395,11 +426,11 @@ Quando `display.type = "eink"`:
 
   /* Struttura */
   --height-banner-main:   90px;      /* Fascia superiore: data e meteo corrente */
-  --height-banner-hourly: 96px;      /* Fascia inferiore: previsioni biorarie */
-  --height-banner:        186px;     /* Banner meteo totale (portrait) / sezione meteo (landscape) */
-  --height-calendar: 462px;     /* Calendario mensile: 4 righe evento per cella (solo portrait) */
-  --height-footer:   40px;
-  --col-left-ratio:  38%;       /* Larghezza colonna sinistra in landscape */
+  --height-banner-hourly: 127px;     /* Fascia inferiore: previsioni biorarie */
+  --height-banner:        217px;     /* Banner meteo totale (portrait) / sezione meteo (landscape) */
+  --height-calendar: 560px;     /* Calendario mensile: 4 righe evento per cella (solo portrait) */
+  --height-footer:   54px;
+  --col-left-ratio:  50%;       /* Larghezza colonna sinistra in landscape */
   --border-radius:   0;         /* Mai arrotondare */
   --shadow:          none;      /* Mai ombreggiare */
 }
@@ -413,13 +444,13 @@ Valori pixel specifici per i display supportati:
 
 | Display | Risoluzione | Layout default | Colonna sinistra | Colonna destra | Lista appuntamenti |
 |---|---|---|---|---|---|
-| HDMI 7" | 1024×600 | `landscape` | 389px | 634px | 560px altezza |
-| Inky Impression 13.3" | 1600×1200 | `landscape` | 608px | 991px | 1160px altezza |
-| HDMI portrait (ruotato) | 600×1024 | `portrait` | — | — | 374px altezza |
-| E-ink portrait (ruotato) | 1200×1600 | `portrait` | — | — | 950px altezza |
+| HDMI 7" | 1024×600 | `landscape` | 512px | 512px | 546px altezza |
+| Inky Impression 13.3" | 1600×1200 | `landscape` | 800px | 800px | 1146px altezza |
+| HDMI portrait (ruotato) | 600×1024 | `portrait` | — | — | 193px altezza |
+| E-ink portrait (ruotato) | 1200×1600 | `portrait` | — | — | 769px altezza |
 
-Calcoli portrait: lista = `height − 186px − 560px − 46px`.  
-Calcoli landscape: lista height = `height − 46px`; colonna sinistra = `width × 0.50`.
+Calcoli portrait: lista = `height − 217px − 560px − 54px`.  
+Calcoli landscape: lista height = `height − 54px`; colonna sinistra = `width × 0.50`.
 
 ---
 
@@ -430,6 +461,10 @@ Il layout è selezionato tramite il campo `display.layout` nel file di configura
 ```yaml
 display:
   layout: "landscape"   # "landscape" | "portrait"
+  eink_model: "inky_impression_13"   # vedere tabella modelli supportati
+  eink_palette: "spectra6"           # "bw" | "bwr" | "4gray" | "spectra6"
+  eink_dither: true                  # Floyd-Steinberg dithering
+  eink_saturation: 0.5               # saturazione colori per palette spectra6 (0.0–1.0)
 ```
 
 Il template HTML applica una classe CSS al tag `<body>` corrispondente:
