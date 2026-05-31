@@ -162,6 +162,19 @@
   align-items: center;
   gap: 12px;
 }
+
+/* Conditional display visibility */
+.row-eink-only.hidden,
+.row-hdmi-only.hidden {
+  display: none !important;
+}
+
+/* Read-only dimension inputs when e-ink drives them */
+.field-input[readonly] {
+  color: var(--color-ink-muted);
+  background: var(--color-bg-alt);
+  cursor: default;
+}
 {% endblock %}
 
 {% block content %}
@@ -220,12 +233,38 @@
     <!-- ---------------------------------------------------------------- -->
     <section class="config-section">
       <h2 class="config-section__title">Display</h2>
-      <div class="field-grid">
+      <div class="field-grid" id="display-field-grid">
+
         <label class="field-label" for="display_type">type</label>
         <select class="field-select" id="display_type" name="display_type">
           <option value="hdmi"{% if config.display.type == "hdmi" %} selected{% endif %}>HDMI</option>
           <option value="eink"{% if config.display.type == "eink" %} selected{% endif %}>E-Ink</option>
         </select>
+
+        <!-- e-ink model (e-ink only) -->
+        <label class="field-label row-eink-only" for="display_eink_model">e-ink model</label>
+        <div style="display:contents" class="row-eink-only">
+          <select class="field-select" id="display_eink_model" name="display_eink_model">
+            <optgroup label="Waveshare">
+              {% for m in ["7in5_V2","7in5","5in83_V2","5in83","4in2_V2","4in2","3in7","2in13_V3","2in13_V2","2in13","2in7","1in54_V2","1in54"] %}
+              <option value="{{ m }}"{% if config.display.eink_model == m %} selected{% endif %}>{{ m }}</option>
+              {% endfor %}
+            </optgroup>
+            <optgroup label="Inky Impression (Pimoroni)">
+              {% for m in ["inky_impression_4","inky_impression_7","inky_impression_13"] %}
+              <option value="{{ m }}"{% if config.display.eink_model == m %} selected{% endif %}>{{ m }}</option>
+              {% endfor %}
+            </optgroup>
+          </select>
+        </div>
+
+        <label class="field-label" for="display_width">width (px)</label>
+        <input class="field-input" type="number" id="display_width" name="display_width"
+               value="{{ config.display.width }}" min="1" required />
+
+        <label class="field-label" for="display_height">height (px)</label>
+        <input class="field-input" type="number" id="display_height" name="display_height"
+               value="{{ config.display.height }}" min="1" required />
 
         <label class="field-label" for="display_layout">orientation</label>
         <select class="field-select" id="display_layout" name="display_layout">
@@ -233,19 +272,15 @@
           <option value="portrait"{% if config.display.layout == "portrait" %} selected{% endif %}>Portrait</option>
         </select>
 
-        <label class="field-label" for="display_width">width (px)</label>
-        <input class="field-input" type="number" id="display_width" name="display_width"
-               value="{{ config.display.width }}" min="320" required />
-
-        <label class="field-label" for="display_height">height (px)</label>
-        <input class="field-input" type="number" id="display_height" name="display_height"
-               value="{{ config.display.height }}" min="240" required />
-
-        <label class="field-label" for="display_fullscreen">fullscreen</label>
-        <div class="field-checkbox-row">
-          <input type="checkbox" id="display_fullscreen" name="display_fullscreen"
-                 {% if config.display.fullscreen %}checked{% endif %} />
-          <label for="display_fullscreen">Attiva fullscreen</label>
+        <!-- rotation (e-ink only) -->
+        <label class="field-label row-eink-only" for="display_rotation">panel rotation</label>
+        <div style="display:contents" class="row-eink-only">
+          <select class="field-select" id="display_rotation" name="display_rotation">
+            <option value="0"{% if config.display.rotation == 0 %} selected{% endif %}>0°</option>
+            <option value="90"{% if config.display.rotation == 90 %} selected{% endif %}>90°</option>
+            <option value="180"{% if config.display.rotation == 180 %} selected{% endif %}>180°</option>
+            <option value="270"{% if config.display.rotation == 270 %} selected{% endif %}>270°</option>
+          </select>
         </div>
 
         <label class="field-label" for="display_refresh">refresh (s)</label>
@@ -253,33 +288,35 @@
                name="display_refresh_interval"
                value="{{ config.display.refresh_interval }}" min="10" required />
 
-        <label class="field-label" for="display_eink_model">e-ink model</label>
-        <select class="field-select" id="display_eink_model" name="display_eink_model">
-          <optgroup label="Waveshare">
-            {% for m in ["7in5_V2","7in5","5in83_V2","5in83","4in2_V2","4in2","3in7","2in13_V3","2in13_V2","2in13","2in7","1in54_V2","1in54"] %}
-            <option value="{{ m }}"{% if config.display.eink_model == m %} selected{% endif %}>{{ m }}</option>
-            {% endfor %}
-          </optgroup>
-          <optgroup label="Inky Impression (Pimoroni)">
-            {% for m in ["inky_impression_4","inky_impression_7","inky_impression_13"] %}
-            <option value="{{ m }}"{% if config.display.eink_model == m %} selected{% endif %}>{{ m }}</option>
-            {% endfor %}
-          </optgroup>
-        </select>
+        <!-- fullscreen (HDMI only) -->
+        <label class="field-label row-hdmi-only" for="display_fullscreen">fullscreen</label>
+        <div style="display:contents" class="row-hdmi-only">
+          <div class="field-checkbox-row">
+            <input type="checkbox" id="display_fullscreen" name="display_fullscreen"
+                   {% if config.display.fullscreen %}checked{% endif %} />
+            <label for="display_fullscreen">Attiva fullscreen</label>
+          </div>
+        </div>
 
-        <label class="field-label" for="display_eink_palette">e-ink palette</label>
-        <select class="field-select" id="display_eink_palette" name="display_eink_palette">
-          <option value="bw"{% if config.display.eink_palette == "bw" %} selected{% endif %}>BW</option>
-          <option value="bwr"{% if config.display.eink_palette == "bwr" %} selected{% endif %}>BWR</option>
-          <option value="4gray"{% if config.display.eink_palette == "4gray" %} selected{% endif %}>4 Gray</option>
-          <option value="spectra6"{% if config.display.eink_palette == "spectra6" %} selected{% endif %}>Spectra 6</option>
-        </select>
+        <!-- e-ink palette (e-ink only) -->
+        <label class="field-label row-eink-only" for="display_eink_palette">e-ink palette</label>
+        <div style="display:contents" class="row-eink-only">
+          <select class="field-select" id="display_eink_palette" name="display_eink_palette">
+            <option value="bw"{% if config.display.eink_palette == "bw" %} selected{% endif %}>BW</option>
+            <option value="bwr"{% if config.display.eink_palette == "bwr" %} selected{% endif %}>BWR</option>
+            <option value="4gray"{% if config.display.eink_palette == "4gray" %} selected{% endif %}>4 Gray</option>
+            <option value="spectra6"{% if config.display.eink_palette == "spectra6" %} selected{% endif %}>Spectra 6</option>
+          </select>
+        </div>
 
-        <label class="field-label" for="display_eink_dither">dithering</label>
-        <div class="field-checkbox-row">
-          <input type="checkbox" id="display_eink_dither" name="display_eink_dither"
-                 {% if config.display.eink_dither %}checked{% endif %} />
-          <label for="display_eink_dither">Floyd-Steinberg dithering</label>
+        <!-- dithering (e-ink only) -->
+        <label class="field-label row-eink-only" for="display_eink_dither">dithering</label>
+        <div style="display:contents" class="row-eink-only">
+          <div class="field-checkbox-row">
+            <input type="checkbox" id="display_eink_dither" name="display_eink_dither"
+                   {% if config.display.eink_dither %}checked{% endif %} />
+            <label for="display_eink_dither">Floyd-Steinberg dithering</label>
+          </div>
         </div>
 
         <label class="field-label" for="display_show_buttons">show buttons</label>
@@ -288,6 +325,7 @@
                  {% if config.display.show_buttons %}checked{% endif %} />
           <label for="display_show_buttons">Mostra overlay di navigazione a schermo</label>
         </div>
+
       </div>
     </section>
 
@@ -471,6 +509,60 @@
 <script>
 (function () {
   'use strict';
+
+  /* ------------------------------------------------------------------ */
+  /* Display section: conditional visibility + e-ink dimension auto-fill */
+  /* ------------------------------------------------------------------ */
+
+  var EINK_RESOLUTIONS = {{ eink_resolutions | tojson }};
+
+  function updateDisplay() {
+    var type = document.getElementById('display_type').value;
+    var isEink = (type === 'eink');
+
+    // Toggle rows
+    document.querySelectorAll('.row-eink-only').forEach(function (el) {
+      el.classList.toggle('hidden', !isEink);
+    });
+    document.querySelectorAll('.row-hdmi-only').forEach(function (el) {
+      el.classList.toggle('hidden', isEink);
+    });
+
+    // Width/height: readonly + auto-filled for e-ink, editable for HDMI
+    var wInput = document.getElementById('display_width');
+    var hInput = document.getElementById('display_height');
+    wInput.readOnly = isEink;
+    hInput.readOnly = isEink;
+    if (isEink) { updateEinkDimensions(); }
+  }
+
+  function updateEinkDimensions() {
+    var model    = document.getElementById('display_eink_model').value;
+    var rotation = parseInt(document.getElementById('display_rotation').value, 10);
+    var res      = EINK_RESOLUTIONS[model];
+    if (!res) { return; }
+    var w = res[0], h = res[1];
+    // For 90°/270° the image rendered must fit the panel in transposed orientation
+    if (rotation === 90 || rotation === 270) { var tmp = w; w = h; h = tmp; }
+    document.getElementById('display_width').value  = w;
+    document.getElementById('display_height').value = h;
+  }
+
+  document.getElementById('display_type').addEventListener('change', updateDisplay);
+  document.getElementById('display_eink_model').addEventListener('change', function () {
+    if (document.getElementById('display_type').value === 'eink') { updateEinkDimensions(); }
+  });
+  document.getElementById('display_rotation').addEventListener('change', function () {
+    if (document.getElementById('display_type').value === 'eink') { updateEinkDimensions(); }
+  });
+
+  // Init on load
+  document.addEventListener('DOMContentLoaded', updateDisplay);
+  updateDisplay();
+
+  /* ------------------------------------------------------------------ */
+  /* Calendar cards helpers                                              */
+  /* ------------------------------------------------------------------ */
 
   function updateTitles() {
     var cards = document.querySelectorAll('#cal-list .cal-card');

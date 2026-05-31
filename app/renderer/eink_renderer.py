@@ -92,6 +92,7 @@ class EinkRenderer:
         self._size: tuple[int, int] = EINK_RESOLUTIONS[model]
         self._palette: str = config.eink_palette
         self._dither: bool = config.eink_dither
+        self._rotation: int = config.rotation
 
     # ------------------------------------------------------------------
     # Public interface
@@ -111,8 +112,11 @@ class EinkRenderer:
         """
         dither_mode = Image.Dither.FLOYDSTEINBERG if self._dither else Image.Dither.NONE
 
-        # 1. Resize
-        resized = image.resize(self._size, Image.Resampling.LANCZOS)
+        # 1. Resize — for 90°/270° the input canvas is transposed relative to
+        #    the panel's native resolution, so swap the resize target dimensions.
+        W, H = self._size
+        resize_target = (H, W) if self._rotation in (90, 270) else (W, H)
+        resized = image.resize(resize_target, Image.Resampling.LANCZOS)
 
         # 2 + 3. Quantise
         if self._palette == "bw":
@@ -128,6 +132,11 @@ class EinkRenderer:
                 "EinkRenderer: unknown palette %r — using bw", self._palette
             )
             result = self._quantise_bw(resized, dither_mode)
+
+        # 4. Rotate — PIL.Image.rotate uses counter-clockwise convention;
+        #    negate the angle for a clockwise physical rotation correction.
+        if self._rotation:
+            result = result.rotate(-self._rotation, expand=True)
 
         return result
 

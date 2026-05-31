@@ -97,7 +97,7 @@ def _parse_args() -> argparse.Namespace:
 
 def _eink_loop(
     renderer: PillowEinkRenderer,
-    eink_renderer: "EinkRenderer",
+    eink_renderer_ref: list,
     display: "EinkDisplay",
     aggregator: CalendarAggregator,
     interval: int,
@@ -127,7 +127,7 @@ def _eink_loop(
         try:
             events = aggregator.get_events(start, end)
             img = renderer.render(state, events)
-            processed = eink_renderer.process(img)
+            processed = eink_renderer_ref[0].process(img)
 
             if not artwork_mode.is_set():
                 push_thread = threading.Thread(
@@ -300,11 +300,13 @@ def main() -> None:
     display_obj: "EinkDisplay | InkyDisplay | None" = None
     eink_stop_event: threading.Event | None = None
     _hdmi_ref: list = [None]
+    _eink_renderer_ref: list = [None]
 
     if config.display.type == "eink":
         from app.renderer.eink_renderer import EinkRenderer
 
-        eink_renderer = EinkRenderer(config.display)
+        _eink_renderer_ref[0] = EinkRenderer(config.display)
+        eink_renderer = _eink_renderer_ref[0]
         if config.display.eink_model.startswith("inky_"):
             from app.display.eink import InkyDisplay
             display_obj = InkyDisplay(config.display)
@@ -320,7 +322,7 @@ def main() -> None:
             target=_eink_loop,
             args=(
                 renderer,
-                eink_renderer,
+                _eink_renderer_ref,
                 display_obj,
                 aggregator,
                 config.display.refresh_interval,
@@ -355,7 +357,7 @@ def main() -> None:
                     # Show a random landscape painting from Art Institute of Chicago.
                     _perform_show_artwork(
                         renderer,
-                        eink_renderer,
+                        _eink_renderer_ref[0],
                         display_obj,  # type: ignore[arg-type]
                         _artwork_mode,
                     )
@@ -399,7 +401,7 @@ def main() -> None:
                     _shutdown_triggered.set()
                     threading.Thread(
                         target=_perform_shutdown,
-                        args=(renderer, eink_renderer, display_obj, eink_stop_event, server),
+                        args=(renderer, _eink_renderer_ref[0], display_obj, eink_stop_event, server),
                         daemon=True,
                         name="shutdown",
                     ).start()
@@ -473,6 +475,11 @@ def main() -> None:
             web_app.state.renderer = new_renderer
             if _hdmi_ref[0] is not None:
                 _hdmi_ref[0].set_renderer(new_renderer)
+            # Rebuild EinkRenderer so palette/dithering/rotation changes take effect
+            # in the e-ink push loop without requiring a full process restart.
+            if _eink_renderer_ref[0] is not None:
+                from app.renderer.eink_renderer import EinkRenderer as _EinkRenderer
+                _eink_renderer_ref[0] = _EinkRenderer(new_config.display)
             # Refresh template globals used by the browser preview.
             web_app.state.templates.env.globals["refresh_interval"] = new_config.display.refresh_interval
             web_app.state.templates.env.globals["show_buttons"] = new_config.display.show_buttons

@@ -17,6 +17,7 @@ from pydantic import ValidationError
 from app.calendar.caldav_provider import CalDavProvider
 from app.calendar.ical_provider import IcalProvider
 from app.config import AppConfig, ArtworkConfig, CalendarConfig, WeatherConfig
+from app.renderer.eink_renderer import EINK_RESOLUTIONS
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +128,7 @@ def _parse_config_form(form: Any, existing: AppConfig) -> dict:
             "eink_model": _str("display_eink_model", "7in5_V2"),
             "eink_palette": _str("display_eink_palette", "bw"),
             "eink_dither": _bool("display_eink_dither"),
+            "rotation": _int("display_rotation", 0),
         },
         "weather": {
             "enabled": _bool("weather_enabled"),
@@ -176,6 +178,7 @@ async def config_get(
             "view_title": "Configurazione",
             "current_time": _current_time(),
             "config": _safe_config_dict(config),
+            "eink_resolutions": EINK_RESOLUTIONS,
             "saved": saved,
             "error": error,
         },

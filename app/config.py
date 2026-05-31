@@ -28,6 +28,7 @@ class DisplayConfig(BaseModel):
     eink_palette: Literal["bw", "bwr", "4gray", "spectra6"] = "bw"
     eink_dither: bool = True
     eink_saturation: float = 0.5
+    rotation: Literal[0, 90, 180, 270] = 0
 
 
 class CalendarConfig(BaseModel):
