@@ -16,12 +16,14 @@ Usage::
 """
 from __future__ import annotations
 
+import io
 import logging
+import random
 from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from PIL import Image, ImageColor, ImageDraw, ImageFont
+from PIL import Image, ImageColor, ImageDraw, ImageFont, ImageOps
 
 from app.calendar.data_builders import _build_month_grid, _build_rolling_week_grid
 from app.renderer.emoji_icons import load_icon, split_text_emoji
@@ -59,6 +61,114 @@ if TYPE_CHECKING:
     from app.weather.provider import WeatherProvider
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Artwork — Art Institute of Chicago public API (no key required)
+# ---------------------------------------------------------------------------
+
+_ARTIC_SEARCH_URL: str = "https://api.artic.edu/api/v1/artworks/search"
+_ARTIC_IIIF_TPL: str = (
+    "https://www.artic.edu/iiif/2/{image_id}/full/{width},/0/default.jpg"
+)
+
+
+def _fetch_artwork(width: int, height: int) -> "tuple[Image.Image, str] | None":
+    """Fetch a random public-domain landscape painting from the Art Institute
+    of Chicago and resize it to cover *width* × *height* exactly.
+
+    Issues a POST search for landscape paintings (public domain, with image)
+    then downloads the chosen artwork via the IIIF endpoint, requesting
+    *width* pixels wide (height is computed server-side, preserving aspect
+    ratio).  The resulting image is then crop-filled to the exact target size
+    via ``ImageOps.fit``.
+
+    Some IIIF images return 403 even when marked public domain — up to
+    ``_MAX_ATTEMPTS`` candidates are tried before giving up.
+
+    Returns a ``(image, caption)`` tuple where *caption* is a pre-formatted
+    string (may be empty if no metadata is available), or ``None`` on any
+    network or parse error — the caller falls back to a plain background.
+    """
+    _MAX_ATTEMPTS = 5
+    # CloudFront protects the IIIF image server — a browser-like User-Agent
+    # and Referer header are required to avoid 403/challenge responses.
+    _BROWSER_HEADERS = {
+        "User-Agent": (
+            "Mozilla/5.0 (X11; Linux aarch64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://www.artic.edu/",
+    }
+    try:
+        import requests
+
+        session = requests.Session()
+        session.headers.update(_BROWSER_HEADERS)
+
+        resp = session.post(
+            _ARTIC_SEARCH_URL,
+            json={
+                "q": "landscape painting",
+                "query": {
+                    "bool": {
+                        "must": [
+                            {"term": {"is_public_domain": True}},
+                            {"exists": {"field": "image_id"}},
+                        ]
+                    }
+                },
+                "fields": ["id", "image_id", "title", "artist_display", "date_display"],
+                "limit": 100,
+            },
+            timeout=8,
+        )
+        resp.raise_for_status()
+        artworks = [a for a in resp.json().get("data", []) if a.get("image_id")]
+        if not artworks:
+            logger.warning("_fetch_artwork: nessun artwork trovato in risposta ARTIC.")
+            return None
+
+        random.shuffle(artworks)
+        for attempt, artwork in enumerate(artworks[:_MAX_ATTEMPTS], start=1):
+            img_url = _ARTIC_IIIF_TPL.format(image_id=artwork["image_id"], width=width)
+            try:
+                img_resp = session.get(img_url, timeout=15)
+                img_resp.raise_for_status()
+            except requests.exceptions.HTTPError as exc:
+                logger.warning(
+                    "_fetch_artwork: tentativo %d/%d fallito (%s) — provo il prossimo.",
+                    attempt, _MAX_ATTEMPTS, exc,
+                )
+                continue
+            img = Image.open(io.BytesIO(img_resp.content)).convert("RGB")
+            cover = ImageOps.fit(img, (width, height), Image.Resampling.LANCZOS)
+
+            # Build caption: "Title, Artist (Year)" — all fields optional.
+            title = (artwork.get("title") or "").strip()
+            # artist_display may be multi-line ("Name\nNationality, Dates") — keep first line only.
+            artist = (artwork.get("artist_display") or "").split("\n")[0].strip()
+            year = (artwork.get("date_display") or "").strip()
+            parts = [p for p in [title, artist] if p]
+            caption = ", ".join(parts)
+            if year:
+                caption = f"{caption} ({year})" if caption else f"({year})"
+
+            logger.info(
+                "_fetch_artwork: «%s» di %s",
+                title or "?",
+                artist or "?",
+            )
+            return cover, caption
+
+        logger.warning("_fetch_artwork: tutti i %d tentativi falliti — uso sfondo BG.", _MAX_ATTEMPTS)
+        return None
+    except Exception:  # noqa: BLE001
+        logger.exception("_fetch_artwork: impossibile scaricare artwork — uso sfondo BG.")
+        return None
+
 
 # ---------------------------------------------------------------------------
 # Locale strings (private — not imported from other modules to avoid coupling)
@@ -181,6 +291,72 @@ class PillowEinkRenderer:
         self._draw_agenda(draw, img, agenda_rect, state, events, palette)
         self._draw_footer(draw, footer_rect, palette)
         return img
+
+    def render_artwork(self) -> Image.Image:
+        """Render a random public-domain landscape painting as an RGB ``PIL.Image``.
+
+        Fetches the artwork from the Art Institute of Chicago Collection API and
+        crop-fills the display area via ``ImageOps.fit``.  Falls back to a plain
+        ``BG`` background if the network is unavailable or the request fails for
+        any reason.  A caption with title, artist and year is drawn at the bottom
+        centre when metadata is available.
+
+        Returns:
+            An RGB ``PIL.Image`` at the configured display resolution.
+        """
+        palette = get_palette()
+        W, H = self._size
+        img = Image.new("RGB", (W, H), palette["BG"])
+        result = _fetch_artwork(W, H)
+        if result is not None:
+            artwork_img, caption = result
+            img.paste(artwork_img)
+            if caption:
+                self._draw_artwork_caption(img, caption, palette)
+        return img
+
+    def _draw_artwork_caption(
+        self,
+        img: Image.Image,
+        caption: str,
+        palette: dict[str, str],
+    ) -> None:
+        """Draw a caption box centred at the bottom edge of *img*."""
+        W, H = self._size
+        draw = ImageDraw.Draw(img)
+        font = self._font_desc_italic
+
+        PAD_X = 16
+        PAD_Y = 7
+        MARGIN_BOTTOM = 30
+        MAX_W = int(W * 0.80)  # caption at most 80% of display width
+
+        # Truncate with ellipsis if the text is too wide.
+        text = caption
+        bbox = draw.textbbox((0, 0), text, font=font)
+        text_w = bbox[2] - bbox[0]
+        if text_w > MAX_W - PAD_X * 2:
+            while text and text_w > MAX_W - PAD_X * 2 - draw.textlength("…", font=font):
+                text = text[:-1]
+                bbox = draw.textbbox((0, 0), text, font=font)
+                text_w = bbox[2] - bbox[0]
+            text = text.rstrip(", ") + "…"
+            bbox = draw.textbbox((0, 0), text, font=font)
+            text_w = bbox[2] - bbox[0]
+
+        text_h = bbox[3] - bbox[1]
+        box_w = text_w + PAD_X * 2
+        box_h = text_h + PAD_Y * 2
+
+        x0 = (W - box_w) // 2
+        y0 = H - box_h - MARGIN_BOTTOM
+
+        # Solid background box.
+        draw.rectangle([x0, y0, x0 + box_w, y0 + box_h], fill=palette["BG"])
+        # Top border line.
+        draw.line([x0, y0, x0 + box_w, y0], fill=palette["INK_MUTED"], width=1)
+        # Caption text.
+        draw.text((x0 + PAD_X, y0 + PAD_Y), text, font=font, fill=palette["INK"])
 
     # ------------------------------------------------------------------
     # Weather banner

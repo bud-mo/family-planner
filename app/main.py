@@ -36,7 +36,9 @@ import argparse
 import asyncio
 import logging
 import signal
+import subprocess
 import threading
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -100,10 +102,17 @@ def _eink_loop(
     aggregator: CalendarAggregator,
     interval: int,
     stop_event: threading.Event,
+    artwork_mode: threading.Event,
+    wake_event: threading.Event,
 ) -> None:
     """Periodically render and push frames to the e-ink panel.
 
     Runs in a dedicated daemon thread.
+
+    When *artwork_mode* is set the loop still refreshes calendar data but
+    suppresses the panel push so the artwork displayed by button B is not
+    overwritten.  Setting *wake_event* causes the loop to skip the remaining
+    sleep and re-render immediately (used by button A to return to planner).
     """
     from app.calendar.data_builders import events_range_for_state
 
@@ -120,27 +129,116 @@ def _eink_loop(
             img = renderer.render(state, events)
             processed = eink_renderer.process(img)
 
-            push_thread = threading.Thread(
-                target=display.push,
-                args=(processed,),
-                daemon=True,
-                name="eink-push",
-            )
-            push_thread.start()
-            push_thread.join(timeout=_PUSH_TIMEOUT)
-            if push_thread.is_alive():
-                logger.error(
-                    "E-ink push did not complete within %ds — "
-                    "panel BUSY pin may be stuck. Skipping frame; "
-                    "the push thread will finish in the background "
-                    "once the panel responds.",
-                    _PUSH_TIMEOUT,
+            if not artwork_mode.is_set():
+                push_thread = threading.Thread(
+                    target=display.push,
+                    args=(processed,),
+                    daemon=True,
+                    name="eink-push",
                 )
+                push_thread.start()
+                push_thread.join(timeout=_PUSH_TIMEOUT)
+                if push_thread.is_alive():
+                    logger.error(
+                        "E-ink push did not complete within %ds — "
+                        "panel BUSY pin may be stuck. Skipping frame; "
+                        "the push thread will finish in the background "
+                        "once the panel responds.",
+                        _PUSH_TIMEOUT,
+                    )
         except Exception as exc:  # noqa: BLE001
             logger.error("E-ink render/push error: %s", exc)
-        stop_event.wait(timeout=interval)
+
+        # Interruptible sleep: wake early if wake_event fires (button A) or
+        # stop_event fires (shutdown).  Poll every 0.5 s so the loop remains
+        # responsive without busy-waiting.
+        deadline = time.monotonic() + interval
+        while not stop_event.is_set():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            if wake_event.wait(timeout=min(remaining, 0.5)):
+                wake_event.clear()
+                break
 
     logger.info("E-ink loop fermato.")
+
+
+# ---------------------------------------------------------------------------
+# Physical button helpers (Inky Impression)
+# ---------------------------------------------------------------------------
+
+
+def _perform_shutdown(
+    renderer: PillowEinkRenderer,
+    eink_renderer: "EinkRenderer",
+    display: "InkyDisplay",
+    stop_event: threading.Event,
+    server: "uvicorn.Server",
+) -> None:
+    """Render a shutdown screen, push it to the panel, then power off.
+
+    Called from a daemon thread spawned by the GPIO callback.  Protected
+    against double-invocation by ``_shutdown_triggered`` at the call site.
+
+    Sequence:
+      1. Stop the normal e-ink refresh loop.
+      2. Render a plain background (fast, no network) and push to the panel.
+      3. Signal the web server to exit.
+      4. Issue ``sudo shutdown -h now``.
+    """
+    logger.info("Shutdown avviato dal pulsante D — rendering schermata di spegnimento.")
+    stop_event.set()
+
+    try:
+        from app.renderer.tokens import get_palette
+        from PIL import Image
+
+        palette = get_palette()
+        W, H = renderer._size  # noqa: SLF001
+        img = Image.new("RGB", (W, H), palette["BG"])
+        processed = eink_renderer.process(img)
+        display.push(processed)
+    except Exception:  # noqa: BLE001
+        logger.exception("_perform_shutdown: errore durante il rendering della schermata.")
+
+    server.should_exit = True
+    logger.info("_perform_shutdown: esecuzione sudo shutdown -h now")
+    result = subprocess.run(["sudo", "shutdown", "-h", "now"], check=False)  # noqa: S603 S607
+    if result.returncode != 0:
+        logger.error(
+            "_perform_shutdown: sudo shutdown fallito (exit %d). "
+            "Verificare che sudoers sia configurato con setup-autostart.sh.",
+            result.returncode,
+        )
+
+
+def _perform_show_artwork(
+    renderer: PillowEinkRenderer,
+    eink_renderer: "EinkRenderer",
+    display: "InkyDisplay",
+    artwork_mode: threading.Event,
+) -> None:
+    """Fetch and push a random landscape painting to the e-ink panel.
+
+    Sets *artwork_mode* immediately so that the refresh loop suppresses its
+    next push while the artwork is being fetched and sent to the panel.
+    The actual fetch + push runs in a daemon thread to avoid blocking the
+    GPIO callback.
+    """
+    artwork_mode.set()
+    logger.info("Modalità artwork attivata (pulsante B).")
+
+    def _push() -> None:
+        try:
+            img = renderer.render_artwork()
+            processed = eink_renderer.process(img)
+            display.push(processed)
+            logger.info("Artwork inviato al pannello.")
+        except Exception:  # noqa: BLE001
+            logger.exception("_perform_show_artwork: errore durante fetch/push dell'artwork.")
+
+    threading.Thread(target=_push, daemon=True, name="artwork-push").start()
 
 
 # ---------------------------------------------------------------------------
@@ -203,6 +301,9 @@ def main() -> None:
             display_obj = EinkDisplay(config.display)
 
         eink_stop_event = threading.Event()
+        _artwork_mode = threading.Event()
+        _wake_event = threading.Event()
+
         eink_thread = threading.Thread(
             target=_eink_loop,
             args=(
@@ -212,6 +313,8 @@ def main() -> None:
                 aggregator,
                 config.display.refresh_interval,
                 eink_stop_event,
+                _artwork_mode,
+                _wake_event,
             ),
             daemon=True,
             name="eink-loop",
@@ -223,6 +326,49 @@ def main() -> None:
             config.display.eink_palette,
             config.display.refresh_interval,
         )
+
+        # ----------------------------------------------------------
+        # Physical button handler (Inky Impression only)
+        # ----------------------------------------------------------
+        if config.display.eink_model.startswith("inky_"):
+            from app.display.buttons import InkyButtonHandler
+
+            _shutdown_triggered = threading.Event()
+
+            def _on_button(button: str) -> None:
+                if _shutdown_triggered.is_set():
+                    return  # ignore all buttons after shutdown is initiated
+
+                if button == "B":
+                    # Show a random landscape painting from Art Institute of Chicago.
+                    _perform_show_artwork(
+                        renderer,
+                        eink_renderer,
+                        display_obj,  # type: ignore[arg-type]
+                        _artwork_mode,
+                    )
+
+                elif button == "A":
+                    # Return to the planner: clear artwork mode and wake the loop
+                    # immediately so a fresh planner frame is pushed without delay.
+                    if _artwork_mode.is_set():
+                        _artwork_mode.clear()
+                        logger.info("Modalità artwork disattivata (pulsante A) — ritorno al planner.")
+                    _wake_event.set()
+
+                elif button == "D":
+                    # Shutdown: stop the loop and power off the device.
+                    _shutdown_triggered.set()
+                    threading.Thread(
+                        target=_perform_shutdown,
+                        args=(renderer, eink_renderer, display_obj, eink_stop_event, server),
+                        daemon=True,
+                        name="shutdown",
+                    ).start()
+
+            _button_handler = InkyButtonHandler(eink_model=config.display.eink_model)
+            _button_handler.start(_on_button, eink_stop_event)
+            logger.info("InkyButtonHandler avviato (A=planner, B=artwork, D=shutdown).")
 
     # ------------------------------------------------------------------
     # Web server

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import importlib
 import logging
+import threading
 import time
 from typing import Any
 
@@ -163,6 +164,7 @@ class InkyDisplay:
     def __init__(self, config: DisplayConfig) -> None:
         self._config = config
         self._inky: Any | None = None
+        self._push_lock = threading.Lock()
 
     # ------------------------------------------------------------------
     # Public interface
@@ -198,90 +200,91 @@ class InkyDisplay:
             rgb = image.convert("RGB")
             image = rgb.resize(target_size, Image.Resampling.LANCZOS)
 
-        try:
-            logger.info("InkyDisplay: pushing image to panel %s", self._config.eink_model)
-            if self._config.eink_model == "inky_impression_13":
-                # Inky 2.4.0 (inky_el133uf1.py) has a bug in _busy_wait():
-                #
-                #   while self._gpio.get_value(self.busy_pin) == Value.ACTIVE:
-                #
-                # The EL133UF1 asserts BUSY LOW (Value.INACTIVE) during
-                # operations (active-low, open-drain with pull-up).  The
-                # while-loop condition is therefore NEVER true when the panel
-                # is busy, so _busy_wait() returns immediately — POF is sent
-                # right after DRF and the ACeP refresh is cut short before
-                # the display pixels update.
-                #
-                # Fix: replace _busy_wait() on the instance with a correct
-                # implementation:
-                #   • BUSY=HIGH at call time → race condition / panel idle →
-                #     sleep for full timeout (library's own safe-fallback logic).
-                #   • BUSY=LOW at call time → panel busy → loop until HIGH.
-                _original_busy_wait = inky._busy_wait
-                try:
-                    from gpiod.line import Value as _GpioValue
-                    _BUSY_INACTIVE = _GpioValue.INACTIVE  # LOW  = panel busy
-                    _BUSY_ACTIVE = _GpioValue.ACTIVE      # HIGH = panel ready
-                except ImportError:
-                    # dev environment without gpiod — use integer equivalents
-                    _BUSY_INACTIVE = 0
-                    _BUSY_ACTIVE = 1
+        with self._push_lock:
+            try:
+                logger.info("InkyDisplay: pushing image to panel %s", self._config.eink_model)
+                if self._config.eink_model == "inky_impression_13":
+                    # Inky 2.4.0 (inky_el133uf1.py) has a bug in _busy_wait():
+                    #
+                    #   while self._gpio.get_value(self.busy_pin) == Value.ACTIVE:
+                    #
+                    # The EL133UF1 asserts BUSY LOW (Value.INACTIVE) during
+                    # operations (active-low, open-drain with pull-up).  The
+                    # while-loop condition is therefore NEVER true when the panel
+                    # is busy, so _busy_wait() returns immediately — POF is sent
+                    # right after DRF and the ACeP refresh is cut short before
+                    # the display pixels update.
+                    #
+                    # Fix: replace _busy_wait() on the instance with a correct
+                    # implementation:
+                    #   • BUSY=HIGH at call time → race condition / panel idle →
+                    #     sleep for full timeout (library's own safe-fallback logic).
+                    #   • BUSY=LOW at call time → panel busy → loop until HIGH.
+                    _original_busy_wait = inky._busy_wait
+                    try:
+                        from gpiod.line import Value as _GpioValue
+                        _BUSY_INACTIVE = _GpioValue.INACTIVE  # LOW  = panel busy
+                        _BUSY_ACTIVE = _GpioValue.ACTIVE      # HIGH = panel ready
+                    except ImportError:
+                        # dev environment without gpiod — use integer equivalents
+                        _BUSY_INACTIVE = 0
+                        _BUSY_ACTIVE = 1
 
-                def _safe_busy_wait(timeout: float = 40.0) -> None:  # noqa: ANN001
-                    if inky._gpio.get_value(inky.busy_pin) == _BUSY_ACTIVE:
-                        # BUSY=HIGH: panel not yet signalling busy (race
-                        # condition) or genuinely idle.  Sleep conservatively.
-                        time.sleep(timeout)
-                        return
-                    # BUSY=LOW: panel is actively busy.  Wait for HIGH.
-                    _t0 = time.monotonic()
-                    while inky._gpio.get_value(inky.busy_pin) == _BUSY_INACTIVE:
-                        time.sleep(0.1)
-                        if time.monotonic() - _t0 > timeout:
-                            logger.warning(
-                                "InkyDisplay: _busy_wait timed out after %.1fs",
-                                time.monotonic() - _t0,
-                            )
+                    def _safe_busy_wait(timeout: float = 40.0) -> None:  # noqa: ANN001
+                        if inky._gpio.get_value(inky.busy_pin) == _BUSY_ACTIVE:
+                            # BUSY=HIGH: panel not yet signalling busy (race
+                            # condition) or genuinely idle.  Sleep conservatively.
+                            time.sleep(timeout)
                             return
+                        # BUSY=LOW: panel is actively busy.  Wait for HIGH.
+                        _t0 = time.monotonic()
+                        while inky._gpio.get_value(inky.busy_pin) == _BUSY_INACTIVE:
+                            time.sleep(0.1)
+                            if time.monotonic() - _t0 > timeout:
+                                logger.warning(
+                                    "InkyDisplay: _busy_wait timed out after %.1fs",
+                                    time.monotonic() - _t0,
+                                )
+                                return
 
-                inky._busy_wait = _safe_busy_wait
-                try:
-                    _t_show = time.monotonic()
+                    inky._busy_wait = _safe_busy_wait
+                    try:
+                        _t_show = time.monotonic()
+                        try:
+                            inky.set_image(image, saturation=self._config.eink_saturation)
+                        except TypeError:
+                            inky.set_image(image)
+                        inky.show()
+                        _push_secs = time.monotonic() - _t_show
+                        if _push_secs < 25.0:
+                            logger.warning(
+                                "InkyDisplay: show() completed in %.1fs — "
+                                "expected ≥25s for ACeP refresh; "
+                                "BUSY pin fix may not be working correctly.",
+                                _push_secs,
+                            )
+                        else:
+                            logger.info(
+                                "InkyDisplay: ACeP refresh completed in %.1fs.", _push_secs
+                            )
+                    finally:
+                        # Restore original method so subsequent calls are unaffected.
+                        try:
+                            del inky._busy_wait
+                        except AttributeError:
+                            inky._busy_wait = _original_busy_wait
+                else:
                     try:
                         inky.set_image(image, saturation=self._config.eink_saturation)
                     except TypeError:
                         inky.set_image(image)
                     inky.show()
-                    _push_secs = time.monotonic() - _t_show
-                    if _push_secs < 25.0:
-                        logger.warning(
-                            "InkyDisplay: show() completed in %.1fs — "
-                            "expected ≥25s for ACeP refresh; "
-                            "BUSY pin fix may not be working correctly.",
-                            _push_secs,
-                        )
-                    else:
-                        logger.info(
-                            "InkyDisplay: ACeP refresh completed in %.1fs.", _push_secs
-                        )
-                finally:
-                    # Restore original method so subsequent calls are unaffected.
-                    try:
-                        del inky._busy_wait
-                    except AttributeError:
-                        inky._busy_wait = _original_busy_wait
-            else:
-                try:
-                    inky.set_image(image, saturation=self._config.eink_saturation)
-                except TypeError:
-                    inky.set_image(image)
-                inky.show()
-            logger.info("InkyDisplay: image pushed successfully")
-        except Exception:
-            logger.exception(
-                "InkyDisplay: error during push to panel %s", self._config.eink_model
-            )
-            raise
+                logger.info("InkyDisplay: image pushed successfully")
+            except Exception:
+                logger.exception(
+                    "InkyDisplay: error during push to panel %s", self._config.eink_model
+                )
+                raise
 
     def stop(self) -> None:
         """No-op — the Inky library handles display sleep internally."""
