@@ -10,7 +10,7 @@ WorkingDirectory=/home/pi/family-planner
 Environment=SDL_VIDEODRIVER=kmsdrm
 Environment=SDL_AUDIODRIVER=dummy
 ExecStart=/home/pi/family-planner/venv/bin/python app/main.py \
-    --config /boot/family-planner.config.yaml
+    --config /boot/firmware/family-planner.config.yaml
 Restart=on-failure
 RestartSec=10
 

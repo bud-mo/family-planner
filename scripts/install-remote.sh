@@ -94,12 +94,12 @@ echo "[5/6] Installing systemd service..."
 ssh -t "$TARGET" "sed \"s|/home/pi|/home/$REMOTE_USER|g; s|User=pi|User=$REMOTE_USER|g\" \
     $REMOTE_DIR/systemd/family-planner.service | \
     sudo tee /etc/systemd/system/family-planner.service > /dev/null && \
-    if [ ! -f /boot/family-planner.config.yaml ]; then \
-        sudo cp $REMOTE_DIR/config/default.yaml /boot/family-planner.config.yaml && \
-        sudo chmod 644 /boot/family-planner.config.yaml && \
-        echo 'Default config written to /boot/family-planner.config.yaml'; \
+    if [ ! -f /boot/firmware/family-planner.config.yaml ]; then \
+        sudo cp $REMOTE_DIR/config/default.yaml /boot/firmware/family-planner.config.yaml && \
+        sudo chmod 644 /boot/firmware/family-planner.config.yaml && \
+        echo 'Default config written to /boot/firmware/family-planner.config.yaml'; \
     else \
-        echo '/boot/family-planner.config.yaml already exists, skipping.'; \
+        echo '/boot/firmware/family-planner.config.yaml already exists, skipping.'; \
     fi"
 
 # ---------------------------------------------------------------------------
