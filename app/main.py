@@ -270,6 +270,7 @@ def _eink_loop(
     last_change_at: datetime = datetime.now()
     force_refresh: bool = True   # always push on first iteration
     manual_refresh: bool = True  # first iteration: fetch both weather + calendar fresh
+    weather_retry: bool = False  # last weather fetch failed: retry at the next tick
 
     while not stop_event.is_set():
         state = NavigationState()
@@ -280,13 +281,24 @@ def _eink_loop(
             # hour (or on a manual/button-A refresh). At xx:00 both refresh in one
             # cycle. Forced fetches bypass the cache; the cached value otherwise
             # feeds the signature without triggering a push.
-            fetch_weather = manual_refresh or is_weather_tick(now)
+            #
+            # If the previous weather fetch failed we retry on the *next*
+            # quarter-hour tick (weather_retry) rather than waiting for the next
+            # hourly tick — meanwhile the cached data is served with its
+            # already-elapsed forecast slots dropped (see drop_past_hourly_slots).
+            fetch_weather = manual_refresh or is_weather_tick(now) or weather_retry
             events = aggregator.get_events(start, end, force=True)
-            weather = (
-                weather_provider.get(force=fetch_weather)
-                if weather_provider is not None
-                else WeatherData()
-            )
+            if weather_provider is not None:
+                weather = weather_provider.get(force=fetch_weather)
+                weather_retry = fetch_weather and weather_provider.last_fetch_failed
+                if weather_retry:
+                    logger.info(
+                        "Meteo: fetch fallito — uso cache (slot scaduti rimossi), "
+                        "nuovo tentativo al prossimo tick di 15 minuti."
+                    )
+            else:
+                weather = WeatherData()
+                weather_retry = False
 
             # --- change detection via content signature (order-independent) ---
             signature = _content_signature(state, events, weather)
@@ -640,11 +652,19 @@ def main() -> None:
 
             _shutdown_triggered = threading.Event()
 
+            # Buttons are physically inverted when the panel is rotated 180° or 270°:
+            #   standard (0°/90°)  : A=planner  B=artwork  D=shutdown
+            #   inverted (180°/270°): A=shutdown C=artwork  D=planner   (B ignored)
+            _inverted_rotation = config.display.rotation in (180, 270)
+            _artwork_button  = "C" if _inverted_rotation else "B"
+            _planner_button  = "D" if _inverted_rotation else "A"
+            _shutdown_button = "A" if _inverted_rotation else "D"
+
             def _on_button(button: str) -> None:
                 if _shutdown_triggered.is_set():
                     return  # ignore all buttons after shutdown is initiated
 
-                if button == "B":
+                if button == _artwork_button:
                     # Show a random landscape painting from Art Institute of Chicago.
                     _perform_show_artwork(
                         _renderer_ref[0],
@@ -653,7 +673,7 @@ def main() -> None:
                         _artwork_mode,
                     )
 
-                elif button == "A":
+                elif button == _planner_button:
                     # Return to the planner.  We must not wake the eink loop
                     # directly: if an artwork push is in progress the loop would
                     # queue a planner push that starts immediately after the
@@ -662,7 +682,10 @@ def main() -> None:
                     # to become free (_push_lock) and only then wakes the loop.
                     if _artwork_mode.is_set():
                         _artwork_mode.clear()
-                        logger.info("Modalit\u00e0 artwork disattivata (pulsante A) \u2014 ritorno al planner.")
+                        logger.info(
+                            "Modalit\u00e0 artwork disattivata (pulsante %s) \u2014 ritorno al planner.",
+                            _planner_button,
+                        )
 
                     def _return_to_planner() -> None:
                         # Acquiring the lock blocks until any in-progress push
@@ -687,7 +710,7 @@ def main() -> None:
                         target=_return_to_planner, daemon=True, name="return-planner"
                     ).start()
 
-                elif button == "D":
+                elif button == _shutdown_button:
                     # Shutdown: stop the loop and power off the device.
                     _shutdown_triggered.set()
                     threading.Thread(
@@ -699,7 +722,13 @@ def main() -> None:
 
             _button_handler = InkyButtonHandler(eink_model=config.display.eink_model)
             _button_handler.start(_on_button, eink_stop_event)
-            logger.info("InkyButtonHandler avviato (A=planner, B=artwork, D=shutdown).")
+            logger.info(
+                "InkyButtonHandler avviato (rotation=%d\u00b0: %s=planner, %s=artwork, %s=shutdown).",
+                config.display.rotation,
+                _planner_button,
+                _artwork_button,
+                _shutdown_button,
+            )
 
     # ------------------------------------------------------------------
     # Run (blocks until server exits)

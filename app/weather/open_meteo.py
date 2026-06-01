@@ -30,7 +30,7 @@ from datetime import datetime
 import requests
 
 from app.renderer.tokens import HourlySlot, WeatherData
-from app.weather.provider import WeatherProvider
+from app.weather.provider import WeatherProvider, drop_past_hourly_slots
 
 logger = logging.getLogger(__name__)
 
@@ -132,12 +132,23 @@ class OpenMeteoProvider(WeatherProvider):
         self._lock = threading.Lock()
         self._cached: WeatherData | None = None
         self._cached_at: float = 0.0
+        self._last_fetch_failed: bool = False
+
+    @property
+    def last_fetch_failed(self) -> bool:
+        """True if the most recent fetch attempt failed (stale/empty cache served)."""
+        with self._lock:
+            return self._last_fetch_failed
 
     def get(self, force: bool = False) -> WeatherData:
         """Return cached or freshly-fetched weather data (never raises).
 
         With *force* True the TTL cache is bypassed and a fresh fetch is always
         attempted (the hourly tick and manual refresh use this).
+
+        Already-elapsed bihourly slots are dropped from the result so that stale
+        cache served after a failed fetch never shows a forecast window that is
+        already in the past (see :func:`drop_past_hourly_slots`).
         """
         if not force:
             with self._lock:
@@ -145,17 +156,19 @@ class OpenMeteoProvider(WeatherProvider):
                     self._cached is not None
                     and time.monotonic() - self._cached_at < _CACHE_TTL
                 ):
-                    return self._cached
+                    return drop_past_hourly_slots(self._cached, datetime.now())
 
         # Fetch outside the lock so other threads are not blocked during the
         # HTTP request.
         fresh = self._fetch()
 
         with self._lock:
+            self._last_fetch_failed = fresh is None
             if fresh is not None:
                 self._cached = fresh
                 self._cached_at = time.monotonic()
-            return self._cached if self._cached is not None else WeatherData()
+            data = self._cached if self._cached is not None else WeatherData()
+            return drop_past_hourly_slots(data, datetime.now())
 
     # ------------------------------------------------------------------
     # Private helpers
