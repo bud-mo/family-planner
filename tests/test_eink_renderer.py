@@ -58,6 +58,7 @@ def _make_config(
         eink_model=model,
         eink_palette=palette,
         eink_dither=dither,
+        rotation=0,
     )
 
 

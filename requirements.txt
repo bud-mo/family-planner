@@ -9,6 +9,6 @@ caldav==2.2.6
 requests==2.32.5
 icalendar==6.3.2
 pillow==11.3.0
-# playwright install chromium  # run once after pip install
+python-dateutil==2.9.0.post0
 python-multipart==0.0.20
 inky  # driver Pimoroni Inky Impression — importazione lazy, sicuro su macOS/Linux dev

@@ -15,7 +15,7 @@ Un visualizzatore di calendario minimalista, ispirato alla tipografia del *Wall 
 - **Display HDMI**: finestra pygame (SDL2) con ciclo di refresh configurabile — nessun browser richiesto
 - **Display e-ink Waveshare**: quantizzazione palette (BW / BWR / 4 grigi / Spectra 6) e dithering Floyd-Steinberg opzionale
 - **Server web FastAPI**: anteprima browser (`GET /`) e configurazione remota (`GET/POST /config`)
-- **Navigazione**: Su / Giù / Oggi tramite GPIO, tastiera pygame o richieste `POST /state`
+- **Vista calendario sempre aggiornata**: la Home mostra sempre il giorno corrente — non esiste navigazione Su/Giù né paginazione. I pulsanti fisici su Pimoroni Inky Impression sono **A = ritorno al planner**, **B = artwork/privacy**, **D = spegnimento**; su HDMI/pygame i tasti `B`/`D` e `q`/`F4` corrispondono a artwork, shutdown e quit
 
 ---
 
@@ -116,6 +116,9 @@ Il file YAML è validato tramite **Pydantic v2** all'avvio. Un errore di schema 
 server:
   host: "0.0.0.0"
   port: 8080
+  # Basic Auth opzionale sulle rotte /config e /api/config/*
+  # auth_username: null
+  # auth_password: null
 
 weather:
   enabled: true              # false → nasconde la sezione meteo
@@ -136,6 +139,7 @@ display:
   eink_model: 7in5_V2
   eink_palette: bw           # bw | bwr | 4gray | spectra6
   eink_dither: true
+  eink_saturation: 0.5       # intensità colori per quantizzazione (0.0–1.0)
 
 artwork:
   query: "landscape painting"  # query per ricerca artwork (Art Institute of Chicago)

@@ -40,7 +40,7 @@ _CACHE_TTL: int = 3600  # seconds — refresh at most once per hour
 # ---------------------------------------------------------------------------
 # WMO 4677 weather code → Tabler icon name (subset used in design.md)
 # ---------------------------------------------------------------------------
-_WMO_TO_ICON: dict[int, str] = {
+WMO_TO_ICON: dict[int, str] = {
     0: "sun",
     1: "sun",
     2: "cloud",
@@ -185,7 +185,7 @@ class OpenMeteoProvider(WeatherProvider):
             code = int(current["weather_code"])
             hourly_forecast = self._parse_hourly(data.get("hourly", {}))
             return WeatherData(
-                condition_icon=_WMO_TO_ICON.get(code),
+                condition_icon=WMO_TO_ICON.get(code),
                 description=_WMO_TO_DESC.get(code),
                 temp_current=float(current["temperature_2m"]),
                 temp_max=float(daily["temperature_2m_max"][0]),
@@ -218,7 +218,7 @@ class OpenMeteoProvider(WeatherProvider):
             idx = slot_start + offset
             try:
                 temp = float(temps[idx])
-                icon = _WMO_TO_ICON.get(int(codes[idx]))
+                icon = WMO_TO_ICON.get(int(codes[idx]))
             except (IndexError, TypeError, ValueError):
                 temp = None
                 icon = None

@@ -10,14 +10,15 @@ from typing import Any
 from urllib.parse import quote_plus
 
 import yaml
-from fastapi import APIRouter, File, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi import APIRouter, Depends, File, Request, Response, UploadFile
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import ValidationError
 
 from app.calendar.caldav_provider import CalDavProvider
 from app.calendar.ical_provider import IcalProvider
 from app.config import AppConfig, ArtworkConfig, CalendarConfig, WeatherConfig
 from app.renderer.eink_renderer import EINK_RESOLUTIONS
+from app.server.auth import require_config_auth
 
 logger = logging.getLogger(__name__)
 
@@ -30,11 +31,13 @@ router = APIRouter()
 
 
 def _safe_config_dict(config: AppConfig) -> dict:
-    """Return a model_dump() dict with all CalDAV passwords scrubbed."""
+    """Return a model_dump() dict with all CalDAV passwords and auth_password scrubbed."""
     data = config.model_dump()
     for cal in data.get("calendars", []):
         # Never return the real password — always clear it in GET responses.
         cal["password"] = ""
+    # Never expose the web-access password.
+    data["server"]["auth_password"] = ""
     return data
 
 
@@ -117,6 +120,8 @@ def _parse_config_form(form: Any, existing: AppConfig) -> dict:
         "server": {
             "host": _str("server_host", "0.0.0.0"),
             "port": _int("server_port", 8080),
+            "auth_username": _str("server_auth_username") or None,
+            "auth_password": _str("server_auth_password") or existing.server.auth_password,
         },
         "display": {
             "type": _str("display_type", "hdmi"),
@@ -125,9 +130,11 @@ def _parse_config_form(form: Any, existing: AppConfig) -> dict:
             "height": _int("display_height", 1080),
             "fullscreen": _bool("display_fullscreen"),
             "refresh_interval": _int("display_refresh_interval", 300),
+            "show_buttons": _bool("display_show_buttons"),
             "eink_model": _str("display_eink_model", "7in5_V2"),
             "eink_palette": _str("display_eink_palette", "bw"),
             "eink_dither": _bool("display_eink_dither"),
+            "eink_saturation": _float("display_eink_saturation", existing.display.eink_saturation),
             "rotation": _int("display_rotation", 0),
         },
         "weather": {
@@ -164,7 +171,7 @@ def _deferred_sighup(delay: float = 0.3) -> None:
 # ---------------------------------------------------------------------------
 
 
-@router.get("/config", response_class=HTMLResponse)
+@router.get("/config", response_class=HTMLResponse, dependencies=[Depends(require_config_auth)])
 async def config_get(
     request: Request, saved: bool = False, error: str | None = None
 ) -> HTMLResponse:
@@ -185,7 +192,7 @@ async def config_get(
     )
 
 
-@router.post("/config", response_model=None)
+@router.post("/config", response_model=None, dependencies=[Depends(require_config_auth)])
 async def config_post(request: Request):
     templates = request.app.state.templates
     existing_config: AppConfig = request.app.state.config
@@ -226,7 +233,7 @@ async def config_post(request: Request):
     return RedirectResponse(url="/config?saved=1", status_code=303)
 
 
-@router.post("/api/test-weather")
+@router.post("/api/test-weather", dependencies=[Depends(require_config_auth)])
 async def test_weather(request: Request) -> JSONResponse:
     """Test connectivity to Open-Meteo and return current conditions."""
     form = await request.form()
@@ -254,18 +261,20 @@ async def test_weather(request: Request) -> JSONResponse:
     return JSONResponse({"ok": True, "message": msg})
 
 
-@router.get("/api/config/download")
-async def config_download(request: Request) -> FileResponse:
-    """Return the current config YAML file as a download."""
-    config_path: Path = request.app.state.config_path
-    return FileResponse(
-        path=str(config_path),
-        media_type="application/octet-stream",
-        filename="config.yaml",
+@router.get("/api/config/download", dependencies=[Depends(require_config_auth)])
+async def config_download(request: Request) -> Response:
+    """Return a sanitized config YAML as a download (passwords scrubbed)."""
+    config: AppConfig = request.app.state.config
+    safe = _safe_config_dict(config)
+    body = yaml.dump(safe, allow_unicode=True, sort_keys=False)
+    return Response(
+        content=body,
+        media_type="application/x-yaml",
+        headers={"Content-Disposition": 'attachment; filename="config.yaml"'},
     )
 
 
-@router.post("/api/config/upload", response_model=None)
+@router.post("/api/config/upload", response_model=None, dependencies=[Depends(require_config_auth)])
 async def config_upload(request: Request, file: UploadFile = File(...)):
     """Upload a YAML config file, validate it, and apply it."""
     config_path: Path = request.app.state.config_path
@@ -298,7 +307,7 @@ async def config_upload(request: Request, file: UploadFile = File(...)):
     return RedirectResponse(url="/config?saved=1", status_code=303)
 
 
-@router.post("/api/test-connection")
+@router.post("/api/test-connection", dependencies=[Depends(require_config_auth)])
 async def test_connection(request: Request) -> JSONResponse:
     """Test connectivity for caldav or ical calendar providers.
 

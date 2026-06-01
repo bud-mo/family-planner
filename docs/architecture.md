@@ -100,6 +100,9 @@ Se non specificato, il fallback è `./config/default.yaml`.
 server:
   host: "0.0.0.0"
   port: 8080
+  # Basic Auth opzionale sulle rotte /config e /api/config/*
+  # auth_username: null
+  # auth_password: null
 
 weather:
   enabled: true              # false → disabilita il provider, mostra solo la data
@@ -120,6 +123,7 @@ display:
   rotation: 0                # rotazione schermo: 0 | 90 | 180 | 270
   # solo se type: "eink":
   eink_dither: true          # abilita dithering Floyd-Steinberg
+  eink_saturation: 0.5       # intensità colori per quantizzazione (0.0–1.0)
 
 artwork:
   query: "landscape painting"  # query per ricerca artwork (Art Institute of Chicago)
@@ -237,10 +241,13 @@ GET https://api.open-meteo.com/v1/forecast
     &longitude=<lon>
     &current=temperature_2m,weather_code
     &daily=temperature_2m_max,temperature_2m_min
+    &hourly=temperature_2m,weather_code
     &temperature_unit=celsius
     &timezone=auto
-    &forecast_days=1
+    &forecast_days=2
 ```
+
+`forecast_days=2` è necessario per ottenere 48 slot orari, permettendo di mostrare le 6 previsioni biorarie del giorno corrente anche nelle ore pomeridiane/serali.
 
 ### Cache in-memory
 
@@ -250,9 +257,15 @@ GET https://api.open-meteo.com/v1/forecast
 - Il fetch HTTP avviene **fuori dal lock** (`timeout=10s`) per non bloccare il thread di rendering
 - In caso di errore HTTP/parse, la cache stale è restituita; se non esiste ancora nessuna cache, viene restituito `WeatherData()` vuoto → il renderer mostra solo la data
 
-### Struttura `WeatherData` (`renderer/tokens.py`)
+### Struttura `HourlySlot` e `WeatherData` (`renderer/tokens.py`)
 
 ```python
+@dataclass
+class HourlySlot:
+    hour: int                            # ora di inizio fascia (0-23, es. 14 → "14:00")
+    condition_icon: str | None = None    # nome icona Tabler
+    temp: float | None = None            # temperatura prevista (°C)
+
 @dataclass
 class WeatherData:
     condition_icon: str | None = None   # nome icona Tabler (es. "sun", "cloud-rain")
@@ -260,6 +273,7 @@ class WeatherData:
     temp_current: float | None = None   # temperatura attuale
     temp_max: float | None = None       # massima giornaliera
     temp_min: float | None = None       # minima giornaliera
+    hourly_forecast: list[HourlySlot] = field(default_factory=list)  # 6 slot biorari
 ```
 
 ### Mappatura WMO 4677 → icone Tabler
@@ -268,17 +282,24 @@ class WeatherData:
 |---|---|---|
 | 0, 1 | Sereno / Prevalentemente sereno | `sun` |
 | 2, 3, 45, 48 | Nuvoloso / Nebbia | `cloud` |
-| 51–67, 80–82, 95–99 | Pioggia / Rovesci / Temporale | `cloud-rain` |
-| 56, 57, 66, 67, 71–77, 85, 86 | Neve / Gelate | `snowflake` |
+| 51–65, 66, 67, 80–82, 95–99 | Pioggia / Rovesci / Temporale / Pioggia gelata | `cloud-rain` |
+| 56, 57, 71–77, 85, 86 | Neve / Nevischio gelato | `snowflake` |
 
-Le icone PNG corrispondenti (`{nome}.png`, 24×24 px) devono essere presenti in `app/assets/icons/weather/`. Se il file manca, il renderer usa il campo `description` come testo alternativo. Se entrambi mancano, la zona destra del banner mostra solo la temperatura.
+Le icone PNG corrispondenti sono caricate a **48 px** da `app/assets/icons/48/{nome}.png` via `load_icon()`. Se l'icona non è disponibile, la zona rimane vuota (nessun fallback testuale).
 
 ### Rendering nel banner
 
-`_draw_weather()` segue questa priorità per la zona destra del banner:
-1. **Icona PNG** (se `condition_icon` è impostato e il file `app/assets/icons/weather/{icon}.png` esiste): 24×24 px, tintato con `palette["INK"]`, posizionato a sinistra della temperatura.
-2. **Testo description** (fallback se PNG mancante): resa in `--text-xs` / `INK_MUTED`, allineata a destra della temperatura.
-3. **Solo temperatura** (se `WeatherData` è vuoto): comportamento attuale — solo la data è mostrata se anche la temperatura è `None`.
+Il banner è diviso in due fasce:
+
+**Fascia principale (`BANNER_MAIN_HEIGHT = 90 px`)** — `_draw_weather()`:
+- Data corrente in italiano (Playfair Display)
+- Temperatura attuale + max/min giornalieri (IBM Plex Sans)
+- **Icona condizione** a **48 px** caricata da `app/assets/icons/48/{nome}.png` via `load_icon()`, tintata con `palette["INK"]`, posizionata a sinistra della temperatura. Se l'icona non è disponibile, la zona icona rimane vuota (non c'è fallback testuale alla `description`).
+
+**Fascia bioraria (`BANNER_HOURLY_HEIGHT = 127 px`)** — `_draw_hourly_row()`:
+- 6 celle affiancate, ognuna con: orario (IBM Plex Mono xs), icona condizione 48 px, temperatura prevista (IBM Plex Sans semibold sm)
+- I dati provengono da `WeatherData.hourly_forecast` (lista `HourlySlot`)
+- Se `hourly_forecast` è vuota (meteo disabilitato o errore), la fascia non viene disegnata
 
 ### Degradazione graceful
 
@@ -293,7 +314,7 @@ Apple Calendar è supportato via **CalDAV** attraverso iCloud:
 - **URL endpoint**: `https://caldav.icloud.com`
 - **Autenticazione**: App-Specific Password generata su [appleid.apple.com](https://appleid.apple.com) (richiesta per account con 2FA attivo)
 - **Libreria**: `caldav` (Python)
-- Il provider recupera tutti i calendari disponibili sull'account e filtra per nome se specificato
+- Il provider recupera **tutti** i calendari disponibili sull'account (`principal.calendars()`) senza filtro. Il campo `name` nel config è l'etichetta visiva dell'aggregatore (usata nei log), mentre `color` è il colore degli eventi in rendering. Non viene applicato nessun filtro per nome del calendario.
 
 > **Nota sicurezza**: la password non è mai esposta via API web. Il file di configurazione deve avere permessi `600`.
 
@@ -391,7 +412,7 @@ Il loop e-ink non avvia alcun processo Chromium. Il rendering avviene interament
    ```
    Questo garantisce che il codice sia eseguibile su macOS/Linux senza le librerie hardware.
 
-> **Pannelli supportati**: tutti i modelli Waveshare con driver Python disponibile — la mappatura `eink_model → modulo` è in `display/eink.py`.
+> **Pannelli supportati**: 13 modelli Waveshare (mappatura `eink_model → modulo` in `display/eink.py`) + 3 Pimoroni Inky Impression Spectra 6 (`inky_impression_4`, `inky_impression_7`, `inky_impression_13`) con risoluzioni definite in `renderer/eink_renderer.py`.
 
 > **Refresh time**: i pannelli e-ink Waveshare impiegano tipicamente 15–30 secondi per un aggiornamento completo. Impostare `refresh_interval` ≥ 60 secondi.
 
@@ -405,12 +426,12 @@ L'interfaccia è costituita da un'**unica schermata Home** — non esiste gerarc
 
 | Componente | Metodo | `Rect` (portrait) | `Rect` (landscape) |
 |---|---|---|---|
-| Banner meteo | `_draw_weather()` | `(0, 0, W, 90)` | `(0, 0, col_left, 90)` |
-| Mini-calendario | `_draw_mini_calendar()` | `(0, 90, W, 250)` | `(0, 90, col_left, H−130)` |
-| Lista appuntamenti | `_draw_agenda()` | `(0, 340, W, H−380)` | `(col_left, 0, col_right, H−40)` |
-| Footer | `_draw_footer()` | `(0, H−40, W, 40)` | `(0, H−40, W, 40)` |
+| Banner meteo | `_draw_weather()` + `_draw_hourly_row()` | `(0, 0, W, 217)` | `(0, 0, col_left, 217)` |
+| Mini-calendario | `_draw_mini_calendar()` | `(0, 217, W, 560)` | `(0, 217, col_left, H−271)` |
+| Lista appuntamenti | `_draw_agenda()` | `(0, 777, W, H−831)` | `(col_left, 0, col_right, H−54)` |
+| Footer | `_draw_footer()` | `(0, H−54, W, 54)` | `(0, H−54, W, 54)` |
 
-dove `col_left = int(W × 0.38)` e `col_right = W − col_left`.
+dove `col_left = int(W × 0.50)` e `col_right = W − col_left`.
 
 > **Componente meteo**: la struttura `WeatherData` (icona condizione, descrizione testuale, temperatura attuale, max/min giornalieri) è prodotta da `OpenMeteoProvider.get()` — chiamata dentro `PillowEinkRenderer.render()` se il provider è stato iniettato. In assenza di provider (o se `weather.enabled: false`), `WeatherData` rimane vuota e il banner mostra solo la data.
 
@@ -429,18 +450,18 @@ Rect = tuple[int, int, int, int]  # (x, y, width, height)
 
 ### Regola fondamentale
 
-`render()` è il **solo** punto dell'intera codebase dove si calcolano i `Rect` di layout, a partire dalle dimensioni del display (`W × H`) e dalla variante (`display.layout`). Le costanti `BANNER_HEIGHT`, `CALENDAR_HEIGHT`, `FOOTER_HEIGHT`, `COL_LEFT_RATIO` compaiono **esclusivamente** in `render()` — mai nei metodi `_draw_*`.
+`render()` è il **solo** punto dell'intera codebase dove si calcola la **partizione** dei `Rect` (suddivisione di `W × H` fra le zone banner/calendario/agenda/footer). I `_draw_*` **possono** leggere `self._layout` e le costanti di sotto-componente (es. `BANNER_MAIN_HEIGHT`, `BANNER_HOURLY_HEIGHT`) per posizionare elementi interni alla propria zona, ma non ricalcolano la partizione globale.
 
 ### Firme dei componenti Home
 
 ```python
-BannerHeight   = 90
-CalendarHeight = 250
-FooterHeight   = 40
-ColLeftRatio   = 0.38
-
 def _draw_weather(
-    self, draw: ImageDraw, rect: Rect,
+    self, draw: ImageDraw, img: Image.Image, rect: Rect,
+    weather: WeatherData, palette: dict
+) -> None: ...
+
+def _draw_hourly_row(
+    self, draw: ImageDraw, img: Image.Image, rect: Rect,
     weather: WeatherData, palette: dict
 ) -> None: ...
 
@@ -450,7 +471,7 @@ def _draw_mini_calendar(
 ) -> None: ...
 
 def _draw_agenda(
-    self, draw: ImageDraw, rect: Rect,
+    self, draw: ImageDraw, img: Image.Image, rect: Rect,
     state: NavigationState, events: list, palette: dict
 ) -> None: ...
 
@@ -470,23 +491,23 @@ def render(self, state: NavigationState, events: list) -> Image.Image:
     draw = ImageDraw.Draw(img)
 
     if self._layout == "portrait":
-        weather_rect   = (0,        0,       W,          BANNER_HEIGHT)
-        calendar_rect  = (0,        BANNER_HEIGHT, W,    CALENDAR_HEIGHT)
+        weather_rect   = (0,        0,                       W,          BANNER_HEIGHT)
+        calendar_rect  = (0,        BANNER_HEIGHT,           W,          CALENDAR_HEIGHT)
         agenda_rect    = (0,        BANNER_HEIGHT + CALENDAR_HEIGHT,
                           W,        H - BANNER_HEIGHT - CALENDAR_HEIGHT - FOOTER_HEIGHT)
-        footer_rect    = (0,        H - FOOTER_HEIGHT, W, FOOTER_HEIGHT)
+        footer_rect    = (0,        H - FOOTER_HEIGHT,       W,          FOOTER_HEIGHT)
     else:  # landscape
         col_left  = int(W * COL_LEFT_RATIO)
         col_right = W - col_left
-        weather_rect   = (0,        0,       col_left,   BANNER_HEIGHT)
-        calendar_rect  = (0,        BANNER_HEIGHT, col_left,
+        weather_rect   = (0,        0,                       col_left,   BANNER_HEIGHT)
+        calendar_rect  = (0,        BANNER_HEIGHT,           col_left,
                           H - BANNER_HEIGHT - FOOTER_HEIGHT)
-        agenda_rect    = (col_left, 0,       col_right,  H - FOOTER_HEIGHT)
-        footer_rect    = (0,        H - FOOTER_HEIGHT, W, FOOTER_HEIGHT)
+        agenda_rect    = (col_left, 0,                       col_right,  H - FOOTER_HEIGHT)
+        footer_rect    = (0,        H - FOOTER_HEIGHT,       W,          FOOTER_HEIGHT)
 
-    self._draw_weather(draw, weather_rect, weather_data, palette)
+    self._draw_weather(draw, img, weather_rect, weather_data, palette)
     self._draw_mini_calendar(draw, calendar_rect, state, events, palette)
-    self._draw_agenda(draw, agenda_rect, state, events, palette)
+    self._draw_agenda(draw, img, agenda_rect, state, events, palette)
     self._draw_footer(draw, footer_rect, palette)
     return img
 ```
@@ -577,9 +598,12 @@ WantedBy=multi-user.target
 
 ## Sicurezza
 
-- Il file di configurazione (con credenziali) deve avere permessi `600` (`chmod 600 config.yaml`)
-- Il server web è in ascolto su `0.0.0.0` di default; in produzione si raccomanda di limitare a `127.0.0.1` se la rotta `/config` non deve essere accessibile da rete
-- Nessuna credenziale è mai esposta via API
+- Il file di configurazione (con credenziali) deve avere permessi `600` (`chmod 600 config.yaml`); la correttezza dei permessi è verificata all'avvio da `_check_file_permissions` in `config.py`
+- Il server web è in ascolto su `0.0.0.0` di default; se non è configurata la Basic Auth (vedi sotto) e il bind non è su loopback, all'avvio viene emesso un **warning esplicito** nei log
+- **`GET /config`**: le password CalDAV, gli URL iCal segreti e `server.auth_password` sono **azzerate** nella risposta tramite `_safe_config_dict` — mai esposte in chiaro
+- **`GET /api/config/download`**: restituisce un YAML sanitizzato (stessa logica di `_safe_config_dict`) — nessuna credenziale lascia il dispositivo via HTTP. Al ripristino del backup le password vanno reinserite manualmente
+- **Basic Auth opzionale** sulle rotte `/config` e `/api/config/*`: se `server.auth_username` e `server.auth_password` sono impostati nel config, un confronto in tempo costante protegge tutte le rotte di configurazione. Le rotte di sola anteprima (`/`, `/preview.png`, `/preview-eink.png`) restano sempre aperte — mostrano solo il calendario, privo di credenziali
+- Le credenziali non appaiono mai nei log di sistema o nei messaggi di errore
 
 ---
 
@@ -598,6 +622,7 @@ icalendar
 pillow                     # renderer unico (PillowEinkRenderer) + post-processing (EinkRenderer)
 pygame                     # display HDMI — finestra SDL, rendering PIL.Image diretto
 python-multipart           # form POST /config
+python-dateutil            # rrule expansion in IcsProvider (ricorrenze)
 # waveshare-epaper (opzionale — solo su RPi con display e-ink)
 ```
 
@@ -608,19 +633,19 @@ python-multipart           # form POST /config
 ```
 ┌───────────────────────────────────────────────────────────────────────┐
 │                             main.py                                   │
-│  args parsing → config load → StateManager → aggregator → renderer   │
-└──────┬────────────────────────────┬───────────────────────┬───────────┘
-       │                            │                       │
-┌──────▼──────┐           ┌─────────▼──────────┐  ┌────────▼────────┐
-│  FastAPI    │           │   StateManager     │  │   Aggregator    │
-│  GET /      │◀──────────│   (thread-safe)    │  │   (calendari)   │
-│  GET /prev. │  legge /  │   NavigationState  │  └────────┬────────┘
-│  POST /state│  scrive   │   threading.Lock   │    ┌──────┴──────┐
-│  GET /config│   stato   └─────────┬──────────┘    │             │
-│  POST/config│                     │            ┌──▼──┐  ┌───────▼────┐
-└─────────────┘                     │            │CalDAV│  │  ICS/iCal  │
-                                    │            │Prov. │  │  Provider  │
-                          ┌─────────▼──────────┐ └──────┘  └────────────┘
+│  args parsing → config load → aggregator → renderer                  │
+└──────┬─────────────────────────────────────────────────┬─────────────┘
+       │                                                 │
+┌──────▼──────┐                                ┌────────▼────────┐
+│  FastAPI    │                                │   Aggregator    │
+│  GET /      │   NavigationState() creato     │   (calendari)   │
+│  GET /prev. │   fresh a ogni render          └────────┬────────┘
+│  GET /prev-e│   anchor_date = date.today()     ┌──────┴──────┐
+│  GET /config│                                  │             │
+│  POST/config│                              ┌───▼──┐  ┌───────▼────┐
+└─────────────┘                              │CalDAV│  │  ICS/iCal  │
+                                             │Prov. │  │  Provider  │
+                          ┌──────────────────┐└─────┘  └────────────┘
                           │  PillowEinkRenderer │
                           │  (HDMI + e-ink)     │◀──── OpenMeteoProvider
                           │  Pillow nativo      │      cache in-memory
@@ -713,3 +738,31 @@ if self._rotation:
 **Logica dimensioni**: se il pannello è 800×480 e `rotation=90`, il renderer Pillow genera un'immagine 480×800 (orientamento portrait), che viene poi ruotata di -90° → 800×480 fisici. La configurazione `display.width` e `display.height` descrive sempre il **canvas logico** (prima della rotazione).
 
 **Su HDMI**: la rotazione non è gestita da `HdmiDisplay` — la finestra pygame ha sempre le dimensioni `display.width × display.height`. Per ruotare un display fisico collegato via HDMI usare le impostazioni di sistema (Wayland/X11) o la configurazione del kernel RPi (`display_rotate` in `config.txt`).
+
+---
+
+## Debito tecnico noto
+
+I seguenti item sono stati valutati e deliberatamente deferiti. Ogni voce indica i file coinvolti e la motivazione del rinvio.
+
+### 4.4 — Split di `pillow_eink_renderer.py`
+
+**File coinvolti:** `app/renderer/pillow_eink_renderer.py` (~1400 righe)
+
+**Descrizione:** Il file può essere suddiviso in sottomoduli a comportamento invariato:
+
+| Nuovo modulo | Contenuto estratto |
+|---|---|
+| `artwork.py` | `_fetch_artwork`, costanti ARTIC, `render_artwork`, `_draw_artwork_caption` |
+| `text_layout.py` | `_fit_mixed`, `_measure_mixed`, `_draw_mixed`, `_wrap_rich_lines`, `_ellipsize`, `_measure_span_text` |
+| `home_renderer.py` | la classe `PillowEinkRenderer` orchestratrice (`render`, `_draw_*`) |
+
+**Motivazione del rinvio:** Il refactoring è invasivo (molti import interni da aggiustare) e non porta benefici funzionali. I test visivi esistenti coprono già il comportamento. Rinviato a una versione futura quando le dimensioni del file diventeranno un ostacolo concreto alla manutenzione.
+
+### 4.5 — Deduplicare il parsing eventi CalDAV/ICS
+
+**File coinvolti:** `app/calendar/caldav_provider.py` (`_component_to_event`, riga ~128), `app/calendar/ics_provider.py` (`_expand_component`, riga ~110)
+
+**Descrizione:** I due metodi condividono l'estrazione di DTSTART/DTEND/DURATION/attendees/UID/SUMMARY. Si potrebbe estrarre un helper comune in `base.py`.
+
+**Motivazione del rinvio:** L'estrazione ha sottili differenze tra i due provider (CalDAV gestisce timezone via `vDatetime`, ICS usa `rrulestr`). Un refactoring affrettato rischierebbe di introdurre regressioni su casi limite di timezone. Rinviato a quando entrambi i provider verranno estesi con nuove funzionalità che giustifichino l'unificazione.

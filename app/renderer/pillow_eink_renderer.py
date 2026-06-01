@@ -27,6 +27,12 @@ from PIL import Image, ImageColor, ImageDraw, ImageFont, ImageOps
 
 from app.calendar.data_builders import _build_month_grid, _build_rolling_week_grid
 from app.renderer.emoji_icons import load_icon, split_text_emoji
+from app.renderer.locale_it import (
+    DAY_NAMES_FULL_IT as _DAY_NAMES_FULL_IT,
+    DAY_NAMES_IT as _DAY_NAMES_IT,
+    MONTH_NAMES_IT as _MONTH_NAMES_IT,
+    MONTH_NAMES_SHORT_IT as _MONTH_NAMES_SHORT_IT,
+)
 from app.renderer.state import NavigationState
 from app.renderer.rich_text import RichLine, RichSpan, parse_html_description
 from app.renderer.tokens import (
@@ -176,25 +182,6 @@ def _fetch_artwork(
         logger.exception("_fetch_artwork: impossibile scaricare artwork — uso sfondo BG.")
         return None
 
-
-# ---------------------------------------------------------------------------
-# Locale strings (private — not imported from other modules to avoid coupling)
-# ---------------------------------------------------------------------------
-# Locale strings
-# ---------------------------------------------------------------------------
-
-_MONTH_NAMES_IT: list[str] = [
-    "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
-    "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre",
-]
-_DAY_NAMES_IT: list[str] = ["LUN", "MAR", "MER", "GIO", "VEN", "SAB", "DOM"]
-_DAY_NAMES_FULL_IT: list[str] = [
-    "Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica",
-]
-_MONTH_NAMES_SHORT_IT: list[str] = [
-    "GEN", "FEB", "MAR", "APR", "MAG", "GIU",
-    "LUG", "AGO", "SET", "OTT", "NOV", "DIC",
-]
 
 
 class PillowEinkRenderer:
@@ -581,14 +568,17 @@ class PillowEinkRenderer:
         local_start = evt.start.astimezone(self._tz) if self._tz else evt.start
         return f"{local_start.strftime('%H:%M')} {evt.title}"
 
-    def _truncate_event_line(
-        self, text: str, font: "ImageFont.FreeTypeFont", max_width: int
+    @staticmethod
+    def _ellipsize(
+        text: str, font: "ImageFont.FreeTypeFont", max_width: int
     ) -> str:
-        """Truncate *text* to fit *max_width* pixels, appending '…' if needed."""
+        """Return the longest prefix of *text* that fits in *max_width* px, with '…'.
+
+        Returns ``""`` if even the ellipsis alone exceeds *max_width*.
+        """
         if font.getlength(text) <= max_width:
             return text
-        ellipsis = "…"
-        ellipsis_w = font.getlength(ellipsis)
+        ellipsis_w = font.getlength("…")
         if ellipsis_w > max_width:
             return ""
         lo, hi = 0, len(text)
@@ -598,7 +588,7 @@ class PillowEinkRenderer:
                 lo = mid
             else:
                 hi = mid - 1
-        return text[:lo] + ellipsis if lo > 0 else ""
+        return text[:lo] + "…" if lo > 0 else ""
 
     # ------------------------------------------------------------------
     # Mini-calendar
@@ -736,7 +726,7 @@ class PillowEinkRenderer:
                         [(dot_cx - dot_r, line_y - dot_r), (dot_cx + dot_r, line_y + dot_r)],
                         fill=dot_fill,
                     )
-                    text = self._truncate_event_line(
+                    text = self._ellipsize(
                         evt.title, self._font_event, max_text_w
                     )
                     if text:
@@ -808,8 +798,11 @@ class PillowEinkRenderer:
             days_events[window_start + timedelta(days=d_offset)] = []
 
         for evt in events:
-            local_start = evt.start.astimezone(self._tz) if self._tz else evt.start
-            evt_date = local_start.date()
+            if evt.all_day:
+                evt_date = evt.start.date()
+            else:
+                local_start = evt.start.astimezone(self._tz) if self._tz else evt.start
+                evt_date = local_start.date()
             if window_start <= evt_date <= window_end:
                 days_events[evt_date].append(evt)
 
@@ -1065,7 +1058,8 @@ class PillowEinkRenderer:
         draw.line([(x0, y0), (x0 + w, y0)], fill=palette["RULE"])
 
         # Status indicator (right-aligned, sollevato di un'altezza testo + 4px dal bordo)
-        status_text = f"Ultimo aggiornamento: {datetime.now().strftime('%H:%M')}"
+        ts = datetime.now()
+        status_text = f"Ultimo aggiornamento: {ts.strftime('%H:%M')}"
         _bbox = draw.textbbox((0, 0), status_text, font=self._font_label)
         _text_h = _bbox[3] - _bbox[1]
         draw.text(
@@ -1088,30 +1082,6 @@ class PillowEinkRenderer:
                 f"PillowEinkRenderer: required font not found: {path}"
             )
         return ImageFont.truetype(str(path), size)
-
-    @staticmethod
-    def _fit_text(
-        draw: ImageDraw.ImageDraw,
-        text: str,
-        font: ImageFont.FreeTypeFont,
-        max_width: float,
-    ) -> str:
-        """Truncate *text* to fit *max_width* pixels, appending '…' if needed."""
-        if max_width <= 0:
-            return ""
-        bbox = draw.textbbox((0, 0), text, font=font)
-        if bbox[2] - bbox[0] <= max_width:
-            return text
-        lo, hi = 0, len(text)
-        while lo < hi:
-            mid = (lo + hi + 1) // 2
-            candidate = text[:mid] + "…"
-            b = draw.textbbox((0, 0), candidate, font=font)
-            if b[2] - b[0] <= max_width:
-                lo = mid
-            else:
-                hi = mid - 1
-        return text[:lo] + "…"
 
     # ------------------------------------------------------------------
     # Mixed text + inline-icon rendering helpers
@@ -1282,7 +1252,7 @@ class PillowEinkRenderer:
                     else:
                         # Truncate if even a single word exceeds max_w
                         if tw > max_w:
-                            text = self._truncate_text(text, font, max_w)
+                            text = self._ellipsize(text, font, max_w)
                             tw = font.getlength(text)
                         current = [_RS(text=text, bold=bold, italic=italic,
                                        underline=underline, is_link=is_link)]
@@ -1292,21 +1262,6 @@ class PillowEinkRenderer:
                 _flush()
 
         return wrapped
-
-    def _truncate_text(self, text: str, font: ImageFont.FreeTypeFont, max_w: int) -> str:
-        """Return the longest prefix of *text* that fits in *max_w* px, with '\u2026'."""
-        ellipsis_w = font.getlength("\u2026")
-        budget = max_w - ellipsis_w
-        if budget <= 0:
-            return "\u2026"
-        lo, hi = 0, len(text)
-        while lo < hi:
-            mid = (lo + hi + 1) // 2
-            if font.getlength(text[:mid]) <= budget:
-                lo = mid
-            else:
-                hi = mid - 1
-        return (text[:lo] + "\u2026") if lo > 0 else "\u2026"
 
     @staticmethod
     def _measure_mixed(

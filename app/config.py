@@ -14,6 +14,10 @@ logger = logging.getLogger(__name__)
 class ServerConfig(BaseModel):
     host: str = "0.0.0.0"
     port: int = 8080
+    # Basic Auth opzionale sulle rotte /config e /api/config/*.
+    # Se entrambi None → rotte aperte (con warning all'avvio se host non è loopback).
+    auth_username: str | None = None
+    auth_password: str | None = None
 
 
 class DisplayConfig(BaseModel):

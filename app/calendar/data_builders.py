@@ -133,11 +133,4 @@ def _build_rolling_week_grid(
     return weeks
 
 
-# ---------------------------------------------------------------------------
-# Locale strings
-# ---------------------------------------------------------------------------
 
-_MONTH_NAMES_IT = [
-    "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
-    "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre",
-]

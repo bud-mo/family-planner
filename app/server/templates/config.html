@@ -221,6 +221,18 @@
         <input class="field-input" type="number" id="server_port" name="server_port"
                value="{{ config.server.port }}" min="1" max="65535" required />
 
+        <label class="field-label" for="server_auth_username">auth username</label>
+        <input class="field-input" type="text" id="server_auth_username" name="server_auth_username"
+               value="{{ config.server.auth_username or '' }}"
+               placeholder="lascia vuoto per nessuna autenticazione"
+               autocomplete="username" />
+
+        <label class="field-label" for="server_auth_password">auth password</label>
+        <input class="field-input" type="password" id="server_auth_password" name="server_auth_password"
+               value=""
+               placeholder="lascia vuoto per non modificare"
+               autocomplete="new-password" />
+
         <label class="field-label" for="timezone">timezone</label>
         <input class="field-input" type="text" id="timezone" name="timezone"
                value="{{ config.timezone }}" placeholder="Europe/Rome"
@@ -317,6 +329,13 @@
                    {% if config.display.eink_dither %}checked{% endif %} />
             <label for="display_eink_dither">Floyd-Steinberg dithering</label>
           </div>
+        </div>
+
+        <label class="field-label row-eink-only" for="display_eink_saturation">eink saturation</label>
+        <div class="row-eink-only">
+          <input class="field-input" type="number" id="display_eink_saturation"
+                 name="display_eink_saturation" step="0.1" min="0" max="1"
+                 value="{{ config.display.eink_saturation }}" />
         </div>
 
         <label class="field-label" for="display_show_buttons">show buttons</label>

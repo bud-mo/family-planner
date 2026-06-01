@@ -21,11 +21,13 @@ import pygame
 from app.calendar.data_builders import events_range_for_state
 from app.config import DisplayConfig
 from app.renderer.state import NavigationState
+from app.renderer.tokens import WeatherData
 
 if TYPE_CHECKING:
     from app.calendar.aggregator import CalendarAggregator
     from app.calendar.base import CalendarEvent
     from app.renderer.pillow_eink_renderer import PillowEinkRenderer
+    from app.weather.provider import WeatherProvider
 
 logger = logging.getLogger(__name__)
 
@@ -38,10 +40,12 @@ class HdmiDisplay:
         config: DisplayConfig,
         renderer: PillowEinkRenderer,
         aggregator: CalendarAggregator,
+        weather_provider: "WeatherProvider | None" = None,
     ) -> None:
         self._config = config
         self._renderer = renderer
         self._aggregator = aggregator
+        self._weather_provider = weather_provider
         self._stop_event = threading.Event()
         self.shutdown_requested: bool = False
 
@@ -56,6 +60,10 @@ class HdmiDisplay:
     def set_aggregator(self, aggregator: CalendarAggregator) -> None:
         """Replace the calendar aggregator (called on config reload)."""
         self._aggregator = aggregator
+
+    def set_weather_provider(self, provider: "WeatherProvider | None") -> None:
+        """Replace the weather provider (called on config reload)."""
+        self._weather_provider = provider
 
     def set_renderer(self, renderer: "PillowEinkRenderer") -> None:
         """Replace the renderer (called on config reload)."""
@@ -95,6 +103,9 @@ class HdmiDisplay:
         last_event_fetch: float = 0.0
         last_fetched_anchor: date | None = None
         events: list[CalendarEvent] = []
+        last_rendered_state: NavigationState | None = None
+        last_rendered_events: list[CalendarEvent] = []
+        last_rendered_weather: WeatherData = WeatherData()
 
         logger.info(
             "HdmiDisplay: pygame window %dx%d (fullscreen=%s)",
@@ -123,14 +134,30 @@ class HdmiDisplay:
                     logger.error("HdmiDisplay: event fetch error: %s", exc)
                 last_event_fetch = now
 
-            # Render.
-            try:
-                pil_img = self._renderer.render(state, events)
-                surface = pygame.image.frombytes(pil_img.tobytes(), pil_img.size, "RGB")
-                screen.blit(surface, (0, 0))
-                pygame.display.flip()
-            except Exception as exc:
-                logger.error("HdmiDisplay: render error: %s", exc)
+            # Fetch current weather for change detection (uses provider's TTL cache).
+            weather = (
+                self._weather_provider.get()
+                if self._weather_provider is not None
+                else WeatherData()
+            )
+
+            # Render only when content has changed since the last frame.
+            data_changed = (
+                state != last_rendered_state
+                or events != last_rendered_events
+                or weather != last_rendered_weather
+            )
+            if data_changed:
+                try:
+                    pil_img = self._renderer.render(state, events)
+                    surface = pygame.image.frombytes(pil_img.tobytes(), pil_img.size, "RGB")
+                    screen.blit(surface, (0, 0))
+                    pygame.display.flip()
+                    last_rendered_state = state
+                    last_rendered_events = events
+                    last_rendered_weather = weather
+                except Exception as exc:
+                    logger.error("HdmiDisplay: render error: %s", exc)
 
             # Handle input events.
             for event in pygame.event.get():

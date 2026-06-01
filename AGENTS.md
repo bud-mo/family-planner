@@ -43,8 +43,11 @@ Questo file definisce le istruzioni sempre attive per tutti gli agenti AI che la
 
 ### Sicurezza
 
-- Le credenziali CalDAV non devono mai apparire in log, output API, o messaggi di errore
-- Il file di configurazione YAML deve sempre avere permessi `600` sul dispositivo
+- Le credenziali (password CalDAV, URL iCal segreti) non devono mai apparire in log, output API, o messaggi di errore
+- **`GET /config`** azzera tutte le password tramite `_safe_config_dict` (includendo `server.auth_password`) — nessuna credenziale è restituita in chiaro
+- **`GET /api/config/download`** restituisce un YAML sanitizzato — nessun segreto lascia il dispositivo via HTTP
+- Le rotte `/config` e `/api/config/*` sono protette da **Basic Auth opzionale**: se `server.auth_username` e `server.auth_password` sono impostati, un confronto in tempo costante (`secrets.compare_digest`) blocca l'accesso non autenticato. Le rotte di anteprima (`/`, `/preview.png`, `/preview-eink.png`) restano sempre aperte
+- Il file di configurazione YAML deve sempre avere permessi `600` sul dispositivo (verificato/corretto da `_check_file_permissions` in `config.py`)
 - Usare App-Specific Password Apple per iCloud — mai la password dell'Apple ID
 - Nessun secret hardcoded nel codice sorgente
 
@@ -61,11 +64,11 @@ Questo file definisce le istruzioni sempre attive per tutti gli agenti AI che la
 
 1. **Pipeline di rendering unificata**: `PillowEinkRenderer` è la fonte unica di rendering — `render(state, events)` → `PIL.Image` condiviso da HDMI ed e-ink. Non viene avviato alcun browser né processo Chromium.
 2. **EinkRenderer** è solo post-processing: riceve un `PIL.Image` già composto e applica quantizzazione palette + dithering Floyd-Steinberg.
-3. **FastAPI serve solo `/config` e `/preview.png`**: `GET /` restituisce una pagina HTML minimale con auto-refresh (`<img src="/preview.png">`); `GET /preview.png` chiama `PillowEinkRenderer.render()` on-demand. Il rendering del calendario non passa mai per HTML/CSS.
-4. **Riavvio graceful**: `POST /config` salva il file YAML e riavvia Uvicorn con SIGHUP — non terminare il processo bruscamente.
-5. **Nessun scroll** nel layout — la paginazione Su/Giù sostituisce l'intera pagina.
-6. **GPIO e tastiera pygame usano lo stesso meccanismo**: `POST /state` con `action = prev|next|today|night` — nessuna dipendenza da Playwright o click su elementi DOM.
-7. **Componenti con bounds espliciti**: ogni `_draw_*` di `PillowEinkRenderer` riceve `rect: Rect` come parametro esplicito. `render()` è il solo punto dove si calcolano i `Rect`. I metodi `_draw_*` non leggono mai `BANNER_HEIGHT`, `CALENDAR_HEIGHT` o altre costanti di layout globali direttamente.
+3. **FastAPI serve solo anteprima e configurazione**, mai il rendering del calendario via HTML/CSS. Rotte effettive: `GET /` (pagina HTML minimale con auto-refresh `<img src="/preview.png">`), `GET /preview.png` (chiama `PillowEinkRenderer.render()` on-demand), `GET /preview-eink.png` (anteprima con quantizzazione palette e-ink), `GET`/`POST /config`, `POST /api/test-weather`, `POST /api/test-connection`, `GET /api/config/download`, `POST /api/config/upload`.
+4. **Riavvio graceful**: `POST /config` salva il file YAML e invia SIGHUP al processo (`_reload_config` in `main.py`) — non terminare il processo bruscamente. Il reload ricostruisce config, aggregator, weather provider, `PillowEinkRenderer` ed `EinkRenderer`; il display **non** viene riavviato.
+5. **Vista Home unica, ancorata a oggi**: l'interfaccia è una sola schermata (banner meteo · mini-calendario · agenda · footer). Non esiste navigazione, paginazione né scroll; non esiste `StateManager` né rotta `/state`. `NavigationState` è un dataclass immutabile con il solo campo `anchor_date = date.today()`, ricreato a ogni render.
+6. **Pulsanti fisici e tasti**: su e-ink Pimoroni Inky Impression i pulsanti sono **A = ritorno al planner**, **B = artwork (privacy)**, **D = spegnimento** (`InkyButtonHandler` → callback in `main.py`; il pulsante C non è acquisito perché in conflitto con SPI CS1). Su HDMI/pygame: tasto `B` mostra l'artwork, `D` avvia lo shutdown, `q`/`F4` chiudono. Nessuna dipendenza da Playwright o da click su DOM.
+7. **Componenti con bounds espliciti**: ogni `_draw_*` di `PillowEinkRenderer` riceve il proprio `rect: Rect` come parametro. Il **calcolo della partizione dei `Rect`** (suddivisione di `W × H` fra banner/calendario/agenda/footer, per layout portrait e landscape) avviene **solo** in `render()`. I `_draw_*` possono leggere `self._layout` e costanti di sotto-componente (es. `BANNER_MAIN_HEIGHT`, `BANNER_HOURLY_HEIGHT`) per posizionare elementi interni, ma non ricalcolano la partizione globale.
 
 ---
 
@@ -112,8 +115,10 @@ Se la modifica tocca architettura, flusso dati, schema config, rotte API, design
 - `docs/architecture.md` — se cambia struttura, componenti, flusso o rotte
 - `docs/design.md` — se cambia palette, tipografia, layout o design system
 - `config/default.yaml` — se cambia lo schema di configurazione
+- `AGENTS.md` — se cambiano le regole invarianti, le rotte o il modello di interazione (pulsanti/tasti)
+- `README.md` — se cambiano funzionalità utente, configurazione o avvio
 
-Non chiudere mai un task critico lasciando la documentazione non sincronizzata con il codice.
+Non chiudere mai un task critico lasciando la documentazione non sincronizzata con il codice. `docs/architecture.md` è la fonte di verità: se diverge dal codice, allinearlo nella stessa sessione anziché crearne una copia.
 
 ---
 
@@ -123,5 +128,6 @@ Non chiudere mai un task critico lasciando la documentazione non sincronizzata c
 |---|---|
 | `docs/architecture.md` | Stack, struttura progetto, flusso applicativo, rotte web |
 | `docs/design.md` | Tipografia, palette, layout, schermate, interazioni |
+| `docs/0.X.0-devplan.md` | Piani di sviluppo per versione (l'ultimo descrive il lavoro in corso/previsto) |
 | `config/default.yaml` | Schema di configurazione con valori di default |
 | `systemd/family-planner.service` | Unit file per il servizio systemd |
