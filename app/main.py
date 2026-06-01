@@ -39,6 +39,7 @@ import signal
 import subprocess
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -145,6 +146,60 @@ def _log_events_diff(old_events: list, new_events: list) -> None:
         )
 
 
+def _content_signature(
+    state: "NavigationState",
+    events: list,
+    weather: object,
+) -> tuple:
+    """Return an order-independent, hashable signature of the displayed content.
+
+    The signature captures exactly what reaches the panel, so the e-ink push is
+    triggered only on a genuine data change — never on incidental churn such as:
+
+      * event re-ordering between fetches (Google iCal feeds are regenerated per
+        request; ``sort(key=start)`` is not a total order, so same-start events
+        may swap places without any visible difference);
+      * fresh ``CalendarEvent`` / ``WeatherData`` object identities returned by
+        the aggregator/provider when their TTL expires;
+      * sub-degree temperature jitter below the displayed (integer) precision.
+
+    Temperatures are rounded to the precision actually shown in the banner
+    (``:.0f``) and events are sorted into a canonical order so that two fetches
+    with identical content always produce an identical signature.
+    """
+
+    def _round(t: float | None) -> int | None:
+        return None if t is None else round(t)
+
+    events_sig = tuple(sorted(
+        (
+            e.uid,
+            e.title,
+            e.start.isoformat(),
+            e.end.isoformat(),
+            e.all_day,
+            e.location or "",
+            tuple(sorted(e.attendees)),
+            e.recurrent,
+            e.color,
+            e.calendar_name,
+        )
+        for e in events
+    ))
+    weather_sig = (
+        weather.condition_icon,
+        weather.description,
+        _round(weather.temp_current),
+        _round(weather.temp_max),
+        _round(weather.temp_min),
+        tuple(
+            (s.hour, s.condition_icon, _round(s.temp))
+            for s in weather.hourly_forecast
+        ),
+    )
+    return (state.anchor_date.isoformat(), events_sig, weather_sig)
+
+
 def _log_weather_diff(old: object, new: object) -> None:
     """Log a DEBUG summary of which WeatherData fields changed."""
     import dataclasses
@@ -183,11 +238,17 @@ def _eink_loop(
     overwritten.  Setting *wake_event* causes the loop to skip the remaining
     sleep and re-render immediately (used by button A to return to planner).
 
-    Change detection: the panel push is skipped when state, events and weather
-    are all unchanged since the last push.  Detailed differences are logged at
-    DEBUG level to help diagnose spurious refreshes.  *force_refresh* is set
-    True on the first iteration and whenever *wake_event* fires (button A
-    return-to-planner) so those pushes are never suppressed.
+    Change detection: the panel push is skipped unless the *content signature*
+    (see ``_content_signature``) differs from the last pushed frame.  The
+    signature is order-independent and rounded to the displayed precision, so
+    incidental churn (re-ordered event lists from regenerated feeds, fresh
+    object identities, sub-degree temperature jitter) never triggers a refresh.
+    Detailed differences are logged at DEBUG level to help diagnose changes.
+    *force_refresh* is set True on the first iteration and whenever *wake_event*
+    fires (button A return-to-planner) so those pushes are never suppressed.
+
+    The footer "Ultimo aggiornamento" timestamp tracks the last genuine data
+    change (``last_change_at``), not the wall-clock time of each repaint.
     """
     from app.calendar.data_builders import events_range_for_state
     from app.renderer.tokens import WeatherData
@@ -200,6 +261,8 @@ def _eink_loop(
     last_state: NavigationState | None = None
     last_events: list = []
     last_weather: WeatherData = WeatherData()
+    last_signature: tuple | None = None
+    last_change_at: datetime = datetime.now()
     force_refresh: bool = True  # always push on first iteration
 
     while not stop_event.is_set():
@@ -209,29 +272,32 @@ def _eink_loop(
             events = aggregator.get_events(start, end)
             weather = weather_provider.get() if weather_provider is not None else WeatherData()
 
-            # --- change detection with debug logging ---
-            content_changed = force_refresh
-            if not force_refresh:
+            # --- change detection via content signature (order-independent) ---
+            signature = _content_signature(state, events, weather)
+            content_changed = force_refresh or signature != last_signature
+
+            # DEBUG diff: explain *what* changed (only when it did, to keep logs quiet).
+            if content_changed and not force_refresh and logger.isEnabledFor(logging.DEBUG):
                 if state != last_state:
                     logger.debug(
                         "E-ink diff stato — anchor_date: %s → %s",
                         last_state.anchor_date if last_state else None,
                         state.anchor_date,
                     )
-                    content_changed = True
                 if events != last_events:
                     _log_events_diff(last_events, events)
-                    content_changed = True
                 if weather != last_weather:
                     _log_weather_diff(last_weather, weather)
-                    content_changed = True
 
             if content_changed:
-                img = renderer_ref[0].render(state, events)
+                # The footer must reflect the last *data* change, not the repaint.
+                last_change_at = datetime.now()
+                img = renderer_ref[0].render(state, events, updated_at=last_change_at)
                 processed = eink_renderer_ref[0].process(img)
                 last_state = state
                 last_events = events
                 last_weather = weather
+                last_signature = signature
 
                 if not artwork_mode.is_set():
                     push_thread = threading.Thread(

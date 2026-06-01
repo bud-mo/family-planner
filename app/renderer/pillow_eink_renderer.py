@@ -251,8 +251,15 @@ class PillowEinkRenderer:
         self,
         state: NavigationState,
         events: list["CalendarEvent"],
+        *,
+        updated_at: datetime | None = None,
     ) -> Image.Image:
-        """Render the Home view for *state* and *events* as an RGB ``PIL.Image``."""
+        """Render the Home view for *state* and *events* as an RGB ``PIL.Image``.
+
+        *updated_at* is the moment the displayed data last changed; it is shown
+        in the footer ("Ultimo aggiornamento").  When ``None`` (browser preview,
+        HDMI) the current time is used, since those callers re-render on demand.
+        """
         W, H = self._size
         palette = get_palette()
         img = Image.new("RGB", (W, H), palette["BG"])
@@ -285,7 +292,7 @@ class PillowEinkRenderer:
         self._draw_weather(draw, img, weather_rect, weather, palette)
         self._draw_mini_calendar(draw, calendar_rect, state, events, palette)
         self._draw_agenda(draw, img, agenda_rect, state, events, palette)
-        self._draw_footer(draw, footer_rect, palette)
+        self._draw_footer(draw, footer_rect, palette, updated_at)
         return img
 
     def render_artwork(self) -> Image.Image:
@@ -1051,14 +1058,17 @@ class PillowEinkRenderer:
         draw: ImageDraw.ImageDraw,
         rect: Rect,
         palette: dict[str, str],
+        updated_at: datetime | None = None,
     ) -> None:
         x0, y0, w, h = rect
 
         # Top separator
         draw.line([(x0, y0), (x0 + w, y0)], fill=palette["RULE"])
 
-        # Status indicator (right-aligned, sollevato di un'altezza testo + 4px dal bordo)
-        ts = datetime.now()
+        # Status indicator (right-aligned, sollevato di un'altezza testo + 4px dal bordo).
+        # *updated_at* riflette l'ultima variazione dei dati, non il mero repaint;
+        # se assente (anteprima web / HDMI) si usa l'ora corrente.
+        ts = updated_at or datetime.now()
         status_text = f"Ultimo aggiornamento: {ts.strftime('%H:%M')}"
         _bbox = draw.textbbox((0, 0), status_text, font=self._font_label)
         _text_h = _bbox[3] - _bbox[1]
