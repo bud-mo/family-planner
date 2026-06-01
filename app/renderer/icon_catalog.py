@@ -2,7 +2,7 @@
 
 Aggrega i nomi da:
 - app/renderer/emoji_icons.py  (valori di EMOJI_TO_ICON)
-- app/weather/open_meteo.py    (valori di _WMO_TO_ICON — tenerli in sync manualmente)
+- app/weather/open_meteo.py    (valori di WMO_TO_ICON — derivato automaticamente)
 
 Usato da scripts/extract_icons.py per generare app/assets/icons/icons.json,
 che a sua volta viene letto da scripts/convert_icons.js con il flag --json.
@@ -10,19 +10,12 @@ che a sua volta viene letto da scripts/convert_icons.js con il flag --json.
 from __future__ import annotations
 
 from app.renderer.emoji_icons import EMOJI_TO_ICON
+from app.weather.open_meteo import WMO_TO_ICON
 
 # ---------------------------------------------------------------------------
-# Icone meteo — tenerle in sync con _WMO_TO_ICON in app/weather/open_meteo.py
+# Icone meteo — derivate da WMO_TO_ICON in app/weather/open_meteo.py
 # ---------------------------------------------------------------------------
-WEATHER_ICONS: frozenset[str] = frozenset({
-    "bolt",
-    "cloud",
-    "cloud-rain",
-    "cloud-snow",
-    "cloud-storm",
-    "snowflake",
-    "sun",
-})
+WEATHER_ICONS: frozenset[str] = frozenset(WMO_TO_ICON.values())
 
 # ---------------------------------------------------------------------------
 # Icone UI — usate direttamente nel renderer (non mappate da emoji)

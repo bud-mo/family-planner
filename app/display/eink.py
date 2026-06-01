@@ -4,15 +4,17 @@
 libraries are loaded lazily inside ``push()``, guarded by a try/except
 ``ImportError``.  On macOS or Linux without the Waveshare package the module
 imports cleanly and ``push()`` raises ``RuntimeError`` only when actually
-called (satisfying acceptance criterion #10).
+called.
 
 Usage (typical):
-    renderer = PlaywrightRenderer(config, aggregator)
+    from app.renderer.pillow_eink_renderer import PillowEinkRenderer
+    from app.renderer.eink_renderer import EinkRenderer
+
+    pillow_renderer = PillowEinkRenderer(config, weather_provider)
     eink_renderer = EinkRenderer(config.display)
     display = EinkDisplay(config.display)
 
-    renderer.start(port=8080)
-    image = renderer.screenshot()
+    image = pillow_renderer.render(state, events)
     processed = eink_renderer.process(image)
     display.push(processed)
     display.stop()

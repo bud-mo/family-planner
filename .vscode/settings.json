@@ -49,6 +49,10 @@
         "/^source \\.venv/bin/activate && python -m pytest tests/test_weather_banner_visual\\.py -x -q 2>&1 \\| tail -10$/": {
             "approve": true,
             "matchCommandLine": true
+        },
+        "/^python -m pytest --tb=short -q 2>&1 \\| tail -20$/": {
+            "approve": true,
+            "matchCommandLine": true
         }
     }
 }

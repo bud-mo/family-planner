@@ -1,6 +1,10 @@
 server:
   host: 0.0.0.0
   port: 8080
+  # Basic Auth opzionale per le rotte /config e /api/config/*.
+  # Raccomandato se il server è esposto in LAN senza altre protezioni.
+  # auth_username: null
+  # auth_password: null
 timezone: "Europe/Rome"
 display:
   fullscreen: false

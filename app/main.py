@@ -95,8 +95,76 @@ def _parse_args() -> argparse.Namespace:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# E-ink change-detection debug helpers
+# ---------------------------------------------------------------------------
+
+
+def _log_events_diff(old_events: list, new_events: list) -> None:
+    """Log a DEBUG summary of which events were added, removed, or modified."""
+    import dataclasses
+
+    old_by_uid = {e.uid: e for e in old_events}
+    new_by_uid = {e.uid: e for e in new_events}
+    added   = [e for uid, e in new_by_uid.items() if uid not in old_by_uid]
+    removed = [e for uid, e in old_by_uid.items() if uid not in new_by_uid]
+    changed = [
+        e for uid, e in new_by_uid.items()
+        if uid in old_by_uid and e != old_by_uid[uid]
+    ]
+    if added:
+        logger.debug(
+            "E-ink diff eventi — aggiunti (%d): %s",
+            len(added),
+            [f"{e.title!r} ({e.start:%Y-%m-%d})" for e in added[:5]],
+        )
+    if removed:
+        logger.debug(
+            "E-ink diff eventi — rimossi (%d): %s",
+            len(removed),
+            [f"{e.title!r} ({e.start:%Y-%m-%d})" for e in removed[:5]],
+        )
+    for e in changed[:5]:
+        old = old_by_uid[e.uid]
+        diff_fields = [
+            f.name
+            for f in dataclasses.fields(e)
+            if getattr(e, f.name) != getattr(old, f.name)
+        ]
+        logger.debug(
+            "E-ink diff eventi — modificato %r, campi: %s",
+            e.title,
+            diff_fields,
+        )
+    if not added and not removed and not changed:
+        logger.debug(
+            "E-ink diff eventi — lista diversa ma nessuna diff per uid/contenuto "
+            "(conteggio: %d→%d)",
+            len(old_events),
+            len(new_events),
+        )
+
+
+def _log_weather_diff(old: object, new: object) -> None:
+    """Log a DEBUG summary of which WeatherData fields changed."""
+    import dataclasses
+
+    diffs = []
+    for f in dataclasses.fields(old):  # type: ignore[arg-type]
+        ov, nv = getattr(old, f.name), getattr(new, f.name)
+        if ov != nv:
+            if f.name == "hourly_forecast":
+                diffs.append(f"hourly_forecast: {len(ov)} slot → {len(nv)} slot")
+            else:
+                diffs.append(f"{f.name}: {ov!r} → {nv!r}")
+    if diffs:
+        logger.debug("E-ink diff meteo — %s", ", ".join(diffs))
+    else:
+        logger.debug("E-ink diff meteo — oggetti diversi ma stesso contenuto per tutti i campi")
+
+
 def _eink_loop(
-    renderer: PillowEinkRenderer,
+    renderer_ref: list,
     eink_renderer_ref: list,
     display: "EinkDisplay",
     aggregator: CalendarAggregator,
@@ -104,6 +172,7 @@ def _eink_loop(
     stop_event: threading.Event,
     artwork_mode: threading.Event,
     wake_event: threading.Event,
+    weather_provider: "WeatherProvider | None" = None,
 ) -> None:
     """Periodically render and push frames to the e-ink panel.
 
@@ -113,41 +182,83 @@ def _eink_loop(
     suppresses the panel push so the artwork displayed by button B is not
     overwritten.  Setting *wake_event* causes the loop to skip the remaining
     sleep and re-render immediately (used by button A to return to planner).
+
+    Change detection: the panel push is skipped when state, events and weather
+    are all unchanged since the last push.  Detailed differences are logged at
+    DEBUG level to help diagnose spurious refreshes.  *force_refresh* is set
+    True on the first iteration and whenever *wake_event* fires (button A
+    return-to-planner) so those pushes are never suppressed.
     """
     from app.calendar.data_builders import events_range_for_state
+    from app.renderer.tokens import WeatherData
 
     # Maximum time allowed for a single panel push (epd.init + Clear + display + sleep).
     # Waveshare 7.5" V2 typically completes in 20-30 s; 120 s is a generous safety margin.
     # If the BUSY pin hangs, the push thread stays alive but we keep the loop running.
     _PUSH_TIMEOUT = 120
 
+    last_state: NavigationState | None = None
+    last_events: list = []
+    last_weather: WeatherData = WeatherData()
+    force_refresh: bool = True  # always push on first iteration
+
     while not stop_event.is_set():
         state = NavigationState()
         start, end = events_range_for_state(state)
         try:
             events = aggregator.get_events(start, end)
-            img = renderer.render(state, events)
-            processed = eink_renderer_ref[0].process(img)
+            weather = weather_provider.get() if weather_provider is not None else WeatherData()
 
-            if not artwork_mode.is_set():
-                push_thread = threading.Thread(
-                    target=display.push,
-                    args=(processed,),
-                    daemon=True,
-                    name="eink-push",
-                )
-                push_thread.start()
-                push_thread.join(timeout=_PUSH_TIMEOUT)
-                if push_thread.is_alive():
-                    logger.error(
-                        "E-ink push did not complete within %ds — "
-                        "panel BUSY pin may be stuck. Skipping frame; "
-                        "the push thread will finish in the background "
-                        "once the panel responds.",
-                        _PUSH_TIMEOUT,
+            # --- change detection with debug logging ---
+            content_changed = force_refresh
+            if not force_refresh:
+                if state != last_state:
+                    logger.debug(
+                        "E-ink diff stato — anchor_date: %s → %s",
+                        last_state.anchor_date if last_state else None,
+                        state.anchor_date,
                     )
+                    content_changed = True
+                if events != last_events:
+                    _log_events_diff(last_events, events)
+                    content_changed = True
+                if weather != last_weather:
+                    _log_weather_diff(last_weather, weather)
+                    content_changed = True
+
+            if content_changed:
+                img = renderer_ref[0].render(state, events)
+                processed = eink_renderer_ref[0].process(img)
+                last_state = state
+                last_events = events
+                last_weather = weather
+
+                if not artwork_mode.is_set():
+                    push_thread = threading.Thread(
+                        target=display.push,
+                        args=(processed,),
+                        daemon=True,
+                        name="eink-push",
+                    )
+                    push_thread.start()
+                    push_thread.join(timeout=_PUSH_TIMEOUT)
+                    if push_thread.is_alive():
+                        logger.error(
+                            "E-ink push did not complete within %ds — "
+                            "panel BUSY pin may be stuck. Skipping frame; "
+                            "the push thread will finish in the background "
+                            "once the panel responds.",
+                            _PUSH_TIMEOUT,
+                        )
+                    else:
+                        logger.info("E-ink: variazione rilevata — push completato.")
+            else:
+                logger.debug("E-ink: nessuna variazione — push saltato.")
+
         except Exception as exc:  # noqa: BLE001
             logger.error("E-ink render/push error: %s", exc)
+
+        force_refresh = False
 
         # Interruptible sleep: wake early if wake_event fires (button A) or
         # stop_event fires (shutdown).  Poll every 0.5 s so the loop remains
@@ -159,6 +270,7 @@ def _eink_loop(
                 break
             if wake_event.wait(timeout=min(remaining, 0.5)):
                 wake_event.clear()
+                force_refresh = True  # ritorno da artwork: push incondizionato
                 break
 
     logger.info("E-ink loop fermato.")
@@ -265,6 +377,16 @@ def main() -> None:
     config_path: Path = args.config.resolve()
     config = load_config(config_path)
 
+    _loopback = config.server.host in ("127.0.0.1", "localhost", "::1")
+    _auth_on = bool(config.server.auth_username and config.server.auth_password)
+    if not _loopback and not _auth_on:
+        logger.warning(
+            "Server in ascolto su %s senza autenticazione: le rotte /config sono "
+            "raggiungibili da chiunque sulla rete. Impostare server.auth_username/"
+            "auth_password oppure host: 127.0.0.1.",
+            config.server.host,
+        )
+
     aggregator = CalendarAggregator(
         config.calendars,
         cache_ttl=config.display.refresh_interval,
@@ -301,114 +423,7 @@ def main() -> None:
     eink_stop_event: threading.Event | None = None
     _hdmi_ref: list = [None]
     _eink_renderer_ref: list = [None]
-
-    if config.display.type == "eink":
-        from app.renderer.eink_renderer import EinkRenderer
-
-        _eink_renderer_ref[0] = EinkRenderer(config.display)
-        eink_renderer = _eink_renderer_ref[0]
-        if config.display.eink_model.startswith("inky_"):
-            from app.display.eink import InkyDisplay
-            display_obj = InkyDisplay(config.display)
-        else:
-            from app.display.eink import EinkDisplay
-            display_obj = EinkDisplay(config.display)
-
-        eink_stop_event = threading.Event()
-        _artwork_mode = threading.Event()
-        _wake_event = threading.Event()
-
-        eink_thread = threading.Thread(
-            target=_eink_loop,
-            args=(
-                renderer,
-                _eink_renderer_ref,
-                display_obj,
-                aggregator,
-                config.display.refresh_interval,
-                eink_stop_event,
-                _artwork_mode,
-                _wake_event,
-            ),
-            daemon=True,
-            name="eink-loop",
-        )
-        eink_thread.start()
-        logger.info(
-            "E-ink loop avviato (model=%s, palette=%s, interval=%ds).",
-            config.display.eink_model,
-            config.display.eink_palette,
-            config.display.refresh_interval,
-        )
-
-        # ----------------------------------------------------------
-        # Physical button handler (Inky Impression only)
-        # ----------------------------------------------------------
-        if config.display.eink_model.startswith("inky_"):
-            from app.display.buttons import InkyButtonHandler
-
-            _shutdown_triggered = threading.Event()
-
-            def _on_button(button: str) -> None:
-                if _shutdown_triggered.is_set():
-                    return  # ignore all buttons after shutdown is initiated
-
-                if button == "B":
-                    # Show a random landscape painting from Art Institute of Chicago.
-                    _perform_show_artwork(
-                        renderer,
-                        _eink_renderer_ref[0],
-                        display_obj,  # type: ignore[arg-type]
-                        _artwork_mode,
-                    )
-
-                elif button == "A":
-                    # Return to the planner.  We must not wake the eink loop
-                    # directly: if an artwork push is in progress the loop would
-                    # queue a planner push that starts immediately after the
-                    # artwork finishes, causing two back-to-back panel refreshes.
-                    # Instead we start a daemon thread that waits for the panel
-                    # to become free (_push_lock) and only then wakes the loop.
-                    if _artwork_mode.is_set():
-                        _artwork_mode.clear()
-                        logger.info("Modalit\u00e0 artwork disattivata (pulsante A) \u2014 ritorno al planner.")
-
-                    def _return_to_planner() -> None:
-                        # Acquiring the lock blocks until any in-progress push
-                        # (artwork or planner) completes; releasing it immediately
-                        # leaves the panel free for the loop's next push.
-                        display_obj._push_lock.acquire()  # type: ignore[union-attr]
-                        display_obj._push_lock.release()  # type: ignore[union-attr]
-                        # The EL133UF1 ACeP controller continues internal processing
-                        # briefly after BUSY goes HIGH and inky.show() returns.
-                        # Starting a new refresh within ~1 s of the previous one
-                        # results in the new image being silently discarded by the
-                        # hardware (panel reports success but pixels do not update).
-                        # A short settling delay prevents this race.
-                        _PANEL_SETTLE_S = 5
-                        logger.info(
-                            "return-planner: attesa settling pannello (%ds)...", _PANEL_SETTLE_S
-                        )
-                        time.sleep(_PANEL_SETTLE_S)
-                        _wake_event.set()
-
-                    threading.Thread(
-                        target=_return_to_planner, daemon=True, name="return-planner"
-                    ).start()
-
-                elif button == "D":
-                    # Shutdown: stop the loop and power off the device.
-                    _shutdown_triggered.set()
-                    threading.Thread(
-                        target=_perform_shutdown,
-                        args=(renderer, _eink_renderer_ref[0], display_obj, eink_stop_event, server),
-                        daemon=True,
-                        name="shutdown",
-                    ).start()
-
-            _button_handler = InkyButtonHandler(eink_model=config.display.eink_model)
-            _button_handler.start(_on_button, eink_stop_event)
-            logger.info("InkyButtonHandler avviato (A=planner, B=artwork, D=shutdown).")
+    _renderer_ref: list = [renderer]
 
     # ------------------------------------------------------------------
     # Web server
@@ -473,8 +488,10 @@ def main() -> None:
             # Rebuild renderer so display/layout/timezone changes take effect.
             new_renderer = PillowEinkRenderer(new_config, weather_provider=new_weather_provider)
             web_app.state.renderer = new_renderer
+            _renderer_ref[0] = new_renderer
             if _hdmi_ref[0] is not None:
                 _hdmi_ref[0].set_renderer(new_renderer)
+                _hdmi_ref[0].set_weather_provider(new_weather_provider)
             # Rebuild EinkRenderer so palette/dithering/rotation changes take effect
             # in the e-ink push loop without requiring a full process restart.
             if _eink_renderer_ref[0] is not None:
@@ -492,6 +509,115 @@ def main() -> None:
 
     if hasattr(signal, "SIGHUP"):  # not available on Windows
         signal.signal(signal.SIGHUP, _reload_config)
+
+    if config.display.type == "eink":
+        from app.renderer.eink_renderer import EinkRenderer
+
+        _eink_renderer_ref[0] = EinkRenderer(config.display)
+        eink_renderer = _eink_renderer_ref[0]
+        if config.display.eink_model.startswith("inky_"):
+            from app.display.eink import InkyDisplay
+            display_obj = InkyDisplay(config.display)
+        else:
+            from app.display.eink import EinkDisplay
+            display_obj = EinkDisplay(config.display)
+
+        eink_stop_event = threading.Event()
+        _artwork_mode = threading.Event()
+        _wake_event = threading.Event()
+
+        eink_thread = threading.Thread(
+            target=_eink_loop,
+            args=(
+                _renderer_ref,
+                _eink_renderer_ref,
+                display_obj,
+                aggregator,
+                config.display.refresh_interval,
+                eink_stop_event,
+                _artwork_mode,
+                _wake_event,
+            ),
+            kwargs={"weather_provider": weather_provider},
+            daemon=True,
+            name="eink-loop",
+        )
+        eink_thread.start()
+        logger.info(
+            "E-ink loop avviato (model=%s, palette=%s, interval=%ds).",
+            config.display.eink_model,
+            config.display.eink_palette,
+            config.display.refresh_interval,
+        )
+
+        # ----------------------------------------------------------
+        # Physical button handler (Inky Impression only)
+        # ----------------------------------------------------------
+        if config.display.eink_model.startswith("inky_"):
+            from app.display.buttons import InkyButtonHandler
+
+            _shutdown_triggered = threading.Event()
+
+            def _on_button(button: str) -> None:
+                if _shutdown_triggered.is_set():
+                    return  # ignore all buttons after shutdown is initiated
+
+                if button == "B":
+                    # Show a random landscape painting from Art Institute of Chicago.
+                    _perform_show_artwork(
+                        _renderer_ref[0],
+                        _eink_renderer_ref[0],
+                        display_obj,  # type: ignore[arg-type]
+                        _artwork_mode,
+                    )
+
+                elif button == "A":
+                    # Return to the planner.  We must not wake the eink loop
+                    # directly: if an artwork push is in progress the loop would
+                    # queue a planner push that starts immediately after the
+                    # artwork finishes, causing two back-to-back panel refreshes.
+                    # Instead we start a daemon thread that waits for the panel
+                    # to become free (_push_lock) and only then wakes the loop.
+                    if _artwork_mode.is_set():
+                        _artwork_mode.clear()
+                        logger.info("Modalit\u00e0 artwork disattivata (pulsante A) \u2014 ritorno al planner.")
+
+                    def _return_to_planner() -> None:
+                        # Acquiring the lock blocks until any in-progress push
+                        # (artwork or planner) completes; releasing it immediately
+                        # leaves the panel free for the loop's next push.
+                        display_obj._push_lock.acquire()  # type: ignore[union-attr]
+                        display_obj._push_lock.release()  # type: ignore[union-attr]
+                        # The EL133UF1 ACeP controller continues internal processing
+                        # briefly after BUSY goes HIGH and inky.show() returns.
+                        # Starting a new refresh within ~1 s of the previous one
+                        # results in the new image being silently discarded by the
+                        # hardware (panel reports success but pixels do not update).
+                        # A short settling delay prevents this race.
+                        _PANEL_SETTLE_S = 5
+                        logger.info(
+                            "return-planner: attesa settling pannello (%ds)...", _PANEL_SETTLE_S
+                        )
+                        time.sleep(_PANEL_SETTLE_S)
+                        _wake_event.set()
+
+                    threading.Thread(
+                        target=_return_to_planner, daemon=True, name="return-planner"
+                    ).start()
+
+                elif button == "D":
+                    # Shutdown: stop the loop and power off the device.
+                    _shutdown_triggered.set()
+                    threading.Thread(
+                        target=_perform_shutdown,
+                        args=(_renderer_ref[0], _eink_renderer_ref[0], display_obj, eink_stop_event, server),
+                        daemon=True,
+                        name="shutdown",
+                    ).start()
+
+            _button_handler = InkyButtonHandler(eink_model=config.display.eink_model)
+            _button_handler.start(_on_button, eink_stop_event)
+            logger.info("InkyButtonHandler avviato (A=planner, B=artwork, D=shutdown).")
 
     # ------------------------------------------------------------------
     # Run (blocks until server exits)
@@ -512,7 +638,7 @@ def main() -> None:
                 "Falling back to web-server-only mode."
             )
         else:
-            hdmi = HdmiDisplay(config.display, renderer, aggregator)
+            hdmi = HdmiDisplay(config.display, renderer, aggregator, weather_provider)
             _hdmi_ref[0] = hdmi
 
             # Uvicorn in daemon thread — must start before run_blocking()

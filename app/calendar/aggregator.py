@@ -54,13 +54,16 @@ class CalendarAggregator:
 
     def get_events(self, start: datetime, end: datetime) -> list[CalendarEvent]:
         cache_key = (start, end)
+        now = time.monotonic()
 
         with self._cache_lock:
+            # Eviction: rimuovi le entry scadute prima di leggere
+            expired = [k for k, (ts, _) in self._cache.items() if now - ts >= self._cache_ttl]
+            for k in expired:
+                del self._cache[k]
             entry = self._cache.get(cache_key)
-            if entry is not None:
-                cached_at, cached_events = entry
-                if time.monotonic() - cached_at < self._cache_ttl:
-                    return cached_events
+            if entry is not None and now - entry[0] < self._cache_ttl:
+                return entry[1]
 
         events = self._fetch_all(start, end)
 
