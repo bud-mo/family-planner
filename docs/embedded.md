@@ -2,6 +2,10 @@
 
 Questo documento raccoglie le pratiche consigliate per la configurazione di un Raspberry Pi come dispositivo embedded sempre attivo, con particolare attenzione alla **longevità della scheda SD** e alla stabilità del sistema.
 
+> **Target di riferimento**: Raspberry Pi OS Lite **Bookworm 64-bit** su **Raspberry Pi 5** (4/8/16 GB) e **Raspberry Pi Zero 2 W** (512 MB). Due note trasversali a tutto il documento:
+> - **Path di boot**: su Bookworm la partizione FAT è montata su **`/boot/firmware`**, *non* su `/boot`. Tutti i riferimenti a `config.txt` e ai file di configurazione editabili da un altro PC usano quindi `/boot/firmware/...`. Un file scritto in `/boot/` finisce sulla partizione ext4 di root e **non** è leggibile montando la SD su Windows/macOS.
+> - **RAM ridotta sullo Zero 2 W**: con soli 512 MB, le dimensioni dei `tmpfs` e l'uso di `zram` (sez. 1 e 5) vanno calibrati con attenzione per non saturare la memoria.
+
 ---
 
 ## 1. Spostare i Log dalla SD alla RAM (`tmpfs`)
@@ -16,10 +20,13 @@ Aggiungere le seguenti righe a `/etc/fstab`:
 tmpfs   /tmp            tmpfs   defaults,noatime,nosuid,size=64m    0 0
 tmpfs   /var/log        tmpfs   defaults,noatime,nosuid,mode=0755,size=64m  0 0
 tmpfs   /var/tmp        tmpfs   defaults,noatime,nosuid,size=32m    0 0
-tmpfs   /var/cache/apt  tmpfs   defaults,noatime,nosuid,size=32m    0 0
 ```
 
 > **Attenzione**: i log in `/var/log` vengono persi ad ogni riavvio. Per debug persistente usare `journald` con storage `volatile` (vedi sotto) o montare un disco esterno per i log.
+
+> **Non montare `/var/cache/apt` su tmpfs piccolo**: durante `apt update`/`apt upgrade` i pacchetti scaricati possono superare facilmente 32–64 MB e un tmpfs sottodimensionato fa fallire l'aggiornamento con *"No space left on device"*. Se la SD si usura solo durante gli update (evento raro su un dispositivo embedded), è meglio lasciare `/var/cache/apt` sulla SD e fare `sudo apt clean` dopo ogni aggiornamento (sez. 6.2).
+
+> **Zero 2 W (512 MB)**: i `size=` qui sopra sono **tetti massimi**, non allocazione fissa — il tmpfs occupa RAM solo per i dati realmente scritti. Tuttavia, sommati alle eventuali pagine `zram` (sez. 5), su 512 MB conviene ridurre: es. `/var/log` a `size=32m` e `/tmp` a `size=32m`. Verificare con `df -h /var/log /tmp` e `free -h` sotto carico reale.
 
 ### 1.2 `systemd-journald` in modalità volatile
 
@@ -96,10 +103,12 @@ Per rendere persistenti solo alcune directory (es. la configurazione di Family P
 
 ```
 # /etc/fstab
-/boot/family-planner.config.yaml  /home/pi/family-planner/config/config.yaml  none  bind  0  0
+/boot/firmware/family-planner.config.yaml  /home/pi/family-planner/config/config.yaml  none  bind  0  0
 ```
 
-In questo modo il file di configurazione risiede su `/boot` (partizione FAT32, facilmente modificabile da qualsiasi computer) e viene montato nella posizione attesa dall'applicazione.
+In questo modo il file di configurazione risiede su `/boot/firmware` (partizione FAT32, facilmente modificabile da qualsiasi computer) e viene montato nella posizione attesa dall'applicazione.
+
+> **Nota Bookworm**: su Raspberry Pi OS Bookworm la partizione FAT è `/boot/firmware`, non `/boot`. Coerentemente anche `family-planner.service` deve puntare a `--config /boot/firmware/family-planner.config.yaml`. Il bind mount su un singolo file richiede che il file di destinazione **esista già** (crearlo vuoto con `touch` prima del primo mount).
 
 ---
 
@@ -154,7 +163,7 @@ sudo dphys-swapfile uninstall
 sudo systemctl disable dphys-swapfile
 ```
 
-Se la RAM è insufficiente (es. RPi 3B+ con 1 GB), valutare uno swap file su disco USB o RAM (zram):
+Se la RAM è insufficiente — caso tipico del **Raspberry Pi Zero 2 W (512 MB)**, dove disabilitare del tutto la swap rischia l'OOM-kill dell'applicazione — valutare uno swap file su disco USB o, meglio, in RAM compressa (`zram`):
 
 ```bash
 sudo apt install zram-tools
@@ -164,6 +173,8 @@ PERCENT=25
 ```
 
 `zram` crea un dispositivo di swap compresso in RAM — molto più veloce e senza stress sulla SD.
+
+> **Pi 5 vs Zero 2 W**: sul Pi 5 (≥ 4 GB) la swap è raramente necessaria e può restare disabilitata. Sullo Zero 2 W (512 MB) `zram` con `PERCENT=50` (≈ 256 MB di swap compressa) è un buon compromesso per evitare l'OOM-kill mantenendo zero scritture sulla SD.
 
 ---
 
@@ -196,20 +207,26 @@ Il Raspberry Pi ha un watchdog hardware integrato. Abilitarlo garantisce il riav
 
 ### 7.1 Abilitare il watchdog
 
-In `/boot/config.txt` (o `/boot/firmware/config.txt` su RPi 5):
+In `/boot/firmware/config.txt` (su Raspberry Pi OS Bookworm — vale per Pi 5 **e** Zero 2 W; il vecchio path `/boot/config.txt` è solo per OS pre-Bookworm):
 
 ```
 dtparam=watchdog=on
 ```
+
+> Riavviare dopo la modifica e verificare che il device esista: `ls /dev/watchdog*`. Nei log comparirà `Broadcom BCM2835 Watchdog timer` (lo stesso driver è usato anche su Pi 5/Zero 2 W).
 
 ### 7.2 Configurare `systemd` come watchdog supervisor
 
 In `/etc/systemd/system.conf`:
 
 ```ini
-RuntimeWatchdogSec=15
-ShutdownWatchdogSec=2min
+RuntimeWatchdogSec=14
+RebootWatchdogSec=2min
 ```
+
+> **Limite hardware**: il watchdog del BCM (Pi 5 e Zero 2 W inclusi) accetta un timeout **massimo di 15 secondi**; impostando un valore più alto systemd lo tronca silenziosamente. Si consiglia `14` per restare sotto il limite con un margine.
+>
+> **Nome dell'opzione**: `ShutdownWatchdogSec` è **deprecato** — rinominato `RebootWatchdogSec` in systemd v243. Bookworm monta systemd 252, quindi usare `RebootWatchdogSec` (il vecchio nome è ancora accettato come alias ma non documentato).
 
 ---
 
@@ -223,6 +240,8 @@ vcgencmd get_throttled
 ```
 
 Un valore di `throttled` diverso da `0x0` indica che il Pi ha ridotto la frequenza per surriscaldamento. Usare un dissipatore e/o ventola.
+
+> **Pi 5**: scalda sensibilmente più dei modelli precedenti e va in throttling soft già a 80 °C (hard a 85 °C). Per uso 24/7 è consigliato l'**Active Cooler ufficiale** (o equivalente con ventola PWM gestita dal firmware). Lo **Zero 2 W**, a basso consumo, di norma resta nei limiti con un piccolo dissipatore passivo, ma in enclosure chiuse senza ventilazione va comunque verificato sotto carico.
 
 ---
 
