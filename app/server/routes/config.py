@@ -129,7 +129,6 @@ def _parse_config_form(form: Any, existing: AppConfig) -> dict:
             "width": _int("display_width", 1920),
             "height": _int("display_height", 1080),
             "fullscreen": _bool("display_fullscreen"),
-            "refresh_interval": _int("display_refresh_interval", 300),
             "show_buttons": _bool("display_show_buttons"),
             "eink_model": _str("display_eink_model", "7in5_V2"),
             "eink_palette": _str("display_eink_palette", "bw"),

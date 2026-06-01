@@ -118,7 +118,6 @@ display:
   width: 1024
   height: 600
   fullscreen: false          # true → finestra fullscreen; false → finestra dimensionata (sviluppo)
-  refresh_interval: 300      # secondi tra un aggiornamento e l'altro
   show_buttons: false        # mostra/nasconde i pulsanti di navigazione (solo HDMI touchscreen)
   rotation: 0                # rotazione schermo: 0 | 90 | 180 | 270
   # solo se type: "eink":
@@ -193,9 +192,12 @@ Avvio (main.py --config ...)
                           B → _perform_show_artwork() → fetch ARTIC → EinkRenderer → push
                               (artwork_mode bloccante: sopprime i push del loop finché attiva)
                           D → _perform_shutdown() → render_artwork() → push → sudo shutdown -h now
-                        Loop daemon (ogni refresh_interval):
+                        Loop daemon (cadenza allineata all'orologio — vedi app/scheduling.py):
+                          si sveglia a ogni quarto d'ora (xx:00/15/30/45)
+                          calendario: rifetch a ogni tick; meteo: solo a xx:00
+                          push solo se cambiano i dati (content signature)
                           NavigationState() → anchor_date = oggi
-                          aggregator.get_events(start, end) → eventi
+                          aggregator.get_events(start, end, force=True) → eventi
                           PillowEinkRenderer.render(state, events) → PIL.Image
                           se NOT artwork_mode:
                             EinkRenderer.process(img) → resize + palette + dithering + rotazione
@@ -207,7 +209,7 @@ Avvio (main.py --config ...)
 ## Rotte Web
 
 ### `GET /`
-Pagina HTML minimale con auto-refresh che mostra l'immagine calendario corrente via `<img src="/preview.png">`. L'intervallo di refresh è pari a `display.refresh_interval` secondi. Utile per anteprima browser durante lo sviluppo.
+Pagina HTML minimale con auto-refresh che mostra l'immagine calendario corrente via `<img src="/preview.png">`. L'intervallo di refresh è fisso a `WEB_REFRESH_SECONDS` (900 s = 15 min, allineato alla cadenza del calendario; vedi `app/scheduling.py`). Utile per anteprima browser durante lo sviluppo.
 
 ### `GET /preview.png`
 Chiama `PillowEinkRenderer.render(state, events)` on-demand e restituisce l'immagine PNG risultante (`Content-Type: image/png`). È la stessa immagine che verrebbe inviata al pannello e-ink.
@@ -384,7 +386,7 @@ run_blocking()
     eventi tastiera: q/F4 quit
 ```
 
-**Re-render**: allo scadere di `refresh_interval` secondi (aggiornamento dati calendario) o al cambio di data a mezzanotte.
+**Re-render**: a ogni quarto d'ora (rifetch del calendario; il meteo a `xx:00`) o al cambio di data a mezzanotte. Il frame viene ridisegnato solo se i dati cambiano. Cadenze in `app/scheduling.py`.
 
 **Modalità fullscreen** (`fullscreen: true`): `pygame.FULLSCREEN | pygame.NOFRAME` — nessun flag shell necessario.
 
@@ -396,10 +398,10 @@ run_blocking()
 
 Il loop e-ink non avvia alcun processo Chromium. Il rendering avviene interamente in-process tramite **`PillowEinkRenderer`** (`renderer/pillow_eink_renderer.py`), che produce un `PIL.Image` direttamente da `NavigationState` e dalla lista eventi. I font TTF sono caricati da `app/assets/fonts/` — nessuna chiamata di rete.
 
-`main.py` avvia un thread daemon che esegue ogni `refresh_interval` secondi:
+`main.py` avvia un thread daemon che si sveglia a ogni confine di quarto d'ora (`xx:00`/`xx:15`/`xx:30`/`xx:45`, vedi `app/scheduling.py`). A ogni tick rifetcha il calendario; il meteo solo a `xx:00`. Quando le due cadenze coincidono (`xx:00`) viene eseguito un solo ciclo. Il push al pannello avviene solo se la *content signature* (`_content_signature`) cambia. Il pulsante A forza un refresh immediato di meteo **e** calendario:
 
 1. **`NavigationState()`** crea un nuovo stato con `anchor_date = date.today()`.
-2. **`aggregator.get_events(start, end)`** recupera gli eventi per l'intervallo della vista corrente.
+2. **`aggregator.get_events(start, end, force=True)`** recupera gli eventi freschi per l'intervallo della vista corrente.
 3. **`PillowEinkRenderer.render(state, events)`** produce un `PIL.Image` RGB nelle dimensioni configurate (`display.width × display.height`).
 4. **`EinkRenderer`** (`renderer/eink_renderer.py`) applica:
    - **Ridimensionamento** alla risoluzione nativa del pannello (13 modelli Waveshare supportati)
@@ -414,7 +416,7 @@ Il loop e-ink non avvia alcun processo Chromium. Il rendering avviene interament
 
 > **Pannelli supportati**: 13 modelli Waveshare (mappatura `eink_model → modulo` in `display/eink.py`) + 3 Pimoroni Inky Impression Spectra 6 (`inky_impression_4`, `inky_impression_7`, `inky_impression_13`) con risoluzioni definite in `renderer/eink_renderer.py`.
 
-> **Refresh time**: i pannelli e-ink Waveshare impiegano tipicamente 15–30 secondi per un aggiornamento completo. Impostare `refresh_interval` ≥ 60 secondi.
+> **Refresh time**: i pannelli e-ink Waveshare impiegano tipicamente 15–30 secondi per un aggiornamento completo. Le cadenze (calendario 15 min, meteo 1 ora) sono fisse e ampiamente superiori a questo limite; il push avviene comunque solo quando i dati cambiano.
 
 > **Su RPi**: il loop e-ink non richiede un display server — funziona su RPi OS Lite senza X11 o Wayland. Con `display.type: "eink"`, `pygame` non viene mai importato.
 

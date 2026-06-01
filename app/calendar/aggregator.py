@@ -52,7 +52,15 @@ class CalendarAggregator:
     # Public interface
     # ------------------------------------------------------------------
 
-    def get_events(self, start: datetime, end: datetime) -> list[CalendarEvent]:
+    def get_events(
+        self, start: datetime, end: datetime, force: bool = False
+    ) -> list[CalendarEvent]:
+        """Ritorna gli eventi per l'intervallo dato.
+
+        Con *force* True salta il controllo di freschezza in lettura (rifetch
+        immediato), ma il risultato viene comunque scritto in cache così che le
+        letture successive (web server) lo riusino.
+        """
         cache_key = (start, end)
         now = time.monotonic()
 
@@ -61,9 +69,10 @@ class CalendarAggregator:
             expired = [k for k, (ts, _) in self._cache.items() if now - ts >= self._cache_ttl]
             for k in expired:
                 del self._cache[k]
-            entry = self._cache.get(cache_key)
-            if entry is not None and now - entry[0] < self._cache_ttl:
-                return entry[1]
+            if not force:
+                entry = self._cache.get(cache_key)
+                if entry is not None and now - entry[0] < self._cache_ttl:
+                    return entry[1]
 
         events = self._fetch_all(start, end)
 

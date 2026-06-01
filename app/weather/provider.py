@@ -14,8 +14,11 @@ class WeatherProvider(ABC):
     """
 
     @abstractmethod
-    def get(self) -> WeatherData:
+    def get(self, force: bool = False) -> WeatherData:
         """Return the latest available weather data.
+
+        With *force* True the implementation bypasses its TTL cache and fetches
+        fresh data (used at the hourly tick and on a manual refresh).
 
         Must never raise — return an empty ``WeatherData()`` on any error so
         that the renderer degrades gracefully (shows only the date).

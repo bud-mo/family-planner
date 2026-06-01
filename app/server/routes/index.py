@@ -26,12 +26,10 @@ router = APIRouter()
 async def index(request: Request):
     """Pagina di anteprima — auto-refresh dell'immagine calendario."""
     templates: Jinja2Templates = request.app.state.templates
+    # ``refresh_interval`` is provided as a Jinja global (WEB_REFRESH_SECONDS).
     return templates.TemplateResponse(
         "index.html",
-        {
-            "request": request,
-            "refresh_interval": request.app.state.config.display.refresh_interval,
-        },
+        {"request": request},
     )
 
 

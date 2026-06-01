@@ -9,6 +9,7 @@ from fastapi.templating import Jinja2Templates
 from app.calendar.aggregator import CalendarAggregator
 from app.config import AppConfig
 from app.renderer.pillow_eink_renderer import PillowEinkRenderer
+from app.scheduling import WEB_REFRESH_SECONDS
 from app.server.routes.config import router as config_router
 from app.server.routes.index import router as index_router
 
@@ -38,7 +39,7 @@ def create_app(
     app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
 
     templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
-    templates.env.globals["refresh_interval"] = config.display.refresh_interval
+    templates.env.globals["refresh_interval"] = WEB_REFRESH_SECONDS
     templates.env.globals["show_buttons"] = config.display.show_buttons
 
     app.state.config = config

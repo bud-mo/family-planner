@@ -25,7 +25,6 @@ class DisplayConfig(BaseModel):
     type: Literal["hdmi", "eink"] = "hdmi"
     width: int = 1920
     height: int = 1080
-    refresh_interval: int = 300
     layout: Literal["portrait", "landscape"] = "landscape"
     show_buttons: bool = False      # show on-screen navigation overlay (for touchscreen / debug)
     eink_model: str = "7in5_V2"

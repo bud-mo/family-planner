@@ -132,7 +132,6 @@ display:
   width: 1024
   height: 600
   fullscreen: false          # true → fullscreen; false → finestra dimensionata (sviluppo)
-  refresh_interval: 300      # secondi tra un aggiornamento e l'altro
   show_buttons: false        # mostra pulsanti di navigazione (solo HDMI touchscreen)
   rotation: 0                # rotazione schermo: 0 | 90 | 180 | 270
   # Solo per e-ink:

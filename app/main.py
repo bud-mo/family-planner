@@ -49,6 +49,7 @@ from app.calendar.aggregator import CalendarAggregator
 from app.config import load_config
 from app.renderer.pillow_eink_renderer import PillowEinkRenderer
 from app.renderer.state import NavigationState
+from app.scheduling import WEB_REFRESH_SECONDS
 from app.server.app import create_app
 
 if TYPE_CHECKING:
@@ -223,20 +224,23 @@ def _eink_loop(
     eink_renderer_ref: list,
     display: "EinkDisplay",
     aggregator: CalendarAggregator,
-    interval: int,
     stop_event: threading.Event,
     artwork_mode: threading.Event,
     wake_event: threading.Event,
     weather_provider: "WeatherProvider | None" = None,
 ) -> None:
-    """Periodically render and push frames to the e-ink panel.
+    """Render and push frames to the e-ink panel on clock-aligned cadences.
 
-    Runs in a dedicated daemon thread.
+    Runs in a dedicated daemon thread.  The loop wakes at each quarter-hour
+    boundary (``xx:00``/``xx:15``/``xx:30``/``xx:45``): the calendar is re-fetched
+    every tick, the weather only on the hour (``xx:00``).  When both coincide a
+    single fetch/evaluate/push cycle runs.  See [app/scheduling.py].
 
     When *artwork_mode* is set the loop still refreshes calendar data but
     suppresses the panel push so the artwork displayed by button B is not
     overwritten.  Setting *wake_event* causes the loop to skip the remaining
-    sleep and re-render immediately (used by button A to return to planner).
+    sleep and re-render immediately, forcing a fresh fetch of *both* weather and
+    calendar (used by button A: return to planner + manual refresh).
 
     Change detection: the panel push is skipped unless the *content signature*
     (see ``_content_signature``) differs from the last pushed frame.  The
@@ -245,13 +249,14 @@ def _eink_loop(
     object identities, sub-degree temperature jitter) never triggers a refresh.
     Detailed differences are logged at DEBUG level to help diagnose changes.
     *force_refresh* is set True on the first iteration and whenever *wake_event*
-    fires (button A return-to-planner) so those pushes are never suppressed.
+    fires (button A) so those pushes are never suppressed.
 
     The footer "Ultimo aggiornamento" timestamp tracks the last genuine data
     change (``last_change_at``), not the wall-clock time of each repaint.
     """
     from app.calendar.data_builders import events_range_for_state
     from app.renderer.tokens import WeatherData
+    from app.scheduling import is_weather_tick, next_calendar_tick
 
     # Maximum time allowed for a single panel push (epd.init + Clear + display + sleep).
     # Waveshare 7.5" V2 typically completes in 20-30 s; 120 s is a generous safety margin.
@@ -263,14 +268,25 @@ def _eink_loop(
     last_weather: WeatherData = WeatherData()
     last_signature: tuple | None = None
     last_change_at: datetime = datetime.now()
-    force_refresh: bool = True  # always push on first iteration
+    force_refresh: bool = True   # always push on first iteration
+    manual_refresh: bool = True  # first iteration: fetch both weather + calendar fresh
 
     while not stop_event.is_set():
         state = NavigationState()
         start, end = events_range_for_state(state)
         try:
-            events = aggregator.get_events(start, end)
-            weather = weather_provider.get() if weather_provider is not None else WeatherData()
+            now = datetime.now()
+            # Calendar is re-fetched every quarter-hour tick; weather only on the
+            # hour (or on a manual/button-A refresh). At xx:00 both refresh in one
+            # cycle. Forced fetches bypass the cache; the cached value otherwise
+            # feeds the signature without triggering a push.
+            fetch_weather = manual_refresh or is_weather_tick(now)
+            events = aggregator.get_events(start, end, force=True)
+            weather = (
+                weather_provider.get(force=fetch_weather)
+                if weather_provider is not None
+                else WeatherData()
+            )
 
             # --- change detection via content signature (order-independent) ---
             signature = _content_signature(state, events, weather)
@@ -325,18 +341,21 @@ def _eink_loop(
             logger.error("E-ink render/push error: %s", exc)
 
         force_refresh = False
+        manual_refresh = False
 
-        # Interruptible sleep: wake early if wake_event fires (button A) or
-        # stop_event fires (shutdown).  Poll every 0.5 s so the loop remains
-        # responsive without busy-waiting.
-        deadline = time.monotonic() + interval
+        # Sleep until the next quarter-hour boundary.  Interruptible: wake early
+        # if wake_event fires (button A) or stop_event fires (shutdown).  Poll
+        # every 0.5 s so the loop stays responsive without busy-waiting.  On a
+        # natural wake `now.minute` lands on 0/15/30/45, so xx:00 drives weather.
+        target = next_calendar_tick(datetime.now())
         while not stop_event.is_set():
-            remaining = deadline - time.monotonic()
+            remaining = (target - datetime.now()).total_seconds()
             if remaining <= 0:
                 break
             if wake_event.wait(timeout=min(remaining, 0.5)):
                 wake_event.clear()
-                force_refresh = True  # ritorno da artwork: push incondizionato
+                force_refresh = True   # ritorno da artwork: push incondizionato
+                manual_refresh = True  # pulsante A: rifetch meteo + calendario
                 break
 
     logger.info("E-ink loop fermato.")
@@ -455,7 +474,7 @@ def main() -> None:
 
     aggregator = CalendarAggregator(
         config.calendars,
-        cache_ttl=config.display.refresh_interval,
+        cache_ttl=WEB_REFRESH_SECONDS,
     )
 
     # ------------------------------------------------------------------
@@ -537,7 +556,7 @@ def main() -> None:
             # Rebuild the aggregator providers so new calendar sources take effect.
             new_aggregator = CalendarAggregator(
                 new_config.calendars,
-                cache_ttl=new_config.display.refresh_interval,
+                cache_ttl=WEB_REFRESH_SECONDS,
             )
             web_app.state.aggregator = new_aggregator
             if _hdmi_ref[0] is not None:
@@ -564,7 +583,6 @@ def main() -> None:
                 from app.renderer.eink_renderer import EinkRenderer as _EinkRenderer
                 _eink_renderer_ref[0] = _EinkRenderer(new_config.display)
             # Refresh template globals used by the browser preview.
-            web_app.state.templates.env.globals["refresh_interval"] = new_config.display.refresh_interval
             web_app.state.templates.env.globals["show_buttons"] = new_config.display.show_buttons
             logger.info("Configuration reloaded successfully.")
         except Exception as exc:  # noqa: BLE001
@@ -599,7 +617,6 @@ def main() -> None:
                 _eink_renderer_ref,
                 display_obj,
                 aggregator,
-                config.display.refresh_interval,
                 eink_stop_event,
                 _artwork_mode,
                 _wake_event,
@@ -610,10 +627,9 @@ def main() -> None:
         )
         eink_thread.start()
         logger.info(
-            "E-ink loop avviato (model=%s, palette=%s, interval=%ds).",
+            "E-ink loop avviato (model=%s, palette=%s).",
             config.display.eink_model,
             config.display.eink_palette,
-            config.display.refresh_interval,
         )
 
         # ----------------------------------------------------------

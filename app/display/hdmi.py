@@ -12,8 +12,7 @@ from __future__ import annotations
 
 import logging
 import threading
-import time
-from datetime import date
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 
 import pygame
@@ -22,6 +21,7 @@ from app.calendar.data_builders import events_range_for_state
 from app.config import DisplayConfig
 from app.renderer.state import NavigationState
 from app.renderer.tokens import WeatherData
+from app.scheduling import floor_to_quarter, is_weather_tick
 
 if TYPE_CHECKING:
     from app.calendar.aggregator import CalendarAggregator
@@ -100,7 +100,7 @@ class HdmiDisplay:
         pygame.display.set_caption("Family Planner")
 
         clock = pygame.time.Clock()
-        last_event_fetch: float = 0.0
+        last_slot: datetime | None = None
         last_fetched_anchor: date | None = None
         events: list[CalendarEvent] = []
         last_rendered_state: NavigationState | None = None
@@ -116,25 +116,24 @@ class HdmiDisplay:
 
         running = True
         while running and not self._stop_event.is_set():
-            now = time.monotonic()
-
             # Single state read per iteration — always reflects today.
             state = NavigationState()
+            current_slot = floor_to_quarter(datetime.now())
 
-            # Re-fetch if: timer expired OR date rolled over at midnight.
-            if (
-                now - last_event_fetch >= self._config.refresh_interval
-                or state.anchor_date != last_fetched_anchor
-            ):
+            # Quarter-hour tick (or date rollover at midnight): re-fetch the
+            # calendar fresh; refresh the weather only on the hour (xx:00).
+            if current_slot != last_slot or state.anchor_date != last_fetched_anchor:
                 start, end = events_range_for_state(state)
                 try:
-                    events = self._aggregator.get_events(start, end)
+                    events = self._aggregator.get_events(start, end, force=True)
                     last_fetched_anchor = state.anchor_date
                 except Exception as exc:
                     logger.error("HdmiDisplay: event fetch error: %s", exc)
-                last_event_fetch = now
+                if self._weather_provider is not None and is_weather_tick(current_slot):
+                    self._weather_provider.get(force=True)  # refresh cache
+                last_slot = current_slot
 
-            # Fetch current weather for change detection (uses provider's TTL cache).
+            # Read current weather (from cache) for change detection each frame.
             weather = (
                 self._weather_provider.get()
                 if self._weather_provider is not None

@@ -133,14 +133,19 @@ class OpenMeteoProvider(WeatherProvider):
         self._cached: WeatherData | None = None
         self._cached_at: float = 0.0
 
-    def get(self) -> WeatherData:
-        """Return cached or freshly-fetched weather data (never raises)."""
-        with self._lock:
-            if (
-                self._cached is not None
-                and time.monotonic() - self._cached_at < _CACHE_TTL
-            ):
-                return self._cached
+    def get(self, force: bool = False) -> WeatherData:
+        """Return cached or freshly-fetched weather data (never raises).
+
+        With *force* True the TTL cache is bypassed and a fresh fetch is always
+        attempted (the hourly tick and manual refresh use this).
+        """
+        if not force:
+            with self._lock:
+                if (
+                    self._cached is not None
+                    and time.monotonic() - self._cached_at < _CACHE_TTL
+                ):
+                    return self._cached
 
         # Fetch outside the lock so other threads are not blocked during the
         # HTTP request.
