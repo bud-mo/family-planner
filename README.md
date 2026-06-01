@@ -1,55 +1,55 @@
 # Family Planner Calendar
 
-Un visualizzatore di calendario minimalista, ispirato alla tipografia del *Wall Street Journal*, progettato per girare su **Raspberry Pi** con display HDMI o e-ink. Include un server web per la visualizzazione in browser e la configurazione remota.
+A minimalist calendar viewer inspired by *Wall Street Journal* typography, designed to run on a **Raspberry Pi** with an HDMI or e-ink display. Includes a web server for browser preview and remote configuration.
 
 ---
 
-## Caratteristiche
+## Features
 
-- **Calendario + Meteo**: banner con data, icona meteo e temperature da **Open-Meteo** (nessuna API key richiesta)
-- **Sorgenti calendario**: Apple Calendar / iCloud (CalDAV), Google Calendar e feed iCal generici, file `.ics` locali
-- **Layout portrait e landscape**: selezionabile da configurazione, adattabile a qualsiasi risoluzione
-- **Rotazione schermo**: supporto a 0°/90°/180°/270° via `display.rotation` — il post-processor EinkRenderer ruota l'immagine finale prima dell'invio al pannello
-- **Modalità artwork (privacy)**: pressione del pulsante B (o tasto `B` su HDMI) mostra un dipinto casuale di dominio pubblico dall'**Art Institute of Chicago** al posto del calendario; pressione A ripristina il planner
-- **Schermata di spegnimento**: pressione del pulsante D (o tasto `D` su HDMI) mostra un'ultima artwork sul pannello prima dello spegnimento del dispositivo
-- **Display HDMI**: finestra pygame (SDL2) con ciclo di refresh configurabile — nessun browser richiesto
-- **Display e-ink Waveshare**: quantizzazione palette (BW / BWR / 4 grigi / Spectra 6) e dithering Floyd-Steinberg opzionale
-- **Server web FastAPI**: anteprima browser (`GET /`) e configurazione remota (`GET/POST /config`)
-- **Vista calendario sempre aggiornata**: la Home mostra sempre il giorno corrente — non esiste navigazione Su/Giù né paginazione. I pulsanti fisici su Pimoroni Inky Impression sono **A = ritorno al planner**, **B = artwork/privacy**, **D = spegnimento**; su HDMI/pygame i tasti `B`/`D` e `q`/`F4` corrispondono a artwork, shutdown e quit
+- **Calendar + Weather**: banner with date, weather icon, and temperatures from **Open-Meteo** (no API key required)
+- **Calendar sources**: Apple Calendar / iCloud (CalDAV), Google Calendar, generic iCal feeds, local `.ics` files
+- **Portrait and landscape layout**: selectable from configuration, adaptable to any resolution
+- **Screen rotation**: support for 0°/90°/180°/270° via `display.rotation` — the EinkRenderer post-processor rotates the final image before sending it to the panel
+- **Artwork mode (privacy)**: pressing button B (or key `B` on HDMI) shows a random public-domain painting from the **Art Institute of Chicago** instead of the calendar; pressing A restores the planner
+- **Shutdown screen**: pressing button D (or key `D` on HDMI) shows a final artwork on the panel before the device shuts down
+- **HDMI display**: pygame (SDL2) window with configurable refresh cycle — no browser required
+- **Waveshare e-ink display**: palette quantization (BW / BWR / 4-gray / Spectra 6) and optional Floyd-Steinberg dithering
+- **FastAPI web server**: browser preview (`GET /`) and remote configuration (`GET/POST /config`)
+- **Always up-to-date calendar view**: the Home always shows the current day — no Up/Down navigation or pagination. Physical buttons on Pimoroni Inky Impression are **A = return to planner**, **B = artwork/privacy**, **D = shutdown**; on HDMI/pygame keys `B`/`D` and `q`/`F4` map to artwork, shutdown, and quit
 
 ---
 
-## Requisiti Hardware
+## Hardware Requirements
 
-| Componente | Minimo | Consigliato |
+| Component | Minimum | Recommended |
 |---|---|---|
 | SBC | Raspberry Pi 3B | Raspberry Pi 4 / 5 |
-| Memoria | 1 GB RAM | 2 GB RAM |
+| Memory | 1 GB RAM | 2 GB RAM |
 | Storage | 8 GB SD Class 10 | 16 GB SD A1 |
-| Display | HDMI 1080p **oppure** Waveshare e-ink 7.5" V2 | — |
+| Display | HDMI 1080p **or** Waveshare e-ink 7.5" V2 | — |
 | OS | Raspberry Pi OS Lite (Bookworm 64-bit) | — |
 
 ---
 
-## Requisiti Software
+## Software Requirements
 
 - Python 3.11+
-- Dipendenze elencate in `requirements.txt`
+- Dependencies listed in `requirements.txt`
 
-**Su Raspberry Pi**: SDL2 è richiesto per la modalità HDMI (`libsdl2-dev`). Le librerie Waveshare sono necessarie solo per la modalità e-ink.
+**On Raspberry Pi**: SDL2 is required for HDMI mode (`libsdl2-dev`). Waveshare libraries are only needed for e-ink mode.
 
 ---
 
-## Installazione
+## Installation
 
-### 1. Clona il repository
+### 1. Clone the repository
 
 ```bash
 git clone https://github.com/<org>/family-planner.git
 cd family-planner
 ```
 
-### 2. Crea un virtualenv e installa le dipendenze
+### 2. Create a virtualenv and install dependencies
 
 ```bash
 python3 -m venv .venv
@@ -57,32 +57,32 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 3. Copia e personalizza la configurazione
+### 3. Copy and customize the configuration
 
 ```bash
 cp config/default.yaml config/config.yaml
 ```
 
-Modifica `config/config.yaml` con i tuoi dati (URL CalDAV, credenziali, tipo di display). Imposta i permessi corretti per proteggere le credenziali:
+Edit `config/config.yaml` with your data (CalDAV URL, credentials, display type). Set the correct permissions to protect credentials:
 
 ```bash
 chmod 600 config/config.yaml
 ```
 
-> **Sicurezza**: per Apple Calendar usa una **App-Specific Password** generata su [appleid.apple.com](https://appleid.apple.com). Non usare mai la password dell'Apple ID direttamente.
+> **Security**: for Apple Calendar use an **App-Specific Password** generated at [appleid.apple.com](https://appleid.apple.com). Never use the Apple ID password directly.
 
 ---
 
-## Avvio Locale (sviluppo e test)
+## Local Start (development and testing)
 
 ```bash
 source .venv/bin/activate
 python app/main.py --config config/config.yaml
 ```
 
-Apri il browser su `http://localhost:8080` per visualizzare il calendario o accedere all'interfaccia di configurazione (`/config`).
+Open a browser at `http://localhost:8080` to view the calendar or access the configuration interface (`/config`).
 
-Per un avvio rapido usa lo script:
+For a quick start use the script:
 
 ```bash
 ./scripts/start.sh
@@ -90,39 +90,39 @@ Per un avvio rapido usa lo script:
 
 ---
 
-## Deploy su Raspberry Pi
+## Deploy to Raspberry Pi
 
-Assicurati che la chiave SSH sia configurata per l'accesso al dispositivo, quindi:
-
-```bash
-./scripts/deploy.sh pi@<ip-raspberry>
-```
-
-Per configurare l'avvio automatico come servizio systemd:
+Make sure the SSH key is configured for access to the device, then:
 
 ```bash
-./scripts/setup-autostart.sh pi@<ip-raspberry>
+./scripts/deploy.sh pi@<raspberry-ip>
 ```
 
-Il servizio viene registrato come `family-planner.service` e si avvia automaticamente al boot.
+To configure automatic startup as a systemd service:
+
+```bash
+./scripts/setup-autostart.sh pi@<raspberry-ip>
+```
+
+The service is registered as `family-planner.service` and starts automatically at boot.
 
 ---
 
-## Configurazione
+## Configuration
 
-Il file YAML è validato tramite **Pydantic v2** all'avvio. Un errore di schema blocca il processo con un messaggio diagnostico chiaro.
+The YAML file is validated through **Pydantic v2** at startup. A schema error stops the process with a clear diagnostic message.
 
 ```yaml
 server:
   host: "0.0.0.0"
   port: 8080
-  # Basic Auth opzionale sulle rotte /config e /api/config/*
+  # Optional Basic Auth on /config and /api/config/* routes
   # auth_username: null
   # auth_password: null
 
 weather:
-  enabled: true              # false → nasconde la sezione meteo
-  latitude: 45.4654          # coordinate GPS della posizione
+  enabled: true              # false → hides the weather section
+  latitude: 45.4654          # GPS coordinates of the location
   longitude: 9.1866
   units: "celsius"           # "celsius" | "fahrenheit"
 
@@ -131,24 +131,24 @@ display:
   layout: "landscape"        # "landscape" | "portrait"
   width: 1024
   height: 600
-  fullscreen: false          # true → fullscreen; false → finestra dimensionata (sviluppo)
-  show_buttons: false        # mostra pulsanti di navigazione (solo HDMI touchscreen)
-  rotation: 0                # rotazione schermo: 0 | 90 | 180 | 270
-  # Solo per e-ink:
+  fullscreen: false          # true → fullscreen; false → sized window (development)
+  show_buttons: false        # show navigation buttons (HDMI touchscreen only)
+  rotation: 0                # screen rotation: 0 | 90 | 180 | 270
+  # E-ink only:
   eink_model: 7in5_V2
   eink_palette: bw           # bw | bwr | 4gray | spectra6
   eink_dither: true
-  eink_saturation: 0.5       # intensità colori per quantizzazione (0.0–1.0)
+  eink_saturation: 0.5       # color intensity for quantization (0.0–1.0)
 
 artwork:
-  query: "landscape painting"  # query per ricerca artwork (Art Institute of Chicago)
+  query: "landscape painting"  # search query for artwork (Art Institute of Chicago)
 
 calendars:
-  - name: "Famiglia"
+  - name: "Family"
     type: "caldav"
     url: "https://caldav.icloud.com"
-    username: "utente@icloud.com"
-    password: "xxxx-xxxx-xxxx-xxxx"   # App-Specific Password Apple ID
+    username: "user@icloud.com"
+    password: "xxxx-xxxx-xxxx-xxxx"   # Apple ID App-Specific Password
     color: "#4A90D9"
 
   - name: "Google Calendar"
@@ -156,62 +156,62 @@ calendars:
     url: "https://calendar.google.com/calendar/ical/<id>/basic.ics"
     color: "#27AE60"
 
-  - name: "Locale"
+  - name: "Local"
     type: "ics"
-    path: "/home/pi/calendars/locale.ics"
+    path: "/home/pi/calendars/local.ics"
     color: "#E74C3C"
 ```
 
-La configurazione può essere modificata anche via interfaccia web su `http://<host>:8080/config`.
+Configuration can also be modified via the web interface at `http://<host>:8080/config`.
 
 ---
 
-## Struttura del Progetto
+## Project Structure
 
 ```
 family-planner/
 ├── app/
 │   ├── main.py              # Entry point
-│   ├── config.py            # Caricamento e validazione config (Pydantic v2)
-│   ├── server/              # FastAPI app, rotte, template Jinja2
-│   ├── calendar/            # Provider CalDAV / iCal / ICS e aggregatore
-│   ├── renderer/            # Pipeline rendering Pillow (HDMI + e-ink)
-│   ├── weather/             # OpenMeteoProvider con cache in-memory TTL 1h
-│   └── display/             # Gestori display pygame (HDMI) e Waveshare (e-ink)
+│   ├── config.py            # Config loading and validation (Pydantic v2)
+│   ├── server/              # FastAPI app, routes, Jinja2 templates
+│   ├── calendar/            # CalDAV / iCal / ICS providers and aggregator
+│   ├── renderer/            # Pillow rendering pipeline (HDMI + e-ink)
+│   ├── weather/             # OpenMeteoProvider with 1h TTL in-memory cache
+│   └── display/             # pygame (HDMI) and Waveshare (e-ink) display handlers
 ├── config/
-│   └── default.yaml         # Configurazione di default
-├── scripts/                 # Script deploy, install, autostart
-├── systemd/                 # Unit file systemd
+│   └── default.yaml         # Default configuration
+├── scripts/                 # Deploy, install, autostart scripts
+├── systemd/                 # systemd unit file
 ├── docs/
-│   ├── architecture.md      # Architettura e stack tecnico
-│   ├── design.md            # Design system (tipografia, palette, layout)
-│   └── artworks.md          # Gestione artwork (Art Institute of Chicago API)
+│   ├── architecture.md      # Architecture and technical stack
+│   ├── design.md            # Design system (typography, palette, layout)
+│   └── artworks.md          # Artwork management (Art Institute of Chicago API)
 └── requirements.txt
 ```
 
 ---
 
-## Architettura — Pipeline di Rendering
+## Architecture — Rendering Pipeline
 
 ```
 CalendarAggregator (CalDAV / iCal / ICS)
         │
         ▼
-PillowEinkRenderer (Pillow nativo)
+PillowEinkRenderer (native Pillow)
         │
         ├── HDMI ──▶ HdmiDisplay (pygame / SDL2)
         │
-        └── E-ink ──▶ EinkRenderer (quantizzazione palette + dithering Floyd-Steinberg)
+        └── E-ink ──▶ EinkRenderer (palette quantization + Floyd-Steinberg dithering)
                             │
                             └── EinkDisplay (SPI Waveshare)
 ```
 
-La pipeline è condivisa: `PillowEinkRenderer` genera la stessa `PIL.Image` per entrambi i display. Solo il post-processing finale differisce. Il meteo è iniettato da `OpenMeteoProvider` (cache in-memory TTL 1h, API Open-Meteo senza chiave).
+The pipeline is shared: `PillowEinkRenderer` generates the same `PIL.Image` for both displays. Only the final post-processing differs. Weather is injected by `OpenMeteoProvider` (1h TTL in-memory cache, keyless Open-Meteo API).
 
-`PillowEinkRenderer.render_artwork()` è un secondo entry point dello stesso renderer: recupera un dipinto casuale di dominio pubblico dall'**Art Institute of Chicago** via IIIF e lo restituisce come `PIL.Image` dello stesso formato — la modalità privacy e la schermata di spegnimento usano questa stessa pipeline.
+`PillowEinkRenderer.render_artwork()` is a second entry point of the same renderer: it fetches a random public-domain painting from the **Art Institute of Chicago** via IIIF and returns it as a `PIL.Image` of the same format — privacy mode and the shutdown screen use this same pipeline.
 
 ---
 
-## Licenza
+## License
 
-MIT — vedi [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE).

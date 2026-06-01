@@ -1,42 +1,42 @@
-# Artwork — Art Institute of Chicago
+# Artwork - Art Institute of Chicago
 
-Family Planner integra la visualizzazione di dipinti di dominio pubblico attraverso l'API pubblica dell'**Art Institute of Chicago (ARTIC)**, senza necessità di registrazione o API key.
-
----
-
-## Razionale della Scelta
-
-### Perché una funzionalità artwork?
-
-Il display mostra i dati del calendario di famiglia in un luogo condiviso (cucina, ingresso, studio). In presenza di ospiti o quando il dispositivo è incustodito, è desiderabile poter nascondere rapidamente gli appuntamenti privati senza spegnere il display. La schermata artwork risolve questo caso d'uso: sostituisce il planner con un contenuto visivamente gradevole e privo di informazioni sensibili.
-
-Sulla modalità e-ink, dove ogni refresh richiede 15–30 secondi, l'artwork serve anche come **schermata di spegnimento**: il pannello e-ink è bistabile e mantiene l'ultima immagine visualizzata indefinitamente, anche senza alimentazione. Un dipinto di qualità è esteticamente più gradevole di uno schermo bianco o di dati calendario statici.
-
-### Perché l'Art Institute of Chicago?
-
-| Criterio | Valutazione |
-|---|---|
-| **Nessuna API key** | L'API ARTIC è completamente pubblica, senza registrazione né quota |
-| **Dominio pubblico** | La collezione è filtrabile per `is_public_domain: true` — nessun problema di copyright |
-| **IIIF** | Le immagini ad alta risoluzione sono servite via IIIF standard — richiesta diretta per larghezza, altezza calcolata server-side |
-| **Varietà** | La collezione conta oltre 100.000 opere indicizzate, con metadati strutturati (titolo, artista, anno) |
-| **Qualità** | Digitalizzazioni ad alta risoluzione, adatte sia a display HDMI sia a pannelli e-ink |
-| **Nessun costo** | Gratuita per uso personale / non commerciale |
-
-Altre API considerate e scartate:
-
-| API | Motivo scarto |
-|---|---|
-| Wikimedia Commons | Catalog eterogeneo, qualità variabile, più complessa da filtrare per tipo/dimensione |
-| Metropolitan Museum of Art | API pubblica (simile), ma IIIF non standard — download meno ottimizzato per dimensioni specifiche |
-| Unsplash / Pexels | Richiedono API key; contenuto fotografico, non pittorico |
-| NASA APOD | Tematica troppo specifica; non sempre adatta al contesto domestico |
+Family Planner includes public-domain artwork display through the **Art Institute of Chicago (ARTIC)** public API, with no registration or API key required.
 
 ---
 
-## API Utilizzate
+## Why This Feature
 
-### 1. Search — `POST /api/v1/artworks/search`
+### Why add an artwork mode?
+
+The display shows family calendar data in a shared space (kitchen, hallway, office). When guests are present, or when the device is unattended, it is useful to quickly hide private appointments without turning the display off. Artwork mode solves this use case: it replaces the planner with visually pleasing content that contains no sensitive information.
+
+On e-ink devices, where each refresh takes 15-30 seconds, artwork mode also works as a **shutdown screen**: the e-ink panel is bistable and keeps the last displayed image indefinitely, even without power. A high-quality painting is visually better than a white screen or static calendar data.
+
+### Why the Art Institute of Chicago?
+
+| Criterion | Evaluation |
+|---|---|
+| **No API key** | The ARTIC API is fully public, with no registration or quota |
+| **Public domain** | The collection can be filtered with `is_public_domain: true` - no copyright issues |
+| **IIIF** | High-resolution images are served through standard IIIF - direct width request, server-side computed height |
+| **Variety** | The collection has over 100,000 indexed works, with structured metadata (title, artist, year) |
+| **Quality** | High-resolution digitizations, suitable for both HDMI displays and e-ink panels |
+| **No cost** | Free for personal / non-commercial use |
+
+Other APIs considered and rejected:
+
+| API | Reason for rejection |
+|---|---|
+| Wikimedia Commons | Heterogeneous catalog, variable quality, harder to filter by type/size |
+| Metropolitan Museum of Art | Public API (similar), but non-standard IIIF - less optimized downloads for specific dimensions |
+| Unsplash / Pexels | Require API key; photographic content, not painting-focused |
+| NASA APOD | Topic too specific; not always suitable for a home context |
+
+---
+
+## APIs Used
+
+### 1. Search - `POST /api/v1/artworks/search`
 
 ```
 POST https://api.artic.edu/api/v1/artworks/search
@@ -61,12 +61,12 @@ Content-Type: application/json
 }
 ```
 
-- `q`: testo libero configurabile via `artwork.query` nel file di configurazione (default: `"landscape painting"`)
-- `is_public_domain: true`: filtra solo opere di dominio pubblico
-- `exists image_id`: esclude le opere senza immagine disponibile
-- `limit: 100`: recupera 100 candidati per massimizzare la varietà; la selezione finale è casuale
+- `q`: free-text query configurable through `artwork.query` in the config file (default: `"landscape painting"`)
+- `is_public_domain: true`: filters only public-domain works
+- `exists image_id`: excludes works without an available image
+- `limit: 100`: fetches 100 candidates to maximize variety; final selection is random
 
-**Risposta (schema rilevante):**
+**Response (relevant schema):**
 
 ```json
 {
@@ -82,25 +82,25 @@ Content-Type: application/json
 }
 ```
 
-`artist_display` può essere multiriga (nome + nazionalità/date); il renderer usa solo la prima riga.
+`artist_display` can be multi-line (name + nationality/dates); the renderer uses only the first line.
 
-### 2. IIIF Image — `GET /{image_id}/full/{width},/0/default.jpg`
+### 2. IIIF Image - `GET /{image_id}/full/{width},/0/default.jpg`
 
 ```
 GET https://www.artic.edu/iiif/2/{image_id}/full/{width},/0/default.jpg
 ```
 
-- `{image_id}`: UUID dell'immagine dalla risposta search
-- `{width}`: larghezza in pixel del display (`display.width`) — l'altezza è calcolata server-side preservando le proporzioni originali
-- Il server IIIF di ARTIC è protetto da CloudFront; richiede header `User-Agent` e `Referer` browser-like per evitare risposte 403
+- `{image_id}`: image UUID from the search response
+- `{width}`: display width in pixels (`display.width`) - height is computed server-side while preserving original aspect ratio
+- ARTIC's IIIF server is protected by CloudFront; it requires browser-like `User-Agent` and `Referer` headers to avoid 403 responses
 
 ---
 
-## Implementazione
+## Implementation
 
-### Modulo: `app/renderer/pillow_eink_renderer.py`
+### Module: `app/renderer/pillow_eink_renderer.py`
 
-**Costanti:**
+**Constants:**
 
 ```python
 _ARTIC_SEARCH_URL = "https://api.artic.edu/api/v1/artworks/search"
@@ -108,25 +108,25 @@ _ARTIC_IIIF_TPL   = "https://www.artic.edu/iiif/2/{image_id}/full/{width},/0/def
 _ARTWORK_QUERY_DEFAULT = "landscape painting"
 ```
 
-**Funzione `_fetch_artwork(width, height, query)`:**
+**Function `_fetch_artwork(width, height, query)`:**
 
-1. Invia la POST search con la query configurata
-2. Filtra i risultati per presenza di `image_id`
-3. Esegue un `random.shuffle()` sulla lista per garantire varietà
-4. Prova i primi `_MAX_ATTEMPTS = 5` candidati in sequenza — alcuni URL IIIF restituiscono 403 anche per opere marcate public domain (problemi CDN transitori)
-5. Per ogni candidato valido:
-   - Scarica l'immagine IIIF
-   - Applica `ImageOps.fit(img, (width, height), LANCZOS)` — crop centrato per coprire esattamente il display
-   - Costruisce la didascalia: `"Titolo, Artista (Anno)"`
-6. In caso di errore totale (tutti i tentativi falliti o eccezione di rete): ritorna `None`
+1. Sends the search POST request with the configured query
+2. Filters results by presence of `image_id`
+3. Runs `random.shuffle()` on the list to guarantee variety
+4. Tries the first `_MAX_ATTEMPTS = 5` candidates in sequence - some IIIF URLs return 403 even for works marked as public domain (transient CDN issues)
+5. For each valid candidate:
+   - Downloads the IIIF image
+   - Applies `ImageOps.fit(img, (width, height), LANCZOS)` - centered crop to fill the display exactly
+   - Builds the caption: `"Title, Artist (Year)"`
+6. If everything fails (all attempts fail or a network exception occurs): returns `None`
 
-**Metodo `PillowEinkRenderer.render_artwork()`:**
+**Method `PillowEinkRenderer.render_artwork()`:**
 
 ```python
 def render_artwork(self) -> Image.Image:
     palette = get_palette()
     W, H = self._size
-    img = Image.new("RGB", (W, H), palette["BG"])   # fallback sfondo bianco
+    img = Image.new("RGB", (W, H), palette["BG"])   # white background fallback
     result = _fetch_artwork(W, H, self._artwork_query)
     if result is not None:
         artwork_img, caption = result
@@ -136,16 +136,16 @@ def render_artwork(self) -> Image.Image:
     return img
 ```
 
-**Metodo `_draw_artwork_caption()`:**
+**Method `_draw_artwork_caption()`:**
 
-- Rettangolo solido `BG` con bordo superiore `1px INK_MUTED`
-- Testo in IBM Plex Sans Italic (`_font_desc_italic`), `TEXT_XS`
-- Centrato orizzontalmente, a `30px` dal bordo inferiore
-- Troncato con `…` se supera `MAX_W = W × 0.80`
+- Solid `BG` rectangle with a `1px INK_MUTED` top border
+- Text in IBM Plex Sans Italic (`_font_desc_italic`), `TEXT_XS`
+- Horizontally centered, `30px` from the bottom edge
+- Truncated with `...` if it exceeds `MAX_W = W x 0.80`
 
-### Header HTTP anti-403
+### Anti-403 HTTP headers
 
-CloudFront/Fastly sul CDN di ARTIC blocca i client con User-Agent non browser. La sessione `requests` usa:
+CloudFront/Fastly on ARTIC's CDN blocks clients with non-browser user agents. The `requests` session uses:
 
 ```python
 _BROWSER_HEADERS = {
@@ -158,45 +158,45 @@ _BROWSER_HEADERS = {
 
 ---
 
-## Configurazione
+## Configuration
 
 ```yaml
 artwork:
-  query: "landscape painting"   # stringa di ricerca — qualsiasi termine valido per ARTIC
+  query: "landscape painting"   # search string - any ARTIC-valid term
 ```
 
-Esempi di query:
+Query examples:
 
-| Query | Tipo di opere |
+| Query | Type of works |
 |---|---|
-| `landscape painting` | Paesaggi pittorici (default) |
-| `impressionism` | Opere impressioniste |
-| `japanese woodblock` | Stampe xilografiche giapponesi |
-| `portrait oil` | Ritratti ad olio |
-| `abstract` | Arte astratta |
-| `still life` | Nature morte |
+| `landscape painting` | Landscape paintings (default) |
+| `impressionism` | Impressionist works |
+| `japanese woodblock` | Japanese woodblock prints |
+| `portrait oil` | Oil portraits |
+| `abstract` | Abstract art |
+| `still life` | Still life artworks |
 
-La query viene passata direttamente al motore full-text Elasticsearch di ARTIC (campo `q`) — si possono usare termini singoli, frasi o operatori booleani supportati da ARTIC.
+The query is passed directly to ARTIC's Elasticsearch full-text engine (`q` field). You can use single terms, phrases, or boolean operators supported by ARTIC.
 
 ---
 
-## Gestione degli Errori
+## Error Handling
 
-| Scenario | Comportamento |
+| Scenario | Behavior |
 |---|---|
-| Nessuna connessione di rete | `_fetch_artwork` ritorna `None` → sfondo `BG` uniforme |
-| Tutti i tentativi IIIF restituiscono 403 | `_fetch_artwork` ritorna `None` → sfondo `BG` uniforme |
-| Nessun risultato per la query | Warning log → sfondo `BG` uniforme |
-| Errore parse JSON | Eccezione catturata → sfondo `BG` uniforme |
-| Timeout (8s search / 15s image) | `requests.exceptions` → sfondo `BG` uniforme |
+| No network connection | `_fetch_artwork` returns `None` -> uniform `BG` fallback |
+| All IIIF attempts return 403 | `_fetch_artwork` returns `None` -> uniform `BG` fallback |
+| No results for the query | Warning log -> uniform `BG` fallback |
+| JSON parse error | Exception caught -> uniform `BG` fallback |
+| Timeout (8s search / 15s image) | `requests.exceptions` -> uniform `BG` fallback |
 
-In tutti i casi di errore, `render_artwork()` ritorna comunque un `PIL.Image` valido (sfondo `BG`). Il processo non viene mai interrotto.
+In all error cases, `render_artwork()` still returns a valid `PIL.Image` (`BG` fallback). The process never crashes.
 
 ---
 
-## Privacy e Sicurezza
+## Privacy and Security
 
-- **Nessuna API key**: nessuna credenziale da gestire o proteggere
-- **Solo rete in uscita**: nessun dato locale viene trasmesso all'API ARTIC (la query è configurata dall'utente)
-- **Contenuto di dominio pubblico**: il filtro `is_public_domain: true` garantisce che le opere non siano soggette a restrizioni di copyright
-- **Timeout espliciti**: `requests` usa `timeout=8s` per la search e `timeout=15s` per il download immagine — nessun blocco indefinito del thread
+- **No API key**: no credentials to manage or protect
+- **Outbound network only**: no local data is transmitted to the ARTIC API (the query is user-configured)
+- **Public-domain content**: the `is_public_domain: true` filter ensures works are not subject to copyright restrictions
+- **Explicit timeouts**: `requests` uses `timeout=8s` for search and `timeout=15s` for image download - no indefinite thread blocking

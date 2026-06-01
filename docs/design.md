@@ -1,31 +1,31 @@
-# Design — Family Planner Calendar
+# Design - Family Planner Calendar
 
-## Filosofia di Design
+## Design Philosophy
 
-Il calendario è concepito come una **pagina stampata interattiva**, non come un'applicazione digitale classica. Il riferimento estetico è il quotidiano finanziario *The Wall Street Journal*: tipografia rigorosa, gerarchia visiva costruita esclusivamente attraverso peso del carattere, dimensione e spazio bianco. Nessun elemento decorativo superfluo.
+The calendar is conceived as an **interactive printed page**, not as a classic digital application. The aesthetic reference is *The Wall Street Journal*: rigorous typography, visual hierarchy built exclusively through font weight, size, and white space. No superfluous decorative elements.
 
-**Principi fondamentali:**
+**Core principles:**
 
-- Assenza totale di ombreggiature (`box-shadow`, `text-shadow`, `drop-shadow`)
-- Assenza di bordi arrotondati (`border-radius: 0` ovunque)
-- Nessuna animazione o transizione — gli aggiornamenti sono istantanei
-- Il layout non scrolla mai
-- La griglia è l'unico strumento di composizione
+- Total absence of shadows (`box-shadow`, `text-shadow`, `drop-shadow`)
+- No rounded corners (`border-radius: 0` everywhere)
+- No animation or transition - updates are instantaneous
+- The layout never scrolls
+- The grid is the only composition tool
 
 ---
 
-## Tipografia
+## Typography
 
 ### Font Stack
 
-| Ruolo | Famiglia | Stile |
+| Role | Family | Style |
 |---|---|---|
-| Titoli e intestazioni | **Playfair Display** | Regular / Bold |
-| Corpo e dati | **IBM Plex Sans** | Regular / Medium / SemiBold |
-| Corsivo descrizioni | **IBM Plex Sans** | Italic |
-| Monospazio (orari) | **IBM Plex Mono** | Regular |
+| Titles and headings | **Playfair Display** | Regular / Bold |
+| Body and data | **IBM Plex Sans** | Regular / Medium / SemiBold |
+| Description italics | **IBM Plex Sans** | Italic |
+| Monospace (times) | **IBM Plex Mono** | Regular |
 
-Tutte le famiglie appartengono al Google Fonts catalog, a rendering ottimizzato per schermo, incluso e-ink. Il fallback universale è `serif` per i titoli e `sans-serif` per il corpo.
+All families are from the Google Fonts catalog, optimized for screen rendering, including e-ink. Universal fallback is `serif` for headings and `sans-serif` for body text.
 
 ```css
 --font-display: 'Playfair Display', Georgia, serif;
@@ -33,232 +33,235 @@ Tutte le famiglie appartengono al Google Fonts catalog, a rendering ottimizzato 
 --font-mono:    'IBM Plex Mono', Courier New, monospace;
 ```
 
-### Scala Tipografica
+### Typographic Scale
 
-La scala è fissa in pixel per garantire coerenza sul display fisico (nessun `rem` dipendente dal viewport). I valori sono calibrati per display ad alta risoluzione (Inky Impression 13.3" 1600×1200 e simili):
+The scale is fixed in pixels to guarantee consistency on physical displays (no viewport-dependent `rem`). Values are calibrated for high-resolution displays (Inky Impression 13.3" 1600x1200 and similar):
 
-| Token | Dimensione | Utilizzo |
+| Token | Size | Usage |
 |---|---|---|
-| `--text-xs`  | 18px | Etichette secondarie, note, orari |
-| `--text-sm`  | 21px | Metadati appuntamento, temperatura bioraria |
-| `--text-base`| 24px | Corpo testo, nomi eventi |
-| `--text-md`  | 28px | Numero giorno selezionato |
-| `--text-lg`  | 38px | Data nel banner meteo, intestazione calendario |
-| `--text-xl`  | 50px | Titolo sezione, elemento prominente |
-| `--text-2xl` | 76px | Uso eccezionale |
+| `--text-xs`  | 18px | Secondary labels, notes, times |
+| `--text-sm`  | 21px | Appointment metadata, hourly temperature |
+| `--text-base`| 24px | Body text, event names |
+| `--text-md`  | 28px | Selected day number |
+| `--text-lg`  | 38px | Date in weather banner, calendar heading |
+| `--text-xl`  | 50px | Section title, prominent element |
+| `--text-2xl` | 76px | Exceptional usage |
 
-Line-height uniforme: `1.3`. Letter-spacing per titoli: `0.03em`.
+Uniform line-height: `1.3`. Heading letter-spacing: `0.03em`.
 
 ---
 
-## Palette Cromatica
+## Color Palette
 
-### Modalità Giorno (default — e-ink e HDMI)
+### Day Mode (default - e-ink and HDMI)
 
-La palette è limitata a **sei valori** per garantire la fedeltà su e-ink in scala di grigi e su display a colori.
+The palette is limited to **six values** to guarantee fidelity on grayscale e-ink and color displays.
 
 ```css
-/* Sfondo */
---color-bg:          #FFFFFF;   /* bianco puro — massimo contrasto su e-ink */
---color-bg-alt:      #EEECE6;   /* grigio chiarissimo — righe alternate, fasce */
+/* Background */
+--color-bg:          #FFFFFF;   /* pure white - maximum contrast on e-ink */
+--color-bg-alt:      #EEECE6;   /* very light gray - alternating rows, bands */
 
-/* Testo */
---color-ink:         #111111;   /* nero quasi-assoluto */
---color-ink-muted:   #666666;   /* grigio medio — metadati, orari passati */
---color-ink-faint:   #AAAAAA;   /* grigio chiaro — separatori, placeholder */
+/* Text */
+--color-ink:         #111111;   /* near-black */
+--color-ink-muted:   #666666;   /* medium gray - metadata, past times */
+--color-ink-faint:   #AAAAAA;   /* light gray - separators, placeholders */
 
-/* Accenti */
---color-accent:      #1A1A1A;   /* quasi-nero — selezione, oggi */
---color-holiday:     #444444;   /* grigio scuro — evidenziazione festività */
+/* Accents */
+--color-accent:      #1A1A1A;   /* near-black - selection, today */
+--color-holiday:     #444444;   /* dark gray - holiday highlight */
 
-/* Bordi */
---color-rule:        #CCCCAA;   /* linea color seppia — divisori orizzontali */
---color-rule-strong: #333333;   /* linea scura — bordo elemento selezionato */
-  /* Icone meteo */
-  --weather-sun:   #F5A623;   /* sole / cielo sereno */
-  --weather-cloud: #9CA3AF;   /* nuvola / coperto / nebbia */
-  --weather-rain:  #3B82F6;   /* pioggia / rovesci / temporale */
-  --weather-snow:  #93C5FD;   /* neve / grandine */```
+/* Borders */
+--color-rule:        #CCCCAA;   /* sepia-toned line - horizontal dividers */
+--color-rule-strong: #333333;   /* dark line - selected element border */
 
-**Su e-ink:** il renderer quantizza automaticamente verso i valori della palette fisica del display. I colori sopra sono scelti per mappare in modo deterministico.
+/* Weather icons */
+--weather-sun:   #F5A623;   /* sun / clear sky */
+--weather-cloud: #9CA3AF;   /* cloud / overcast / fog */
+--weather-rain:  #3B82F6;   /* rain / showers / thunderstorm */
+--weather-snow:  #93C5FD;   /* snow / hail */
+```
 
-### Palette Spectra 6 (Pimoroni Inky Impression)
+**On e-ink:** the renderer automatically quantizes to the physical panel palette. The colors above are chosen to map deterministically.
 
-Quando `eink_palette: "spectra6"` è configurato, il post-processor quantizza verso la palette a 6 colori del pannello Pimoroni Inky Impression. Il `PillowEinkRenderer` genera comunque un'immagine RGB standard; l'`EinkRenderer` la converte in modalità palette `"P"` prima dell'invio all'hardware.
+### Spectra 6 Palette (Pimoroni Inky Impression)
 
-| Indice | Nome | RGB | Utilizzo |
+When `eink_palette: "spectra6"` is configured, the post-processor quantizes to the 6-color palette of the Pimoroni Inky Impression panel. `PillowEinkRenderer` still generates a standard RGB image; `EinkRenderer` converts it to palette mode `"P"` before sending it to hardware.
+
+| Index | Name | RGB | Usage |
 |---|---|---|---|
-| 0 | Nero | `#000000` | Testo, bordi |
-| 1 | Bianco | `#FFFFFF` | Sfondo |
-| 2 | Rosso | `#FF0000` | Accenti, icona meteo `sun` |
-| 3 | Verde | `#00FF00` | (riservato) |
-| 4 | Blu | `#0000FF` | Icona meteo `cloud-rain` |
-| 5 | Giallo | `#FFFF00` | (riservato) |
+| 0 | Black | `#000000` | Text, borders |
+| 1 | White | `#FFFFFF` | Background |
+| 2 | Red | `#FF0000` | Accents, weather icon `sun` |
+| 3 | Green | `#00FF00` | (reserved) |
+| 4 | Blue | `#0000FF` | Weather icon `cloud-rain` |
+| 5 | Yellow | `#FFFF00` | (reserved) |
 
-Il dithering Floyd-Steinberg (`eink_dither: true`) è raccomandato con questa palette per attenuare le transizioni cromatiche nelle fotografie e nelle aree sfumate.
+Floyd-Steinberg dithering (`eink_dither: true`) is recommended with this palette to soften color transitions in photos and gradient areas.
 
-### Palette Icone Meteo
+### Weather Icon Palette
 
-Le icone meteo sono tintate con colori specifici per condizione (anziché `--color-ink`), definiti in `app/renderer/tokens.py` come `WEATHER_ICON_COLORS`. Applicati sia all'icona principale nel banner superiore sia alle icone della fascia bioraria.
+Weather icons are tinted with condition-specific colors (instead of `--color-ink`), defined in [app/renderer/tokens.py](app/renderer/tokens.py) as `WEATHER_ICON_COLORS`. This applies both to the main icon in the top banner and to the icons in the hourly strip.
 
-| Token | Valore | Condizione |
+| Token | Value | Condition |
 |---|---|---|
-| `--weather-sun` | `#F5A623` | Sole, cielo sereno |
-| `--weather-cloud` | `#9CA3AF` | Nuvola, nebbia, coperto |
-| `--weather-rain` | `#3B82F6` | Pioggia, rovesci, temporale |
-| `--weather-snow` | `#93C5FD` | Neve, grandine |
+| `--weather-sun` | `#F5A623` | Sun, clear sky |
+| `--weather-cloud` | `#9CA3AF` | Cloud, fog, overcast |
+| `--weather-rain` | `#3B82F6` | Rain, showers, thunderstorm |
+| `--weather-snow` | `#93C5FD` | Snow, hail |
 
 ---
 
-## Iconografia — Tabler Icons
+## Iconography - Tabler Icons
 
-Il set di icone adottato è **Tabler Icons** (versione SVG outline, stroke-width `1.5px`). Le icone sono sempre monocromatiche, colorizzate tramite `currentColor`.
+The adopted icon set is **Tabler Icons** (SVG outline version, stroke-width `1.5px`). Icons are always monochromatic, tinted through `currentColor`.
 
-| Icona Tabler | Utilizzo |
+| Tabler Icon | Usage |
 |---|---|
-| `icon-sun` | Condizione soleggiato — banner meteo / indicatore modalità giorno |
-| `icon-cloud` | Condizione nuvoloso — banner meteo |
-| `icon-cloud-rain` | Condizione piovoso — banner meteo |
-| `icon-snowflake` | Condizione neve — banner meteo |
-| `icon-chevron-up` | Pulsante Su (footer) |
-| `icon-chevron-down` | Pulsante Giù (footer) |
-| `icon-corner-up-left` | Pulsante Oggi / Ritorna (footer) |
-| `icon-check` | Pulsante Invio — disabilitato (footer) |
-| `icon-clock` | Orario appuntamento — lista |
-| `icon-map-pin` | Luogo appuntamento — lista |
-| `icon-star` | Festività / Giorno speciale — calendario mensile |
+| `icon-sun` | Sunny condition - weather banner / day mode indicator |
+| `icon-cloud` | Cloudy condition - weather banner |
+| `icon-cloud-rain` | Rainy condition - weather banner |
+| `icon-snowflake` | Snow condition - weather banner |
+| `icon-chevron-up` | Up button (footer) |
+| `icon-chevron-down` | Down button (footer) |
+| `icon-corner-up-left` | Today / Return button (footer) |
+| `icon-check` | Enter button - disabled (footer) |
+| `icon-clock` | Appointment time - list |
+| `icon-map-pin` | Appointment location - list |
+| `icon-star` | Holiday / Special day - monthly calendar |
 
-Dimensione standard icone: `16px` (inline con testo) / `20px` (pulsanti) / `24px` (intestazioni viste) / `48px` (icona meteo banner).
+Standard icon sizes: `16px` (inline with text) / `20px` (buttons) / `24px` (view headers) / `48px` (weather banner icon).
 
 ---
 
-## Layout Generale
+## Overall Layout
 
-L'interfaccia è costituita da un'unica **schermata Home** con due varianti di layout selezionabili tramite configurazione. Non esiste un header separato: la data è incorporata nel banner meteo.
+The interface consists of a single **Home screen** with two layout variants selectable via configuration. There is no separate header: the date is embedded in the weather banner.
 
-### Layout Portrait
+### Portrait Layout
 
-Quattro fasce orizzontali impilate:
+Four stacked horizontal bands:
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  BANNER METEO  (altezza fissa: 217px)                    │
-│  Data · Icona meteo · Temperatura attuale · Max/Min      │
+│  WEATHER BANNER (fixed height: 217px)                   │
+│  Date · Weather icon · Current temperature · Max/Min    │
 │  ──────────────────────────────────────────────────────  │
-│  Previsioni biorarie: 6 celle · Icona 48px · Temp        │
+│  Hourly forecast: 6 cells · 48px icon · Temp            │
 ├──────────────────────────────────────────────────────────┤
-│  CALENDARIO MENSILE  (altezza fissa: 560px)              │
-│  Vista mensile visiva — nessuna interazione              │
+│  MONTHLY CALENDAR (fixed height: 560px)                 │
+│  Visual monthly view - no interaction                   │
 ├──────────────────────────────────────────────────────────┤
 │                                                          │
-│  LISTA APPUNTAMENTI  (altezza variabile)                 │
-│  Dal prossimo appuntamento in poi — stile Agenda         │
+│  APPOINTMENT LIST (variable height)                      │
+│  From the next appointment onward - Agenda style         │
 │                                                          │
 ├──────────────────────────────────────────────────────────┤
-│  FOOTER  (altezza fissa: 54px)                           │
-│  Indicatori di stato                                     │
+│  FOOTER (fixed height: 54px)                             │
+│  Status indicators                                       │
 └──────────────────────────────────────────────────────────┘
 ```
 
-**Banner Meteo:** `border-bottom: 2px solid var(--color-rule-strong)`.  
-**Calendario Mensile:** `border-bottom: 1px solid var(--color-rule-strong)`.  
-**Lista Appuntamenti:** occupa l'altezza rimanente (`height − 217px − 560px − 54px`). Non scrolla.  
-**Footer:** `border-top: 1px solid var(--color-rule)`. Mostra solo gli indicatori di stato a destra (nessun pulsante di navigazione).
+**Weather Banner:** `border-bottom: 2px solid var(--color-rule-strong)`.  
+**Monthly Calendar:** `border-bottom: 1px solid var(--color-rule-strong)`.  
+**Appointment List:** takes remaining height (`height − 217px − 560px − 54px`). No scrolling.  
+**Footer:** `border-top: 1px solid var(--color-rule)`. Shows only status indicators on the right (no navigation buttons).
 
-### Layout Landscape
+### Landscape Layout
 
-Due colonne affiancate + footer full-width:
+Two side-by-side columns + full-width footer:
 
 ```
 ┌───────────────────────────────┬────────────────────────────────────────┐
-│  COLONNA SINISTRA  (50%)        │  COLONNA DESTRA  (50%)                 │
-│                                 │                                        │
-│  METEO  (217px)                 │  LISTA APPUNTAMENTI                    │
-│  Data · Icona · Temperatura     │  (altezza intera content area)         │
-│  Previsioni biorarie (6 celle)  │                                        │
-│  ─────────────────────────────  │                                        │
-│  CALENDARIO MENSILE             │                                        │
-│  (altezza rimanente)            │                                        │
-│                                 │                                        │
+│  LEFT COLUMN (50%)            │  RIGHT COLUMN (50%)                    │
+│                               │                                        │
+│  WEATHER (217px)              │  APPOINTMENT LIST                      │
+│  Date · Icon · Temperature    │  (full content area height)            │
+│  Hourly forecasts (6 cells)   │                                        │
+│  ───────────────────────────  │                                        │
+│  MONTHLY CALENDAR             │                                        │
+│  (remaining height)           │                                        │
+│                               │                                        │
 ├───────────────────────────────┴────────────────────────────────────────┤
-│  FOOTER  (54px, full width)                                              │
+│  FOOTER (54px, full width)                                              │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Separatore colonne:** `border-right: 1px solid var(--color-rule-strong)` sulla colonna sinistra, altezza `height − 54px`.  
-**Sezione Meteo:** `border-bottom: 1px solid var(--color-rule)`.  
-**Colonna sinistra:** larghezza `50%` (metà esatta). Esempio: 1024×600 → 512px sinistra, 512px destra; 1600×1200 → 800px sinistra, 800px destra.  
-**Lista Appuntamenti:** occupa tutta l'altezza della content area (`height − 54px`).  
-**Footer:** `border-top: 1px solid var(--color-rule)`. Full width, mostra solo gli indicatori di stato a destra.
+**Column separator:** `border-right: 1px solid var(--color-rule-strong)` on the left column, height `height − 54px`.  
+**Weather section:** `border-bottom: 1px solid var(--color-rule)`.  
+**Left column:** width `50%` (exact half). Example: 1024x600 -> 512px left, 512px right; 1600x1200 -> 800px left, 800px right.  
+**Appointment List:** occupies full content area height (`height − 54px`).  
+**Footer:** `border-top: 1px solid var(--color-rule)`. Full width, shows only status indicators on the right.
 
-Il footer è la fascia inferiore fissa (altezza `54px`). Non contiene pulsanti di navigazione. Mostra esclusivamente gli **indicatori di stato** allineati a destra, in `--text-xs`, `--color-ink-muted`:
+The footer is the fixed bottom band (height `54px`). It contains no navigation buttons. It shows only the **status indicators** right-aligned, in `--text-xs`, `--color-ink-muted`:
 
-| Indicatore | Contenuto |
+| Indicator | Content |
 |---|---|
-| Tipo display | `e-ink` / `hdmi` — testo fisso |
-| Layout | `portrait` / `landscape` — testo fisso |
-| Ora corrente | `HH:MM` — aggiornato ad ogni refresh |
+| Display type | `e-ink` / `hdmi` - fixed text |
+| Layout | `portrait` / `landscape` - fixed text |
+| Current time | `HH:MM` - updated at every refresh |
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                                 hdmi · landscape · 09:32  │
+│                                 hdmi · landscape · 09:32    │
 └──────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Schermate
+## Screens
 
 ---
 
-### Home (schermata unica)
+### Home (single screen)
 
-**Scopo:** mostra la situazione meteorologica, il calendario mensile corrente e la lista degli appuntamenti dal prossimo in poi, in un unico colpo d'occhio.  
-**Navigazione:** Su/Giù pagina la lista appuntamenti; Esc reimposta alla data odierna; Enter disabilitato.
+**Goal:** show weather conditions, current monthly calendar, and appointment list from the next item onward, all at a glance.  
+**Navigation:** Up/Down paginates the appointment list; Esc resets to today; Enter disabled.
 
-#### Sezione Meteo
+#### Weather Section
 
-Banner superiore in portrait, sezione superiore della colonna sinistra in landscape.
+Top banner in portrait, top section of the left column in landscape.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  Domenica, 24 Maggio 2026         ⛅   18°  ↑22°            │
-│                                            ↓14°            │
+│  Sunday, 24 May 2026                 ⛅   18°  ↑22°         │
+│                                              ↓14°           │
 └──────────────────────────────────────────────────────────────┘
 ```
 
-Il lato destro è un blocco a tre sotto-colonne allineato al margine destro:
+The right side is a three-subcolumn block aligned to the right margin:
 
-- **Sotto-colonna 1 (sinistra):** icona condizione meteo Tabler `48px`, tintata con la palette colori meteo (`--weather-*`), centrata verticalmente nel banner- **Sotto-colonna 2 (centro):** temperatura attuale, `--font-body`, `40px`, `font-weight: 600`, `--color-ink`, centrata verticalmente, anchor destra
-- **Sotto-colonna 3 (destra):** max e min incolonnati verticalmente, `--font-body`, `--text-xs` (18px), `--color-ink-muted`, entrambi anchor destra; `↑max` a 1/3 dell'altezza del banner, `↓min` a 2/3
-- **Lato sinistro:** data, `--font-display`, `--text-lg`, formato `"Giorno, DD Mese YYYY"`, `--color-ink`
-- Sfondo: `--color-bg` — nessun sfondo alternato nel banner
-- Aggiornamento dati meteo: ogni ora (TTL cache provider)
+- **Subcolumn 1 (left):** Tabler weather-condition icon `48px`, tinted with the weather color palette (`--weather-*`), vertically centered in the banner
+- **Subcolumn 2 (center):** current temperature, `--font-body`, `40px`, `font-weight: 600`, `--color-ink`, vertically centered, right-anchored
+- **Subcolumn 3 (right):** max and min stacked vertically, `--font-body`, `--text-xs` (18px), `--color-ink-muted`, both right-anchored; `↑max` at one-third of banner height, `↓min` at two-thirds
+- **Left side:** date, `--font-display`, `--text-lg`, format `"Weekday, DD Month YYYY"`, `--color-ink`
+- Background: `--color-bg` - no alternating background in the banner
+- Weather data refresh: every hour (provider TTL cache)
 
-**Fascia previsioni biorarie** (sotto la fascia data/meteo, altezza 127px):
+**Hourly forecast strip** (below date/weather band, height 127px):
 
 ```
 ┌────────┬────────┬────────┬────────┬────────┬────────┐
 │ 14:00  │ 16:00  │ 18:00  │ 20:00  │ 22:00  │ 00:00  │
-│  ⛅   │  ☁    │  🌧   │  ⛅   │  ⛅   │  ☁    │
+│   ⛅    │   ☁    │   🌧    │   ⛅    │   ⛅    │   ☁    │
 │  18°   │  17°   │  15°   │  14°   │  13°   │  12°   │
 └────────┴────────┴────────┴────────┴────────┴────────┘
 ```
 
-- **6 celle** di larghezza uguale (`width / 6`): fascia corrente + 5 successive (ogni 2 ore)
-- **Orario** (riga 1, in alto, centrato): `--font-mono`, `--text-xs` (18px), `--color-ink-muted`, anchor `mt` a 4px dal bordo superiore della cella
-- **Icona** (riga 2, centrata verticalmente tra orario e temperatura): Tabler `48px`, tintata con la palette colori meteo (`--weather-*`), centrata orizzontalmente in cella
-- **Temperatura** (riga 3, in basso, centrata): `--font-body` SemiBold, `--text-sm` (21px), `--color-ink`, baseline ancorata a 27px dal bordo inferiore della cella
-- **Separatori verticali** tra celle: `1px solid var(--color-rule)` (non sui bordi estremi)
+- **6 cells** of equal width (`width / 6`): current slot + 5 subsequent slots (every 2 hours)
+- **Time** (row 1, top-centered): `--font-mono`, `--text-xs` (18px), `--color-ink-muted`, `mt` anchor 4px from cell top edge
+- **Icon** (row 2, centered vertically between time and temperature): Tabler `48px`, tinted with weather color palette (`--weather-*`), horizontally centered in cell
+- **Temperature** (row 3, bottom-centered): `--font-body` SemiBold, `--text-sm` (21px), `--color-ink`, baseline anchored 27px from cell bottom edge
+- **Vertical separators** between cells: `1px solid var(--color-rule)` (not on outer edges)
 
-#### Sezione Calendario Mensile
+#### Monthly Calendar Section
 
-Il calendario mensile è **puramente visivo** — non risponde a nessuna interazione dell'utente.
+The monthly calendar is **purely visual** - it does not respond to user interaction.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                       MAGGIO 2026                            │
-│  LUN   MAR   MER   GIO   VEN   SAB   DOM                    │
+│                        MAY 2026                              │
+│  MON   TUE   WED   THU   FRI   SAT   SUN                     │
 │   27    28    29    30     1     2     3                     │
 │    4     5     6     7     8     9    10                     │
 │   11    12    13    14    15    16    17                     │
@@ -267,190 +270,190 @@ Il calendario mensile è **puramente visivo** — non risponde a nessuna interaz
 └──────────────────────────────────────────────────────────────┘
 ```
 
-**Regole visive:**
+**Visual rules:**
 
-- Intestazione mese: `--font-body`, `--text-sm`, uppercase, `letter-spacing: 0.08em`, centrata
-- Intestazione colonne (L M M G V S D): `--text-xs`, `--color-ink-muted`
-- Numeri giorni: `--text-xs`, `--font-body`, `--color-ink`
-- **Oggi:** sfondo `--color-bg-alt` sull'intera cella; numero del giorno e testo eventi in `--color-ink` (nessun quadrato, nessuna inversione)
-- **Festività:** numero in `--font-display`, `font-weight: bold`, `--color-holiday`
-- Giorni del mese precedente/successivo: `--color-ink-faint`, nessun evento mostrato
-- **Layout cella:** numero giorno nella fascia alta (18px); righe evento nella fascia inferiore
-- **Righe evento:** `--font-body`, `--text-xs`, `--color-ink-muted`; formato `HH:MM Titolo` per eventi con orario, solo titolo per tutto-il-giorno; testo troncato con `…` se non entra in larghezza
-- **Overflow:** se gli eventi non entrano tutti, l'ultima riga mostra `+N` in `--color-ink-faint`
-- **Ordinamento per cella:** tutto-il-giorno prima, poi per orario di inizio
+- Month heading: `--font-body`, `--text-sm`, uppercase, `letter-spacing: 0.08em`, centered
+- Column headers (M T W T F S S): `--text-xs`, `--color-ink-muted`
+- Day numbers: `--text-xs`, `--font-body`, `--color-ink`
+- **Today:** `--color-bg-alt` background on the whole cell; day number and event text in `--color-ink` (no square, no inversion)
+- **Holidays:** number in `--font-display`, `font-weight: bold`, `--color-holiday`
+- Previous/next month days: `--color-ink-faint`, no events shown
+- **Cell layout:** day number in top band (18px); event lines in lower band
+- **Event lines:** `--font-body`, `--text-xs`, `--color-ink-muted`; format `HH:MM Title` for timed events, title only for all-day; text truncated with `…` if it does not fit width
+- **Overflow:** if events do not all fit, last line shows `+N` in `--color-ink-faint`
+- **Per-cell sorting:** all-day first, then by start time
 
-#### Sezione Lista Appuntamenti
+#### Appointment List Section
 
-Lista in stile Agenda, ispirata a Google Calendar. La data di ogni giorno è visualizzata in una **colonna sinistra fissa** (84px), non come separatore orizzontale. Il primo evento di ogni giornata mostra il numero del giorno e il giorno della settimana abbreviato sulla stessa riga del titolo; gli eventi successivi della stessa giornata lasciano la colonna data vuota. Ogni riga ha un **pallino colorato** all'inizio dell'area orario che indica il calendario di appartenenza. La paginazione Su/Giù sostituisce l'intera pagina — nessuno scroll CSS.
+Agenda-style list inspired by Google Calendar. The date for each day is shown in a **fixed left column** (84px), not as a horizontal separator. The first event of each day shows day number and abbreviated weekday on the same row as the title; subsequent events that day leave the date column empty. Each row has a **colored dot** at the start of the time area indicating the source calendar. Up/Down pagination replaces the entire page - no CSS scrolling.
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
-│  24 DOM      ●  Tutto il giorno   Riunione team                 │
-│             ●  15:00 - 16:00    Dentista                      │
-│           ──────────────────────────────────────────────────  │
-│             ●  17:30 - 18:30    Appuntamento                  │
-│                Sala B                                          │
+│  24 SUN      ●  All day          Team meeting                 │
+│             ●  15:00 - 16:00    Dentist                       │
+│           ──────────────────────────────────────────────────   │
+│             ●  17:30 - 18:30    Appointment                   │
+│                Room B                                          │
 ├────────────────────────────────────────────────────────────────┤
-│  25 LUN      ●  09:00 - 10:00    Videocall con cliente          │
-│             ●  12:30 - 13:30    Pranzo con Marco               │
-│                Ristorante Al Porto                             │
+│  25 MON      ●  09:00 - 10:00    Client video call            │
+│             ●  12:30 - 13:30    Lunch with Marco              │
+│                Al Porto Restaurant                             │
 └────────────────────────────────────────────────────────────────┘
 ```
 
-> Il piccolo spazio prima del pallino (8px) è il padding sinistra dell'area orario; un padding uguale (8px) separa la fine dell'orario dall'inizio del titolo.
+> The small space before the dot (8px) is the left padding of the time area; an equal padding (8px) separates the end of the time area from the start of the title.
 
-**Regole visive:**
+**Visual rules:**
 
-- **Colonna data (84px, sinistra):**
-  - **Riga singola** alla stessa altezza del titolo evento (`y = y0+30`): numero giorno (`--font-body`, `--text-md`, `--color-ink`) + giorno settimana abbreviato (`--font-body` SemiBold, `--text-xs`, `--color-ink-muted`), entrambi allineati a destra nella colonna
-  - Il numero giorno è posizionato a un offset fisso dalla destra della colonna, calcolato sulla larghezza massima delle abbreviazioni (`LUN…DOM`) — garantisce l'allineamento verticale tra righe diverse
-  - Formato: `"31"` + `"DOM"` (solo giorno abbreviato, nessun mese)
-  - Mostrata solo per il **primo evento di ogni giornata**; le righe successive lasciano la colonna vuota
-- **Colonna orario + pallino (200px):**
-  - **Padding sinistro 8px** tra il bordo destro della colonna data e il centro-sinistra del pallino
-  - Pallino (● 14px diametro): cerchio pieno, centrato verticalmente nella riga; colorato con `evt.color`; se non definito usa `--color-rule`
-  - Orario: `--font-mono`, `--text-xs`, `--color-ink`, allineato a sinistra a destra del pallino (gap 6px), centrato verticalmente; formato `"HH:MM - HH:MM"` su riga singola
-  - **Padding destro 8px** tra il bordo destro della colonna orario e il titolo dell'evento
-- **Evento tutto-il-giorno:** al posto dell'orario, testo `"Tutto il giorno"` in `--font-mono`, `--text-xs`, `--color-ink`, a destra del pallino, centrato verticalmente nella riga
-- **Contenuto (titolo + location):**
-  - Nome evento: `--font-body`, `--text-base`, `font-weight: 600`, `--color-ink`
-  - Location (se presente): `--text-xs`, `--color-ink-muted`, su riga separata sotto il nome
-- **Separatore tra eventi:** `1px solid var(--color-rule-strong)` sopra la **prima riga di ogni giornata** (confine di giorno); gli eventi successivi della stessa giornata non hanno separatore — il margine superiore di 30px e la colonna data forniscono separazione visiva sufficiente, anche su display e-ink BW dove `--color-rule` (#CCCCAA, luminanza ≈ 200) scompare durante la quantizzazione
-- **Lista vuota:** testo `"Nessun appuntamento"` centrato, `--color-ink-faint`, `--text-sm`
+- **Date column (84px, left):**
+  - **Single row** at the same height as event title (`y = y0+30`): day number (`--font-body`, `--text-md`, `--color-ink`) + abbreviated weekday (`--font-body` SemiBold, `--text-xs`, `--color-ink-muted`), both right-aligned in the column
+  - Day number is placed at a fixed offset from the right of the column, calculated on the maximum width of weekday abbreviations (`MON…SUN`) - this guarantees vertical alignment across different rows
+  - Format: `"31"` + `"SUN"` (abbreviated weekday only, no month)
+  - Shown only for the **first event of each day**; subsequent rows leave the column empty
+- **Time + dot column (200px):**
+  - **8px left padding** between right edge of date column and left-center of the dot
+  - Dot (● 14px diameter): filled circle, vertically centered in row; colored with `evt.color`; if undefined uses `--color-rule`
+  - Time: `--font-mono`, `--text-xs`, `--color-ink`, left-aligned to the right of the dot (6px gap), vertically centered; format `"HH:MM - HH:MM"` on one line
+  - **8px right padding** between right edge of time column and event title
+- **All-day event:** replaces time with `"All day"` in `--font-mono`, `--text-xs`, `--color-ink`, to the right of the dot, vertically centered
+- **Content (title + location):**
+  - Event name: `--font-body`, `--text-base`, `font-weight: 600`, `--color-ink`
+  - Location (if present): `--text-xs`, `--color-ink-muted`, on a separate line below the name
+- **Event separator:** `1px solid var(--color-rule-strong)` above the **first row of each day** (day boundary); subsequent events of the same day have no separator - the 30px top margin and date column provide sufficient visual separation, even on BW e-ink displays where `--color-rule` (#CCCCAA, luminance about 200) disappears during quantization
+- **Empty list:** centered text `"No appointments"`, `--color-ink-faint`, `--text-sm`
 
-**Altezze riga (dinamiche):**
+**Row heights (dynamic):**
 
-| Tipo riga | Formula | Esempio |
+| Row type | Formula | Example |
 |---|---|---|
-| Evento senza location e senza descrizione | 60 px | 60 px |
-| Evento con solo location | 60 + 14 = 74 px | 74 px |
-| Evento con N righe di descrizione (senza location) | 60 + N × 22 + 8 px | 1 riga → 90 px, 3 righe → 134 px |
-| Evento con location e N righe di descrizione | 60 + 14 + N × 22 + 8 px | 1 riga → 104 px, 10 righe → 312 px |
+| Event without location and without description | 60 px | 60 px |
+| Event with location only | 60 + 14 = 74 px | 74 px |
+| Event with N description lines (without location) | 60 + N x 22 + 8 px | 1 line -> 90 px, 3 lines -> 134 px |
+| Event with location and N description lines | 60 + 14 + N x 22 + 8 px | 1 line -> 104 px, 10 lines -> 312 px |
 
-I 8 px finali (solo quando è presente una descrizione) aggiungono un respiro visivo inferiore equivalente allo spazio bianco sopra il glifo del titolo.
+The final 8px (only when a description is present) adds bottom breathing room equivalent to the white space above the title glyph.
 
-**Formattazione descrizione (rich text HTML):**
+**Description formatting (rich text HTML):**
 
-La descrizione può contenere HTML proveniente da sorgenti CalDAV. Il renderer interpreta i seguenti tag:
+Descriptions can include HTML from CalDAV sources. The renderer interprets the following tags:
 
-| Tag HTML | Effetto visivo |
+| HTML Tag | Visual Effect |
 |---|---|
-| `<b>`, `<strong>` | Testo in IBM Plex Sans SemiBold |
-| `<i>`, `<em>` | Testo in IBM Plex Sans Italic |
-| `<u>` | Testo con riga orizzontale sottostante (1 px, `--color-ink-faint`) |
-| `<a href="...">` | Testo in `--color-ink-muted` + sottolineatura |
-| `<br>`, `</p>`, `</div>`, `</li>` | A-capo |
-| `<ul><li>` | Riga con prefisso `• ` |
-| `<ol><li>` | Riga con prefisso `N. ` (contatore progressivo) |
+| `<b>`, `<strong>` | Text in IBM Plex Sans SemiBold |
+| `<i>`, `<em>` | Text in IBM Plex Sans Italic |
+| `<u>` | Text with underlying horizontal line (1 px, `--color-ink-faint`) |
+| `<a href="...">` | Text in `--color-ink-muted` + underline |
+| `<br>`, `</p>`, `</div>`, `</li>` | Line break |
+| `<ul><li>` | Line with `• ` prefix |
+| `<ol><li>` | Line with `N. ` prefix (progressive counter) |
 
-Tag non riconosciuti vengono eliminati silenziosamente. Il testo plain (senza tag) viene diviso su `\n`. Ogni riga è troncata con `…` se supera la larghezza disponibile.
+Unrecognized tags are silently removed. Plain text (without tags) is split on `\n`. Each line is truncated with `…` if it exceeds available width.
 
 ---
 
-## Flusso di Navigazione
+## Navigation Flow
 
-L'interfaccia ha un'unica schermata. Non esiste navigazione — viene sempre mostrato il giorno corrente.
-
----
-
-## Indicatori di Stato (Footer)
-
-Gli indicatori di stato sono incorporati nella parte destra del footer, in `--text-xs`, `--color-ink-muted`:
-
-| Indicatore | Contenuto |
-|---|---|
-| Tipo display | `e-ink` / `hdmi` — testo fisso |
-| Layout | `portrait` / `landscape` — testo fisso |
-| Ora corrente | `HH:MM` — aggiornato ad ogni refresh |
+The interface has a single screen. There is no navigation - the current day is always shown.
 
 ---
 
-## Comportamento E-Ink Specifico
+## Status Indicators (Footer)
 
-Quando `display.type = "eink"`:
+Status indicators are built into the right side of the footer, in `--text-xs`, `--color-ink-muted`:
 
-1. **Palette:** il renderer usa solo i valori quantizzati della palette del modello configurato. I colori sopra sono scelti per mappare in modo deterministico.
-2. **Footer non interattivo:** il footer mostra la legenda testuale identica a quella HDMI, ma i tasti non sono cliccabili. I pulsanti fisici sono l'unico mezzo di interazione.
-3. **Dithering:** il post-processor applica Floyd-Steinberg alle aree di testo piccolo per migliorare la leggibilità su display a bassa risoluzione.
-4. **Refresh parziale:** nel layout landscape, il calendario mensile (colonna sinistra, sezione inferiore) è l'area più statica e ideale per partial refresh separato. La lista appuntamenti (colonna destra / area inferiore portrait) cambia ad ogni navigazione.
-5. **Rotazione:** `display.rotation` (0 / 90 / 180 / 270°) viene applicata da `EinkRenderer` come ultimo step del post-processing. Il canvas logico generato da `PillowEinkRenderer` ha sempre dimensioni `display.width × display.height`; per rotazioni a 90°/270° le dimensioni sono scambiate prima del resize.
-
-### Pulsanti fisici (Inky Impression)
-
-| Pulsante | Azione |
+| Indicator | Content |
 |---|---|
-| **A** | Ritorna alla schermata planner (esce dalla modalità artwork) |
-| **B** | Mostra modalità artwork (dipinto casuale — privacy) |
-| **D** | Shutdown — mostra artwork finale sul pannello poi spegne il sistema |
+| Display type | `e-ink` / `hdmi` - fixed text |
+| Layout | `portrait` / `landscape` - fixed text |
+| Current time | `HH:MM` - updated at every refresh |
 
-### Modelli supportati
+---
 
-| `eink_model` | Driver | Risoluzione | Palette |
+## E-Ink Specific Behavior
+
+When `display.type = "eink"`:
+
+1. **Palette:** the renderer uses only quantized values from the configured model palette. The colors above are chosen to map deterministically.
+2. **Non-interactive footer:** the footer shows the same textual legend as HDMI, but keys are not clickable. Physical buttons are the only interaction method.
+3. **Dithering:** the post-processor applies Floyd-Steinberg to small text areas to improve readability on low-resolution displays.
+4. **Partial refresh:** in landscape layout, the monthly calendar (left column, bottom section) is the most static area and ideal for separate partial refresh. The appointment list (right column / lower portrait area) changes at each navigation action.
+5. **Rotation:** `display.rotation` (0 / 90 / 180 / 270 degrees) is applied by `EinkRenderer` as the final post-processing step. The logical canvas generated by `PillowEinkRenderer` is always `display.width x display.height`; for 90/270 rotations, dimensions are swapped before resize.
+
+### Physical Buttons (Inky Impression)
+
+| Button | Action |
+|---|---|
+| **A** | Return to planner screen (exit artwork mode) |
+| **B** | Show artwork mode (random painting - privacy) |
+| **D** | Shutdown - show final artwork on panel, then power off |
+
+### Supported Models
+
+| `eink_model` | Driver | Resolution | Palette |
 |---|---|---|---|
-| `7in5_V2` | `waveshare_epd.epd7in5_V2` | 800×480 | `bw`, `bwr`, `4gray` |
-| `7in5` | `waveshare_epd.epd7in5` | 640×384 | `bw`, `bwr` |
-| `4in2` / `4in2_V2` | `waveshare_epd.epd4in2*` | 400×300 | `bw`, `bwr` |
-| `5in83_V2` | `waveshare_epd.epd5in83_V2` | 648×480 | `bw`, `bwr`, `4gray` |
-| `3in7` | `waveshare_epd.epd3in7` | 280×480 | `4gray` |
-| `inky_impression_4` | `inky` (Pimoroni) | 600×400 | `spectra6` |
-| `inky_impression_7` | `inky` (Pimoroni) | 800×480 | `spectra6` |
-| `inky_impression_13` | `inky` (Pimoroni) | 1600×1200 | `spectra6` |
+| `7in5_V2` | `waveshare_epd.epd7in5_V2` | 800x480 | `bw`, `bwr`, `4gray` |
+| `7in5` | `waveshare_epd.epd7in5` | 640x384 | `bw`, `bwr` |
+| `4in2` / `4in2_V2` | `waveshare_epd.epd4in2*` | 400x300 | `bw`, `bwr` |
+| `5in83_V2` | `waveshare_epd.epd5in83_V2` | 648x480 | `bw`, `bwr`, `4gray` |
+| `3in7` | `waveshare_epd.epd3in7` | 280x480 | `4gray` |
+| `inky_impression_4` | `inky` (Pimoroni) | 600x400 | `spectra6` |
+| `inky_impression_7` | `inky` (Pimoroni) | 800x480 | `spectra6` |
+| `inky_impression_13` | `inky` (Pimoroni) | 1600x1200 | `spectra6` |
 
 ### Pimoroni Inky Impression (Spectra 6)
 
-I modelli `inky_impression_*` usano la classe `InkyDisplay` (invece di `EinkDisplay`) che fa uso della libreria `inky` di Pimoroni. Il rendering pipeline è identico: `PillowEinkRenderer` → `EinkRenderer.process()` (quantizzazione `spectra6`) → `InkyDisplay.push()`.
+`inky_impression_*` models use the `InkyDisplay` class (instead of `EinkDisplay`) through Pimoroni's `inky` library. The rendering pipeline is identical: `PillowEinkRenderer` -> `EinkRenderer.process()` (`spectra6` quantization) -> `InkyDisplay.push()`.
 
-**Fix `_busy_wait` per Inky 13.3":** la versione 2.4.0 della libreria `inky` ha un bug in `_busy_wait()` per il pannello EL133UF1 (BUSY è active-low, ma la condizione del loop è invertita). `InkyDisplay.push()` corregge il bug sostituendo `_busy_wait()` sull'istanza con un'implementazione corretta prima di chiamare `show()`.
+**`_busy_wait` fix for Inky 13.3":** version 2.4.0 of the `inky` library has a bug in `_busy_wait()` for the EL133UF1 panel (BUSY is active-low, but loop condition is inverted). `InkyDisplay.push()` fixes this bug by replacing `_busy_wait()` on the instance with a correct implementation before calling `show()`.
 
 ---
 
-## Schermata Artwork (Modalità Privacy)
+## Artwork Screen (Privacy Mode)
 
-**Scopo:** nasconde il calendario di famiglia in presenza di ospiti o quando il dispositivo è incustodito, sostituendolo con un dipinto di dominio pubblico dell'**Art Institute of Chicago**.
+**Goal:** hide the family calendar in the presence of guests or when the device is unattended, replacing it with a public-domain painting from the **Art Institute of Chicago**.
 
-**Attivazione:** pulsante **B** (Inky Impression) / tasto `B` (pygame HDMI).
+**Activation:** **B** button (Inky Impression) / `B` key (pygame HDMI).
 
 **Layout:**
 
 ```
 ┌──────────────────────────────────────────────────────┐
 │                                                      │
-│       Dipinto (full-bleed crop, ImageOps.fit)         │
+│      Painting (full-bleed crop, ImageOps.fit)        │
 │                                                      │
 │                                                      │
 ├──────────────────────────────────────────────────────┤
-│     Titolo, Artista (Anno)                            │  ← didascalia centrata
+│      Title, Artist (Year)                            │  <- centered caption
 └──────────────────────────────────────────────────────┘
 ```
 
-**Regole visive:**
+**Visual rules:**
 
-- Dipinto a **full-bleed** (`ImageOps.fit`): copre l'intero display, proporzioni preservate con crop centrato (LANCZOS)
-- **Didascalia** (opzionale, se i metadati sono disponibili): rettangolo solido `BG`, bordo superiore `1px INK_MUTED`, testo `"Titolo, Artista (Anno)"` in `--font-body` Italic, `--text-xs`, `--color-ink`
-  - Centrata orizzontalmente; posizionata `30px` dal bordo inferiore del display
-  - Larghezza massima 80% del display (`MAX_W = W × 0.80`); troncata con `…` se eccede
-  - Padding: `16px` orizzontale, `7px` verticale
-- **Nessun altro elemento UI**: non compaiono banner, calendari, footer, indicatori di stato
-- **Su e-ink**: il dipinto passa per `EinkRenderer.process()` — quantizzazione palette + dithering (raccomandato `eink_dither: true`)
+- **Full-bleed** painting (`ImageOps.fit`): covers the entire display, preserving proportions with centered crop (LANCZOS)
+- **Caption** (optional, if metadata is available): solid `BG` rectangle, top border `1px INK_MUTED`, text `"Title, Artist (Year)"` in `--font-body` Italic, `--text-xs`, `--color-ink`
+  - Horizontally centered; positioned `30px` from display bottom edge
+  - Maximum width 80% of display (`MAX_W = W x 0.80`); truncated with `…` if exceeded
+  - Padding: `16px` horizontal, `7px` vertical
+- **No other UI elements:** no banners, calendars, footer, or status indicators
+- **On e-ink:** painting passes through `EinkRenderer.process()` - palette quantization + dithering (`eink_dither: true` recommended)
 
-**Ritorno al planner:** pulsante **A** (e-ink) / `A` HDMI → il planner riprende immediatamente.
+**Return to planner:** **A** button (e-ink) / `A` HDMI -> planner resumes immediately.
 
 ---
 
-## Schermata di Spegnimento
+## Shutdown Screen
 
-**Scopo:** lasciare sul pannello e-ink un'immagine esteticamente gradevole (invece di uno schermo bianco) prima dello spegnimento del Raspberry Pi.
+**Goal:** leave a visually pleasing image on the e-ink panel (instead of a blank white screen) before shutting down the Raspberry Pi.
 
-**Attivazione:** pulsante **D** (Inky Impression) / tasto `D` (pygame HDMI).
+**Activation:** **D** button (Inky Impression) / `D` key (pygame HDMI).
 
-**Comportamento:** identico alla schermata artwork — stessa query, stesso layout full-bleed con didascalia. Il pannello mantiene l'immagine dopo lo spegnimento (e-ink è bistabile).
+**Behavior:** identical to artwork screen - same query, same full-bleed layout with caption. The panel keeps the image after shutdown (e-ink is bistable).
 
 ---
 
 ```css
 :root {
-  /* Tipografia */
+  /* Typography */
   --font-display: 'Playfair Display', Georgia, serif;
   --font-body:    'IBM Plex Sans', Helvetica Neue, Arial, sans-serif;
   --font-mono:    'IBM Plex Mono', Courier New, monospace;
@@ -463,7 +466,7 @@ I modelli `inky_impression_*` usano la classe `InkyDisplay` (invece di `EinkDisp
   --text-xl:   50px;
   --text-2xl:  76px;
 
-  /* Colori (modalità giorno) */
+  /* Colors (day mode) */
   --color-bg:          #FFFFFF;
   --color-bg-alt:      #EEECE6;
   --color-ink:         #111111;
@@ -474,55 +477,585 @@ I modelli `inky_impression_*` usano la classe `InkyDisplay` (invece di `EinkDisp
   --color-rule:        #CCCCAA;
   --color-rule-strong: #333333;
 
-  /* Struttura */
-  --height-banner-main:   90px;      /* Fascia superiore: data e meteo corrente */
-  --height-banner-hourly: 127px;     /* Fascia inferiore: previsioni biorarie */
-  --height-banner:        217px;     /* Banner meteo totale (portrait) / sezione meteo (landscape) */
-  --height-calendar: 560px;     /* Calendario mensile: 4 righe evento per cella (solo portrait) */
-  --height-footer:   54px;
-  --col-left-ratio:  50%;       /* Larghezza colonna sinistra in landscape */
-  --border-radius:   0;         /* Mai arrotondare */
-  --shadow:          none;      /* Mai ombreggiare */
+  /* Structure */
+  --height-banner-main:   90px;      /* Top band: date and current weather */
+  --height-banner-hourly: 127px;     /* Bottom band: hourly forecasts */
+  --height-banner:        217px;     /* Total weather banner (portrait) / weather section (landscape) */
+  --height-calendar:      560px;     /* Monthly calendar: 4 event rows per cell (portrait only) */
+  --height-footer:        54px;
+  --col-left-ratio:       50%;       /* Left column width in landscape */
+  --border-radius:        0;         /* Never round corners */
+  --shadow:               none;      /* Never use shadows */
 }
 ```
 
 ---
 
-## Display Target
+## Target Displays
 
-Valori pixel specifici per i display supportati:
+Pixel-specific values for supported displays:
 
-| Display | Risoluzione | Layout default | Colonna sinistra | Colonna destra | Lista appuntamenti |
+| Display | Resolution | Default layout | Left column | Right column | Appointment list |
 |---|---|---|---|---|---|
-| HDMI 7" | 1024×600 | `landscape` | 512px | 512px | 546px altezza |
-| Inky Impression 13.3" | 1600×1200 | `landscape` | 800px | 800px | 1146px altezza |
-| HDMI portrait (ruotato) | 600×1024 | `portrait` | — | — | 193px altezza |
-| E-ink portrait (ruotato) | 1200×1600 | `portrait` | — | — | 769px altezza |
+| HDMI 7" | 1024x600 | `landscape` | 512px | 512px | 546px height |
+| Inky Impression 13.3" | 1600x1200 | `landscape` | 800px | 800px | 1146px height |
+| HDMI portrait (rotated) | 600x1024 | `portrait` | - | - | 193px height |
+| E-ink portrait (rotated) | 1200x1600 | `portrait` | - | - | 769px height |
 
-Calcoli portrait: lista = `height − 217px − 560px − 54px`.  
-Calcoli landscape: lista height = `height − 54px`; colonna sinistra = `width × 0.50`.
+Portrait calculations: list = `height − 217px − 560px − 54px`.  
+Landscape calculations: list height = `height − 54px`; left column = `width x 0.50`.
 
 ---
 
-## Configurazione Layout
+## Layout Configuration
 
-Il layout è selezionato tramite il campo `display.layout` nel file di configurazione YAML:
+Layout is selected via the `display.layout` field in the YAML config file:
 
 ```yaml
 display:
   layout: "landscape"   # "landscape" | "portrait"
-  eink_model: "inky_impression_13"   # vedere tabella modelli supportati
+  eink_model: "inky_impression_13"   # see supported models table
   eink_palette: "spectra6"           # "bw" | "bwr" | "4gray" | "spectra6"
-  eink_dither: true                  # Floyd-Steinberg dithering
-  eink_saturation: 0.5               # saturazione colori per palette spectra6 (0.0–1.0)
+  eink_dither: true                   # Floyd-Steinberg dithering
+  eink_saturation: 0.5                # color saturation for spectra6 palette (0.0-1.0)
 ```
 
-Il template HTML applica una classe CSS al tag `<body>` corrispondente:
+The HTML template applies a corresponding CSS class on the `<body>` tag:
 
 ```html
 <body class="layout-landscape">
-<!-- oppure -->
+<!-- or -->
 <body class="layout-portrait">
 ```
 
-Le due classi selezionano i rispettivi blocchi CSS (flexbox colonne per landscape, stack verticale per portrait). Il `PillowEinkRenderer` legge `config.display.layout` per selezionare il metodo di rendering corrispondente.
+The two classes select their respective CSS blocks (column flexbox for landscape, vertical stack for portrait). `PillowEinkRenderer` reads `config.display.layout` to select the corresponding rendering method.
+# Design - Family Planner Calendar
+
+## Design Philosophy
+
+The calendar is conceived as an **interactive printed page**, not as a classic digital application. The aesthetic reference is *The Wall Street Journal*: rigorous typography, visual hierarchy built exclusively through font weight, size, and whitespace. No superfluous decorative elements.
+
+**Core principles:**
+
+- Total absence of shadows (`box-shadow`, `text-shadow`, `drop-shadow`)
+- No rounded corners (`border-radius: 0` everywhere)
+- No animations or transitions - updates are instantaneous
+- The layout never scrolls
+- The grid is the only composition tool
+
+---
+
+## Typography
+
+### Font Stack
+
+| Role | Family | Style |
+|---|---|---|
+| Titles and headings | **Playfair Display** | Regular / Bold |
+| Body and data | **IBM Plex Sans** | Regular / Medium / SemiBold |
+| Description italics | **IBM Plex Sans** | Italic |
+| Monospace (times) | **IBM Plex Mono** | Regular |
+
+All families are part of the Google Fonts catalog, optimized for screen rendering, including e-ink. The universal fallback is `serif` for headings and `sans-serif` for body text.
+
+```css
+--font-display: 'Playfair Display', Georgia, serif;
+--font-body:    'IBM Plex Sans', Helvetica Neue, Arial, sans-serif;
+--font-mono:    'IBM Plex Mono', Courier New, monospace;
+```
+
+### Typographic Scale
+
+The scale is fixed in pixels to ensure consistency on physical displays (no viewport-dependent `rem`). Values are calibrated for high-resolution displays (Inky Impression 13.3" 1600x1200 and similar):
+
+| Token | Size | Usage |
+|---|---|---|
+| `--text-xs`  | 18px | Secondary labels, notes, times |
+| `--text-sm`  | 21px | Appointment metadata, bi-hourly temperature |
+| `--text-base`| 24px | Body text, event names |
+| `--text-md`  | 28px | Selected day number |
+| `--text-lg`  | 38px | Date in weather banner, calendar header |
+| `--text-xl`  | 50px | Section title, prominent element |
+| `--text-2xl` | 76px | Exceptional use |
+
+Uniform line-height: `1.3`. Heading letter-spacing: `0.03em`.
+
+---
+
+## Color Palette
+
+### Day Mode (default - e-ink and HDMI)
+
+The palette is limited to **six values** to ensure fidelity on grayscale e-ink and color displays.
+
+```css
+/* Background */
+--color-bg:          #FFFFFF;   /* pure white - maximum contrast on e-ink */
+--color-bg-alt:      #EEECE6;   /* very light gray - alternating rows, bands */
+
+/* Text */
+--color-ink:         #111111;   /* near-absolute black */
+--color-ink-muted:   #666666;   /* medium gray - metadata, past times */
+--color-ink-faint:   #AAAAAA;   /* light gray - separators, placeholders */
+
+/* Accents */
+--color-accent:      #1A1A1A;   /* near-black - selection, today */
+--color-holiday:     #444444;   /* dark gray - holiday highlighting */
+
+/* Borders */
+--color-rule:        #CCCCAA;   /* sepia-toned line - horizontal dividers */
+--color-rule-strong: #333333;   /* dark line - selected element border */
+/* Weather icons */
+--weather-sun:       #F5A623;   /* sun / clear sky */
+--weather-cloud:     #9CA3AF;   /* cloud / overcast / fog */
+--weather-rain:      #3B82F6;   /* rain / showers / thunderstorm */
+--weather-snow:      #93C5FD;   /* snow / hail */
+```
+
+**On e-ink:** the renderer automatically quantizes toward the physical display palette values. The colors above are chosen to map deterministically.
+
+### Spectra 6 Palette (Pimoroni Inky Impression)
+
+When `eink_palette: "spectra6"` is configured, the post-processor quantizes to the 6-color Pimoroni Inky Impression panel palette. `PillowEinkRenderer` still generates a standard RGB image; `EinkRenderer` converts it to palette mode `"P"` before sending to hardware.
+
+| Index | Name | RGB | Usage |
+|---|---|---|---|
+| 0 | Black | `#000000` | Text, borders |
+| 1 | White | `#FFFFFF` | Background |
+| 2 | Red | `#FF0000` | Accents, `sun` weather icon |
+| 3 | Green | `#00FF00` | (reserved) |
+| 4 | Blue | `#0000FF` | `cloud-rain` weather icon |
+| 5 | Yellow | `#FFFF00` | (reserved) |
+
+Floyd-Steinberg dithering (`eink_dither: true`) is recommended with this palette to soften color transitions in photos and gradient areas.
+
+### Weather Icon Palette
+
+Weather icons are tinted with condition-specific colors (instead of `--color-ink`), defined in [app/renderer/tokens.py](app/renderer/tokens.py) as `WEATHER_ICON_COLORS`. Applied both to the main icon in the top banner and to icons in the bi-hourly strip.
+
+| Token | Value | Condition |
+|---|---|---|
+| `--weather-sun` | `#F5A623` | Sun, clear sky |
+| `--weather-cloud` | `#9CA3AF` | Cloud, fog, overcast |
+| `--weather-rain` | `#3B82F6` | Rain, showers, thunderstorm |
+| `--weather-snow` | `#93C5FD` | Snow, hail |
+
+---
+
+## Iconography - Tabler Icons
+
+The adopted icon set is **Tabler Icons** (SVG outline version, stroke-width `1.5px`). Icons are always monochrome, colored through `currentColor`.
+
+| Tabler icon | Usage |
+|---|---|
+| `icon-sun` | Sunny condition - weather banner / day mode indicator |
+| `icon-cloud` | Cloudy condition - weather banner |
+| `icon-cloud-rain` | Rainy condition - weather banner |
+| `icon-snowflake` | Snow condition - weather banner |
+| `icon-chevron-up` | Up button (footer) |
+| `icon-chevron-down` | Down button (footer) |
+| `icon-corner-up-left` | Today / Return button (footer) |
+| `icon-check` | Enter button - disabled (footer) |
+| `icon-clock` | Appointment time - list |
+| `icon-map-pin` | Appointment location - list |
+| `icon-star` | Holiday / Special day - monthly calendar |
+
+Standard icon sizes: `16px` (inline text) / `20px` (buttons) / `24px` (view headers) / `48px` (banner weather icon).
+
+---
+
+## General Layout
+
+The interface is a single **Home screen** with two layout variants selectable via configuration. There is no separate header: the date is embedded in the weather banner.
+
+### Portrait Layout
+
+Four stacked horizontal bands:
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  WEATHER BANNER (fixed height: 217px)                   │
+│  Date · Weather icon · Current temp · Max/Min           │
+│  ──────────────────────────────────────────────────────  │
+│  Bi-hourly forecast: 6 cells · 48px icon · Temp         │
+├──────────────────────────────────────────────────────────┤
+│  MONTHLY CALENDAR (fixed height: 560px)                 │
+│  Visual monthly view - no interaction                   │
+├──────────────────────────────────────────────────────────┤
+│                                                          │
+│  APPOINTMENT LIST (variable height)                      │
+│  From the next appointment onward - Agenda style         │
+│                                                          │
+├──────────────────────────────────────────────────────────┤
+│  FOOTER (fixed height: 54px)                             │
+│  Status indicators                                       │
+└──────────────────────────────────────────────────────────┘
+```
+
+**Weather banner:** `border-bottom: 2px solid var(--color-rule-strong)`.  
+**Monthly calendar:** `border-bottom: 1px solid var(--color-rule-strong)`.  
+**Appointment list:** takes the remaining height (`height - 217px - 560px - 54px`). No scrolling.  
+**Footer:** `border-top: 1px solid var(--color-rule)`. Shows only right-aligned status indicators (no navigation buttons).
+
+### Landscape Layout
+
+Two side-by-side columns + full-width footer:
+
+```
+┌───────────────────────────────┬────────────────────────────────────────┐
+│  LEFT COLUMN (50%)            │  RIGHT COLUMN (50%)                    │
+│                               │                                        │
+│  WEATHER (217px)              │  APPOINTMENT LIST                      │
+│  Date · Icon · Temperature    │  (full content area height)            │
+│  Bi-hourly forecast (6 cells) │                                        │
+│  ───────────────────────────  │                                        │
+│  MONTHLY CALENDAR             │                                        │
+│  (remaining height)           │                                        │
+│                               │                                        │
+├───────────────────────────────┴────────────────────────────────────────┤
+│  FOOTER (54px, full width)                                              │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+**Column separator:** `border-right: 1px solid var(--color-rule-strong)` on the left column, height `height - 54px`.  
+**Weather section:** `border-bottom: 1px solid var(--color-rule)`.  
+**Left column:** width `50%` (exact half). Example: 1024x600 -> 512px left, 512px right; 1600x1200 -> 800px left, 800px right.  
+**Appointment list:** takes the full content area height (`height - 54px`).  
+**Footer:** `border-top: 1px solid var(--color-rule)`. Full width, shows only right-aligned status indicators.
+
+The footer is the fixed bottom band (height `54px`). It contains no navigation buttons. It exclusively shows right-aligned **status indicators**, in `--text-xs`, `--color-ink-muted`:
+
+| Indicator | Content |
+|---|---|
+| Display type | `e-ink` / `hdmi` - fixed text |
+| Layout | `portrait` / `landscape` - fixed text |
+| Current time | `HH:MM` - updated on every refresh |
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                                 hdmi · landscape · 09:32    │
+└──────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Screens
+
+---
+
+### Home (single screen)
+
+**Goal:** show weather conditions, current monthly calendar, and the list of appointments from the next one onward, all at a glance.  
+**Navigation:** Up/Down paginates the appointment list; Esc resets to today's date; Enter is disabled.
+
+#### Weather Section
+
+Top banner in portrait, upper section of left column in landscape.
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  Sunday, May 24, 2026              ⛅   18°  ↑22°            │
+│                                             ↓14°             │
+└──────────────────────────────────────────────────────────────┘
+```
+
+The right side is a three-subcolumn block aligned to the right margin:
+
+- **Subcolumn 1 (left):** Tabler weather condition icon `48px`, tinted with the weather color palette (`--weather-*`), vertically centered in the banner
+- **Subcolumn 2 (center):** current temperature, `--font-body`, `40px`, `font-weight: 600`, `--color-ink`, vertically centered, right anchored
+- **Subcolumn 3 (right):** max and min stacked vertically, `--font-body`, `--text-xs` (18px), `--color-ink-muted`, both right anchored; `↑max` at 1/3 of banner height, `↓min` at 2/3
+- **Left side:** date, `--font-display`, `--text-lg`, format `"Day, DD Month YYYY"`, `--color-ink`
+- Background: `--color-bg` - no alternate background in the banner
+- Weather data refresh: hourly (provider TTL cache)
+
+**Bi-hourly forecast strip** (below the date/weather band, height 127px):
+
+```
+┌────────┬────────┬────────┬────────┬────────┬────────┐
+│ 14:00  │ 16:00  │ 18:00  │ 20:00  │ 22:00  │ 00:00  │
+│   ⛅    │   ☁    │   🌧    │   ⛅    │   ⛅    │   ☁    │
+│  18°   │  17°   │  15°   │  14°   │  13°   │  12°   │
+└────────┴────────┴────────┴────────┴────────┴────────┘
+```
+
+- **6 cells** of equal width (`width / 6`): current slot + 5 subsequent slots (every 2 hours)
+- **Time** (row 1, top, centered): `--font-mono`, `--text-xs` (18px), `--color-ink-muted`, `mt` anchor 4px from the top edge of the cell
+- **Icon** (row 2, vertically centered between time and temperature): Tabler `48px`, tinted with the weather color palette (`--weather-*`), horizontally centered in cell
+- **Temperature** (row 3, bottom, centered): `--font-body` SemiBold, `--text-sm` (21px), `--color-ink`, baseline anchored 27px from the bottom edge of the cell
+- **Vertical separators** between cells: `1px solid var(--color-rule)` (not on outer edges)
+
+#### Monthly Calendar Section
+
+The monthly calendar is **purely visual** - it does not respond to user interaction.
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                       MAY 2026                              │
+│  MON   TUE   WED   THU   FRI   SAT   SUN                   │
+│   27    28    29    30     1     2     3                   │
+│    4     5     6     7     8     9    10                   │
+│   11    12    13    14    15    16    17                   │
+│   18    19    20    21    22    23   [24]                  │
+│   25    26    27    28    29    30    31                   │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**Visual rules:**
+
+- Month header: `--font-body`, `--text-sm`, uppercase, `letter-spacing: 0.08em`, centered
+- Column headers (M T W T F S S): `--text-xs`, `--color-ink-muted`
+- Day numbers: `--text-xs`, `--font-body`, `--color-ink`
+- **Today:** `--color-bg-alt` background on the entire cell; day number and event text in `--color-ink` (no square, no inversion)
+- **Holidays:** number in `--font-display`, `font-weight: bold`, `--color-holiday`
+- Previous/next month days: `--color-ink-faint`, no events shown
+- **Cell layout:** day number in the top band (18px); event lines in the lower band
+- **Event lines:** `--font-body`, `--text-xs`, `--color-ink-muted`; format `HH:MM Title` for timed events, title only for all-day events; text truncated with `…` if it does not fit in width
+- **Overflow:** if not all events fit, the last line shows `+N` in `--color-ink-faint`
+- **Ordering per cell:** all-day first, then by start time
+
+#### Appointment List Section
+
+Agenda-style list inspired by Google Calendar. The date for each day is shown in a **fixed left column** (84px), not as a horizontal separator. The first event of each day shows the day number and abbreviated weekday on the same row as the title; subsequent events on that day leave the date column blank. Each row has a **colored dot** at the start of the time area indicating the source calendar. Up/Down pagination replaces the entire page - no CSS scroll.
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│  24 SUN      ●  All day          Team meeting                 │
+│             ●  15:00 - 16:00     Dentist                      │
+│           ──────────────────────────────────────────────────   │
+│             ●  17:30 - 18:30     Appointment                  │
+│                Room B                                          │
+├────────────────────────────────────────────────────────────────┤
+│  25 MON      ●  09:00 - 10:00     Client video call           │
+│             ●  12:30 - 13:30     Lunch with Marco             │
+│                Ristorante Al Porto                             │
+└────────────────────────────────────────────────────────────────┘
+```
+
+> The small space before the dot (8px) is the left padding of the time area; an equal padding (8px) separates the end of the time field from the start of the title.
+
+**Visual rules:**
+
+- **Date column (84px, left):**
+  - **Single line** at the same height as the event title (`y = y0+30`): day number (`--font-body`, `--text-md`, `--color-ink`) + abbreviated weekday (`--font-body` SemiBold, `--text-xs`, `--color-ink-muted`), both right-aligned within the column
+  - The day number is positioned at a fixed offset from the right edge of the column, calculated from the maximum abbreviation width (`MON...SUN`) - ensures vertical alignment across different rows
+  - Format: `"31"` + `"SUN"` (abbreviated weekday only, no month)
+  - Shown only for the **first event of each day**; subsequent rows leave the column blank
+- **Time + dot column (200px):**
+  - **8px left padding** between the right edge of the date column and the center-left of the dot
+  - Dot (● 14px diameter): filled circle, vertically centered in the row; colored with `evt.color`; if undefined, uses `--color-rule`
+  - Time: `--font-mono`, `--text-xs`, `--color-ink`, left-aligned to the right of the dot (6px gap), vertically centered; format `"HH:MM - HH:MM"` on a single row
+  - **8px right padding** between the right edge of the time column and the event title
+- **All-day event:** instead of time, text `"All day"` in `--font-mono`, `--text-xs`, `--color-ink`, to the right of the dot, vertically centered in the row
+- **Content (title + location):**
+  - Event name: `--font-body`, `--text-base`, `font-weight: 600`, `--color-ink`
+  - Location (if present): `--text-xs`, `--color-ink-muted`, on a separate row below the name
+- **Event separator:** `1px solid var(--color-rule-strong)` above the **first row of each day** (day boundary); subsequent events of the same day have no separator - the 30px top margin and date column provide enough visual separation, even on BW e-ink displays where `--color-rule` (#CCCCAA, luminance ≈ 200) fades during quantization
+- **Empty list:** centered text `"No appointments"`, `--color-ink-faint`, `--text-sm`
+
+**Row heights (dynamic):**
+
+| Row type | Formula | Example |
+|---|---|---|
+| Event without location and without description | 60 px | 60 px |
+| Event with location only | 60 + 14 = 74 px | 74 px |
+| Event with N description lines (without location) | 60 + N x 22 + 8 px | 1 line -> 90 px, 3 lines -> 134 px |
+| Event with location and N description lines | 60 + 14 + N x 22 + 8 px | 1 line -> 104 px, 10 lines -> 312 px |
+
+The final 8 px (only when a description is present) adds lower visual breathing room equivalent to the whitespace above the title glyph.
+
+**Description formatting (rich text HTML):**
+
+The description may contain HTML from CalDAV sources. The renderer interprets the following tags:
+
+| HTML tag | Visual effect |
+|---|---|
+| `<b>`, `<strong>` | Text in IBM Plex Sans SemiBold |
+| `<i>`, `<em>` | Text in IBM Plex Sans Italic |
+| `<u>` | Text with an underlying horizontal line (1 px, `--color-ink-faint`) |
+| `<a href="...">` | Text in `--color-ink-muted` + underline |
+| `<br>`, `</p>`, `</div>`, `</li>` | Line break |
+| `<ul><li>` | Line with `• ` prefix |
+| `<ol><li>` | Line with `N. ` prefix (progressive counter) |
+
+Unrecognized tags are silently removed. Plain text (without tags) is split on `\n`. Each line is truncated with `…` if it exceeds the available width.
+
+---
+
+## Navigation Flow
+
+The interface has a single screen. There is no navigation - the current day is always shown.
+
+---
+
+## Status Indicators (Footer)
+
+Status indicators are embedded on the right side of the footer, in `--text-xs`, `--color-ink-muted`:
+
+| Indicator | Content |
+|---|---|
+| Display type | `e-ink` / `hdmi` - fixed text |
+| Layout | `portrait` / `landscape` - fixed text |
+| Current time | `HH:MM` - updated on every refresh |
+
+---
+
+## E-Ink Specific Behavior
+
+When `display.type = "eink"`:
+
+1. **Palette:** the renderer only uses quantized values from the configured model palette. The colors above are chosen to map deterministically.
+2. **Non-interactive footer:** the footer shows the same text legend as HDMI, but keys are not clickable. Physical buttons are the only interaction method.
+3. **Dithering:** the post-processor applies Floyd-Steinberg to small text areas to improve readability on low-resolution displays.
+4. **Partial refresh:** in landscape layout, the monthly calendar (left column, lower section) is the most static area and ideal for separate partial refresh. The appointment list (right column / lower portrait area) changes on every navigation.
+5. **Rotation:** `display.rotation` (0 / 90 / 180 / 270deg) is applied by `EinkRenderer` as the final post-processing step. The logical canvas generated by `PillowEinkRenderer` always has dimensions `display.width x display.height`; for 90/270 rotations, dimensions are swapped before resize.
+
+### Physical Buttons (Inky Impression)
+
+| Button | Action |
+|---|---|
+| **A** | Return to planner screen (exit artwork mode) |
+| **B** | Show artwork mode (random painting - privacy) |
+| **D** | Shutdown - show final artwork on the panel, then power off the system |
+
+### Supported Models
+
+| `eink_model` | Driver | Resolution | Palette |
+|---|---|---|---|
+| `7in5_V2` | `waveshare_epd.epd7in5_V2` | 800x480 | `bw`, `bwr`, `4gray` |
+| `7in5` | `waveshare_epd.epd7in5` | 640x384 | `bw`, `bwr` |
+| `4in2` / `4in2_V2` | `waveshare_epd.epd4in2*` | 400x300 | `bw`, `bwr` |
+| `5in83_V2` | `waveshare_epd.epd5in83_V2` | 648x480 | `bw`, `bwr`, `4gray` |
+| `3in7` | `waveshare_epd.epd3in7` | 280x480 | `4gray` |
+| `inky_impression_4` | `inky` (Pimoroni) | 600x400 | `spectra6` |
+| `inky_impression_7` | `inky` (Pimoroni) | 800x480 | `spectra6` |
+| `inky_impression_13` | `inky` (Pimoroni) | 1600x1200 | `spectra6` |
+
+### Pimoroni Inky Impression (Spectra 6)
+
+`inky_impression_*` models use the `InkyDisplay` class (instead of `EinkDisplay`) based on Pimoroni's `inky` library. The rendering pipeline is identical: `PillowEinkRenderer` -> `EinkRenderer.process()` (`spectra6` quantization) -> `InkyDisplay.push()`.
+
+**`_busy_wait` fix for Inky 13.3":** version 2.4.0 of the `inky` library has a bug in `_busy_wait()` for the EL133UF1 panel (BUSY is active-low, but the loop condition is inverted). `InkyDisplay.push()` fixes the issue by replacing `_busy_wait()` on the instance with a correct implementation before calling `show()`.
+
+---
+
+## Artwork Screen (Privacy Mode)
+
+**Goal:** hide the family calendar when guests are present or when the device is unattended, replacing it with a public-domain painting from the **Art Institute of Chicago**.
+
+**Activation:** **B** button (Inky Impression) / `B` key (pygame HDMI).
+
+**Layout:**
+
+```
+┌──────────────────────────────────────────────────────┐
+│                                                      │
+│       Painting (full-bleed crop, ImageOps.fit)      │
+│                                                      │
+│                                                      │
+├──────────────────────────────────────────────────────┤
+│     Title, Artist (Year)                             │  <- centered caption
+└──────────────────────────────────────────────────────┘
+```
+
+**Visual rules:**
+
+- **Full-bleed painting** (`ImageOps.fit`): covers the whole display, preserving proportions with centered crop (LANCZOS)
+- **Caption** (optional, if metadata is available): solid `BG` rectangle, top border `1px INK_MUTED`, text `"Title, Artist (Year)"` in `--font-body` Italic, `--text-xs`, `--color-ink`
+  - Horizontally centered; positioned `30px` from the bottom display edge
+  - Maximum width 80% of display (`MAX_W = W x 0.80`); truncated with `…` if it exceeds
+  - Padding: `16px` horizontal, `7px` vertical
+- **No other UI elements**: no banner, calendar, footer, or status indicators are shown
+- **On e-ink**: the painting goes through `EinkRenderer.process()` - palette quantization + dithering (`eink_dither: true` recommended)
+
+**Return to planner:** **A** button (e-ink) / `A` HDMI -> planner resumes immediately.
+
+---
+
+## Shutdown Screen
+
+**Goal:** leave an aesthetically pleasing image on the e-ink panel (instead of a blank white screen) before Raspberry Pi shutdown.
+
+**Activation:** **D** button (Inky Impression) / `D` key (pygame HDMI).
+
+**Behavior:** identical to the artwork screen - same query, same full-bleed layout with caption. The panel keeps the image after shutdown (e-ink is bistable).
+
+---
+
+```css
+:root {
+  /* Typography */
+  --font-display: 'Playfair Display', Georgia, serif;
+  --font-body:    'IBM Plex Sans', Helvetica Neue, Arial, sans-serif;
+  --font-mono:    'IBM Plex Mono', Courier New, monospace;
+
+  --text-xs:   18px;
+  --text-sm:   21px;
+  --text-base: 24px;
+  --text-md:   28px;
+  --text-lg:   38px;
+  --text-xl:   50px;
+  --text-2xl:  76px;
+
+  /* Colors (day mode) */
+  --color-bg:          #FFFFFF;
+  --color-bg-alt:      #EEECE6;
+  --color-ink:         #111111;
+  --color-ink-muted:   #666666;
+  --color-ink-faint:   #AAAAAA;
+  --color-accent:      #1A1A1A;
+  --color-holiday:     #444444;
+  --color-rule:        #CCCCAA;
+  --color-rule-strong: #333333;
+
+  /* Structure */
+  --height-banner-main:   90px;      /* Upper band: date and current weather */
+  --height-banner-hourly: 127px;     /* Lower band: bi-hourly forecast */
+  --height-banner:        217px;     /* Total weather banner (portrait) / weather section (landscape) */
+  --height-calendar:      560px;     /* Monthly calendar: 4 event lines per cell (portrait only) */
+  --height-footer:        54px;
+  --col-left-ratio:       50%;       /* Left column width in landscape */
+  --border-radius:        0;         /* Never round corners */
+  --shadow:               none;      /* Never add shadows */
+}
+```
+
+---
+
+## Target Displays
+
+Pixel-specific values for supported displays:
+
+| Display | Resolution | Default layout | Left column | Right column | Appointment list |
+|---|---|---|---|---|---|
+| HDMI 7" | 1024x600 | `landscape` | 512px | 512px | 546px height |
+| Inky Impression 13.3" | 1600x1200 | `landscape` | 800px | 800px | 1146px height |
+| HDMI portrait (rotated) | 600x1024 | `portrait` | - | - | 193px height |
+| E-ink portrait (rotated) | 1200x1600 | `portrait` | - | - | 769px height |
+
+Portrait calculations: list = `height - 217px - 560px - 54px`.  
+Landscape calculations: list height = `height - 54px`; left column = `width x 0.50`.
+
+---
+
+## Layout Configuration
+
+The layout is selected via the `display.layout` field in the YAML configuration file:
+
+```yaml
+display:
+  layout: "landscape"   # "landscape" | "portrait"
+  eink_model: "inky_impression_13"   # see supported models table
+  eink_palette: "spectra6"           # "bw" | "bwr" | "4gray" | "spectra6"
+  eink_dither: true                  # Floyd-Steinberg dithering
+  eink_saturation: 0.5               # color saturation for spectra6 palette (0.0-1.0)
+```
+
+The HTML template applies a corresponding CSS class to the `<body>` tag:
+
+```html
+<body class="layout-landscape">
+<!-- or -->
+<body class="layout-portrait">
+```
+
+The two classes select their respective CSS blocks (column flexbox for landscape, vertical stack for portrait). `PillowEinkRenderer` reads `config.display.layout` to select the corresponding rendering method.

@@ -1,112 +1,112 @@
-# Architettura — Family Planner Calendar
+# Architecture — Family Planner Calendar
 
-## Panoramica
+## Overview
 
-**Family Planner** è un visualizzatore di calendario ottimizzato per dispositivi Raspberry Pi (3+) con display HDMI o e-ink, eseguibile anche in locale (Mac/Linux) per sviluppo e test. Espone un servizio web sia per la visualizzazione del calendario sia per la sua configurazione.
+**Family Planner** is a calendar viewer optimised for Raspberry Pi (3+) devices with an HDMI or e-ink display, also runnable locally (Mac/Linux) for development and testing. It exposes a web service for both calendar display and configuration.
 
 ---
 
-## Stack Tecnologico
+## Technology Stack
 
-| Layer | Tecnologia |
+| Layer | Technology |
 |---|---|
-| Linguaggio | Python 3.11+ |
+| Language | Python 3.11+ |
 | Web server | FastAPI + Uvicorn |
-| Template HTML | Jinja2 (solo configurazione) |
-| Rendering (HDMI + e-ink) | `PillowEinkRenderer` — Pillow nativo da `NavigationState` + eventi, senza browser |
-| Post-processing e-ink | `EinkRenderer` — resize, quantizzazione palette, dithering Floyd-Steinberg |
-| Calendario CalDAV | `caldav` + `icalendar` |
-| Configurazione | YAML (`pyyaml`) + Pydantic v2 |
-| Display HDMI | `pygame` — finestra SDL, rendering diretto `PIL.Image` → surface |
-| Display e-ink | Waveshare (caricamento dinamico — richiede hardware RPi) |
+| HTML templates | Jinja2 (configuration only) |
+| Rendering (HDMI + e-ink) | `PillowEinkRenderer` — native Pillow from `NavigationState` + events, no browser |
+| E-ink post-processing | `EinkRenderer` — resize, palette quantisation, Floyd-Steinberg dithering |
+| CalDAV calendar | `caldav` + `icalendar` |
+| Configuration | YAML (`pyyaml`) + Pydantic v2 |
+| HDMI display | `pygame` — SDL window, direct `PIL.Image` → surface rendering |
+| E-ink display | Waveshare (dynamic import — requires RPi hardware) |
 
 ---
 
-## Struttura del Progetto
+## Project Structure
 
 ```
 family-planner/
 ├── app/
-│   ├── main.py                  # Entry point — parsing args, avvio server
-│   ├── config.py                # Caricamento e validazione configurazione
+│   ├── main.py                  # Entry point — argument parsing, server startup
+│   ├── config.py                # Configuration loading and validation
 │   ├── server/
 │   │   ├── __init__.py
-│   │   ├── app.py               # Definizione app FastAPI e rotte
+│   │   ├── app.py               # FastAPI app definition and routes
 │   │   ├── routes/
-│   │   │   ├── index.py         # GET / — anteprima HTML; GET /preview.png — immagine PNG
-│   │   │   └── config.py        # GET/POST /config — configurazione UI
-│   │   └── templates/           # Template Jinja2
-│   │       ├── base.html        # Layout base configurazione
-│   │       └── config.html      # Interfaccia configurazione
+│   │   │   ├── index.py         # GET / — HTML preview; GET /preview.png — PNG image
+│   │   │   └── config.py        # GET/POST /config — configuration UI
+│   │   └── templates/           # Jinja2 templates
+│   │       ├── base.html        # Base configuration layout
+│   │       └── config.html      # Configuration interface
 │   ├── calendar/
 │   │   ├── __init__.py
-│   │   ├── base.py              # Classe astratta CalendarProvider
-│   │   ├── caldav_provider.py   # Provider CalDAV (Apple Calendar / iCloud)
-│   │   ├── ics_provider.py      # Provider file .ics locali
-│   │   ├── ical_provider.py     # Provider iCal URL (Google Calendar, feed pubblici)
-│   │   ├── aggregator.py        # Aggrega eventi da più provider
-│   │   └── data_builders.py     # Preparazione dati condivisa tra rotte e PillowEinkRenderer
+│   │   ├── base.py              # Abstract CalendarProvider class
+│   │   ├── caldav_provider.py   # CalDAV provider (Apple Calendar / iCloud)
+│   │   ├── ics_provider.py      # Local .ics file provider
+│   │   ├── ical_provider.py     # iCal URL provider (Google Calendar, public feeds)
+│   │   ├── aggregator.py        # Aggregates events from multiple providers
+│   │   └── data_builders.py     # Shared data preparation between routes and PillowEinkRenderer
 │   ├── renderer/
 │   │   ├── __init__.py
-│   │   ├── base.py                      # Classe astratta Renderer
-│   │   ├── pillow_eink_renderer.py      # PillowEinkRenderer: rendering Pillow nativo (HDMI + e-ink)
-│   │   │                                #   render() → schermata calendario
-│   │   │                                #   render_artwork() → dipinto ARTIC (privacy/shutdown)
-│   │   ├── eink_renderer.py             # Post-processing e-ink: resize, quantizzazione palette,
-│   │   │                                #   dithering Floyd-Steinberg, rotazione schermo
-│   │   ├── rich_text.py                 # Parser HTML descrizioni CalDAV → RichSpan/RichLine
-│   │   ├── state.py                     # NavigationState (dataclass immutabile — anchor_date = oggi)
-│   │   └── tokens.py                    # Design tokens Python
+│   │   ├── base.py                      # Abstract Renderer class
+│   │   ├── pillow_eink_renderer.py      # PillowEinkRenderer: native Pillow rendering (HDMI + e-ink)
+│   │   │                                #   render() → calendar screen
+│   │   │                                #   render_artwork() → ARTIC painting (privacy/shutdown)
+│   │   ├── eink_renderer.py             # E-ink post-processing: resize, palette quantisation,
+│   │   │                                #   Floyd-Steinberg dithering, screen rotation
+│   │   ├── rich_text.py                 # HTML description parser CalDAV → RichSpan/RichLine
+│   │   ├── state.py                     # NavigationState (immutable dataclass — anchor_date = today)
+│   │   └── tokens.py                    # Python design tokens
 │   ├── weather/
 │   │   ├── __init__.py
-│   │   ├── provider.py          # WeatherProvider: classe base astratta
-│   │   └── open_meteo.py        # OpenMeteoProvider: API Open-Meteo + cache in-memory TTL 1h
+│   │   ├── provider.py          # WeatherProvider: abstract base class
+│   │   └── open_meteo.py        # OpenMeteoProvider: Open-Meteo API + in-memory cache TTL 1h
 │   └── display/
 │       ├── __init__.py
-│       ├── buttons.py           # InkyButtonHandler: GPIO A/B/D su Pimoroni Inky (gpiod)
-│       ├── hdmi.py              # HdmiDisplay: finestra pygame — rendering PIL.Image diretto
-│       └── eink.py              # EinkDisplay: push immagine via SPI (libreria Waveshare)
+│       ├── buttons.py           # InkyButtonHandler: GPIO A/B/D on Pimoroni Inky (gpiod)
+│       ├── hdmi.py              # HdmiDisplay: pygame window — direct PIL.Image rendering
+│       └── eink.py              # EinkDisplay: push image via SPI (Waveshare library)
 ├── config/
-│   └── default.yaml             # Configurazione di default (inclusa nel repo)
+│   └── default.yaml             # Default configuration (included in repo)
 ├── scripts/
-│   ├── deploy.sh                # Deploy via SSH su Raspberry Pi
-│   ├── install.sh               # Installazione dipendenze sul dispositivo
-│   ├── setup-autostart.sh       # Setup servizi systemd sul dispositivo
-│   └── start.sh                 # Avvio locale semplificato
+│   ├── deploy.sh                # Deploy via SSH to Raspberry Pi
+│   ├── install.sh               # Dependency installation on device
+│   ├── setup-autostart.sh       # systemd service setup on device
+│   └── start.sh                 # Simplified local startup
 ├── systemd/
-│   └── family-planner.service   # Servizio systemd per l'app Python
+│   └── family-planner.service   # systemd service unit for the Python app
 ├── docs/
-│   ├── design.md                # UX/UI design (riferimento per il rendering)
-│   └── architecture.md          # Questo file
+│   ├── design.md                # UX/UI design (rendering reference)
+│   └── architecture.md          # This file
 ├── requirements.txt
 └── README.md
 ```
 
 ---
 
-## Configurazione
+## Configuration
 
-Il file di configurazione è in formato **YAML**. La sua posizione è passata come argomento CLI all'avvio:
+The configuration file is in **YAML** format. Its path is passed as a CLI argument at startup:
 
 ```bash
 python app/main.py --config /path/to/config.yaml
 ```
 
-Se non specificato, il fallback è `./config/default.yaml`.
+If not specified, the fallback is `./config/default.yaml`.
 
-### Schema del file di configurazione
+### Configuration file schema
 
 ```yaml
 server:
   host: "0.0.0.0"
   port: 8080
-  # Basic Auth opzionale sulle rotte /config e /api/config/*
+  # Optional Basic Auth on /config and /api/config/* routes
   # auth_username: null
   # auth_password: null
 
 weather:
-  enabled: true              # false → disabilita il provider, mostra solo la data
-  latitude: 45.4654          # coordinate GPS della posizione
+  enabled: true              # false → disables the provider, shows date only
+  latitude: 45.4654          # GPS coordinates of the location
   longitude: 9.1866
   units: "celsius"           # "celsius" | "fahrenheit"
 
@@ -117,122 +117,122 @@ display:
   height: 600
   width: 1024
   height: 600
-  fullscreen: false          # true → finestra fullscreen; false → finestra dimensionata (sviluppo)
-  show_buttons: false        # mostra/nasconde i pulsanti di navigazione (solo HDMI touchscreen)
-  rotation: 0                # rotazione schermo: 0 | 90 | 180 | 270
-  # solo se type: "eink":
-  eink_dither: true          # abilita dithering Floyd-Steinberg
-  eink_saturation: 0.5       # intensità colori per quantizzazione (0.0–1.0)
+  fullscreen: false          # true → fullscreen window; false → sized window (development)
+  show_buttons: false        # show/hide navigation buttons (HDMI touchscreen only)
+  rotation: 0                # screen rotation: 0 | 90 | 180 | 270
+  # only if type: "eink":
+  eink_dither: true          # enable Floyd-Steinberg dithering
+  eink_saturation: 0.5       # colour intensity for quantisation (0.0–1.0)
 
 artwork:
-  query: "landscape painting"  # query per ricerca artwork (Art Institute of Chicago)
+  query: "landscape painting"  # artwork search query (Art Institute of Chicago)
 
 calendars:
-  - name: "Famiglia"
+  - name: "Family"
     type: "caldav"
     url: "https://caldav.icloud.com"
-    username: "utente@icloud.com"
-    password: "app-specific-password"   # App-Specific Password Apple ID
+    username: "user@icloud.com"
+    password: "app-specific-password"   # Apple ID App-Specific Password
     color: "#4A90D9"
 
-  - name: "Calendario locale"
+  - name: "Local calendar"
     type: "ics"
-    path: "/home/pi/calendars/locale.ics"
+    path: "/home/pi/calendars/local.ics"
     color: "#E74C3C"
 
   - name: "Google Calendar"
     type: "ical"
-    url: "https://calendar.google.com/calendar/ical/<id>/basic.ics"  # anche webcal:// accettato
+    url: "https://calendar.google.com/calendar/ical/<id>/basic.ics"  # webcal:// also accepted
     color: "#27AE60"
 ```
 
-La configurazione è validata tramite **Pydantic v2** all'avvio; errori di schema bloccano il processo con un messaggio chiaro.
+Configuration is validated via **Pydantic v2** at startup; schema errors halt the process with a clear message.
 
-> **Nota sicurezza**: il file di configurazione non contiene credenziali meteo (Open-Meteo non richiede API key). Le coordinate GPS sono considerate dati non sensibili in questo contesto.
+> **Security note**: the configuration file contains no weather credentials (Open-Meteo requires no API key). GPS coordinates are considered non-sensitive data in this context.
 
 ---
 
-## Flusso Applicativo
+## Application Flow
 
 ```
-Avvio (main.py --config ...)
+Startup (main.py --config ...)
         │
         ▼
-  Carica config.yaml  ──(errore)──▶  Exit con messaggio
+  Load config.yaml  ──(error)──▶  Exit with message
         │
         ▼
-  Inizializza CalendarAggregator
-  (istanzia i provider definiti in config)
+  Initialise CalendarAggregator
+  (instantiates providers defined in config)
         │
         ▼
-  Inizializza OpenMeteoProvider  ← solo se weather.enabled: true
-  (cache in-memory TTL 1h, thread-safe)
+  Initialise OpenMeteoProvider  ← only if weather.enabled: true
+  (in-memory cache TTL 1h, thread-safe)
         │
         ▼
-  Inizializza PillowEinkRenderer(config, weather_provider)  ← renderer unico per HDMI ed e-ink
+  Initialise PillowEinkRenderer(config, weather_provider)  ← single renderer for HDMI and e-ink
         │
         ▼
-  Avvia Display (condizionale sul tipo)
+  Start Display (conditional on type)
         │
         ├── HDMI ──▶  HdmiDisplay(config, pillow_renderer, aggregator)
-        │             Uvicorn avviato in background thread
-        │             ├─── GET /             ──▶  HTML anteprima (img auto-refresh)
+        │             Uvicorn started in background thread
+        │             ├─── GET /             ──▶  HTML preview (img auto-refresh)
         │             ├─── GET /preview.png  ──▶  PillowEinkRenderer.render() → PNG
-        │             ├─── GET /config       ──▶  Mostra form di configurazione
-        │             └─── POST /config      ──▶  Salva config.yaml → SIGHUP
-        │             HdmiDisplay.run_blocking() blocca il main thread con pygame:
+        │             ├─── GET /config       ──▶  Show configuration form
+        │             └─── POST /config      ──▶  Save config.yaml → SIGHUP
+        │             HdmiDisplay.run_blocking() blocks the main thread with pygame:
         │               loop: NavigationState() → PillowEinkRenderer.render()
-        │                     → pygame.Surface → schermo
-        │               tasti: q/F4 quit
+        │                     → pygame.Surface → screen
+        │               keys: q/F4 quit
         │
-        └── E-ink ──▶  PillowEinkRenderer(config)  [nessun browser, nessun display server]
-                        Uvicorn sul main thread
-                        InkyButtonHandler.start() — daemon thread GPIO (gpiod)
-                          A → wake_event.set()  → skip sleep, re-render immediato (torna al planner)
+        └── E-ink ──▶  PillowEinkRenderer(config)  [no browser, no display server]
+                        Uvicorn on main thread
+                        InkyButtonHandler.start() — GPIO daemon thread (gpiod)
+                          A → wake_event.set()  → skip sleep, immediate re-render (back to planner)
                           B → _perform_show_artwork() → fetch ARTIC → EinkRenderer → push
-                              (artwork_mode bloccante: sopprime i push del loop finché attiva)
+                              (artwork_mode blocking: suppresses loop pushes while active)
                           D → _perform_shutdown() → render_artwork() → push → sudo shutdown -h now
-                        Loop daemon (cadenza allineata all'orologio — vedi app/scheduling.py):
-                          si sveglia a ogni quarto d'ora (xx:00/15/30/45)
-                          calendario: rifetch a ogni tick; meteo: solo a xx:00
-                          push solo se cambiano i dati (content signature)
-                          NavigationState() → anchor_date = oggi
-                          aggregator.get_events(start, end, force=True) → eventi
+                        Daemon loop (clock-aligned cadence — see app/scheduling.py):
+                          wakes at every quarter-hour (xx:00/15/30/45)
+                          calendar: re-fetch at every tick; weather: only at xx:00
+                          push only if data changes (content signature)
+                          NavigationState() → anchor_date = today
+                          aggregator.get_events(start, end, force=True) → events
                           PillowEinkRenderer.render(state, events) → PIL.Image
-                          se NOT artwork_mode:
-                            EinkRenderer.process(img) → resize + palette + dithering + rotazione
-                            EinkDisplay.push() → SPI → pannello Waveshare
+                          if NOT artwork_mode:
+                            EinkRenderer.process(img) → resize + palette + dithering + rotation
+                            EinkDisplay.push() → SPI → Waveshare panel
 ```
 
 ---
 
-## Rotte Web
+## Web Routes
 
 ### `GET /`
-Pagina HTML minimale con auto-refresh che mostra l'immagine calendario corrente via `<img src="/preview.png">`. L'intervallo di refresh è fisso a `WEB_REFRESH_SECONDS` (900 s = 15 min, allineato alla cadenza del calendario; vedi `app/scheduling.py`). Utile per anteprima browser durante lo sviluppo.
+Minimal HTML page with auto-refresh that shows the current calendar image via `<img src="/preview.png">`. The refresh interval is fixed at `WEB_REFRESH_SECONDS` (900 s = 15 min, aligned with the calendar cadence; see `app/scheduling.py`). Useful for browser preview during development.
 
 ### `GET /preview.png`
-Chiama `PillowEinkRenderer.render(state, events)` on-demand e restituisce l'immagine PNG risultante (`Content-Type: image/png`). È la stessa immagine che verrebbe inviata al pannello e-ink.
+Calls `PillowEinkRenderer.render(state, events)` on-demand and returns the resulting PNG image (`Content-Type: image/png`). This is the same image that would be sent to the e-ink panel.
 
 ### `GET /config`
-Interfaccia web per la configurazione: aggiunta/rimozione calendari, modifica parametri di visualizzazione, test della connessione ai provider.
+Web interface for configuration: add/remove calendars, modify display parameters, test provider connections.
 
 ### `POST /config`
-Salva le modifiche nel file di configurazione e riavvia il server in modo graceful (SIGHUP o riavvio Uvicorn).
+Saves changes to the configuration file and restarts the server gracefully (SIGHUP or Uvicorn restart).
 
 ---
 
-## Integrazione Meteo — Open-Meteo
+## Weather Integration — Open-Meteo
 
-Il meteo è fornito da **Open-Meteo** (`https://api.open-meteo.com`) — API pubblica, gratuita, senza API key, GDPR-compliant, con aggiornamenti ogni ora.
+Weather is provided by **Open-Meteo** (`https://api.open-meteo.com`) — a public, free, no-API-key, GDPR-compliant API with hourly updates.
 
-### Modulo `app/weather/`
+### `app/weather/` module
 
 ```
 app/weather/
-├── __init__.py          # esporta WeatherProvider, OpenMeteoProvider
-├── provider.py          # WeatherProvider: ABC thread-safe — get() → WeatherData
-└── open_meteo.py        # OpenMeteoProvider: fetch + cache in-memory TTL 1h
+├── __init__.py          # exports WeatherProvider, OpenMeteoProvider
+├── provider.py          # WeatherProvider: thread-safe ABC — get() → WeatherData
+└── open_meteo.py        # OpenMeteoProvider: fetch + in-memory cache TTL 1h
 ```
 
 ### API endpoint
@@ -249,87 +249,87 @@ GET https://api.open-meteo.com/v1/forecast
     &forecast_days=2
 ```
 
-`forecast_days=2` è necessario per ottenere 48 slot orari, permettendo di mostrare le 6 previsioni biorarie del giorno corrente anche nelle ore pomeridiane/serali.
+`forecast_days=2` is required to obtain 48 hourly slots, allowing the 6 bi-hourly forecasts for the current day to be shown even in the afternoon/evening hours.
 
-### Cache in-memory
+### In-memory cache
 
-`OpenMeteoProvider` mantiene una cache in-memory protetta da `threading.Lock`:
-- Il campo `_cached_at` registra il timestamp dell'ultimo fetch (`time.monotonic()`)
-- Se `now − cached_at < 3600s` e i dati sono presenti, viene restituita la cache senza chiamate di rete
-- Il fetch HTTP avviene **fuori dal lock** (`timeout=10s`) per non bloccare il thread di rendering
-- In caso di errore HTTP/parse, la cache stale è restituita; se non esiste ancora nessuna cache, viene restituito `WeatherData()` vuoto → il renderer mostra solo la data
+`OpenMeteoProvider` maintains an in-memory cache protected by `threading.Lock`:
+- The `_cached_at` field records the timestamp of the last fetch (`time.monotonic()`)
+- If `now − cached_at < 3600s` and data is present, the cache is returned without network calls
+- The HTTP fetch happens **outside the lock** (`timeout=10s`) to avoid blocking the rendering thread
+- On HTTP/parse error, the stale cache is returned; if no cache exists yet, an empty `WeatherData()` is returned → the renderer shows date only
 
-### Struttura `HourlySlot` e `WeatherData` (`renderer/tokens.py`)
+### `HourlySlot` and `WeatherData` structures (`renderer/tokens.py`)
 
 ```python
 @dataclass
 class HourlySlot:
-    hour: int                            # ora di inizio fascia (0-23, es. 14 → "14:00")
-    condition_icon: str | None = None    # nome icona Tabler
-    temp: float | None = None            # temperatura prevista (°C)
+    hour: int                            # slot start hour (0-23, e.g. 14 → "14:00")
+    condition_icon: str | None = None    # Tabler icon name
+    temp: float | None = None            # forecast temperature (°C)
 
 @dataclass
 class WeatherData:
-    condition_icon: str | None = None   # nome icona Tabler (es. "sun", "cloud-rain")
-    description: str | None = None      # testo italiano (es. "Sereno", "Pioggia")
-    temp_current: float | None = None   # temperatura attuale
-    temp_max: float | None = None       # massima giornaliera
-    temp_min: float | None = None       # minima giornaliera
-    hourly_forecast: list[HourlySlot] = field(default_factory=list)  # 6 slot biorari
+    condition_icon: str | None = None   # Tabler icon name (e.g. "sun", "cloud-rain")
+    description: str | None = None      # description text (e.g. "Clear", "Rain")
+    temp_current: float | None = None   # current temperature
+    temp_max: float | None = None       # daily maximum
+    temp_min: float | None = None       # daily minimum
+    hourly_forecast: list[HourlySlot] = field(default_factory=list)  # 6 bi-hourly slots
 ```
 
-### Mappatura WMO 4677 → icone Tabler
+### WMO 4677 → Tabler icons mapping
 
-| Codici WMO | Condizione | Icona Tabler |
+| WMO codes | Condition | Tabler icon |
 |---|---|---|
-| 0, 1 | Sereno / Prevalentemente sereno | `sun` |
-| 2, 3, 45, 48 | Nuvoloso / Nebbia | `cloud` |
-| 51–65, 66, 67, 80–82, 95–99 | Pioggia / Rovesci / Temporale / Pioggia gelata | `cloud-rain` |
-| 56, 57, 71–77, 85, 86 | Neve / Nevischio gelato | `snowflake` |
+| 0, 1 | Clear / Mainly clear | `sun` |
+| 2, 3, 45, 48 | Cloudy / Fog | `cloud` |
+| 51–65, 66, 67, 80–82, 95–99 | Rain / Showers / Thunderstorm / Freezing rain | `cloud-rain` |
+| 56, 57, 71–77, 85, 86 | Snow / Freezing drizzle | `snowflake` |
 
-Le icone PNG corrispondenti sono caricate a **48 px** da `app/assets/icons/48/{nome}.png` via `load_icon()`. Se l'icona non è disponibile, la zona rimane vuota (nessun fallback testuale).
+The corresponding PNG icons are loaded at **48 px** from `app/assets/icons/48/{name}.png` via `load_icon()`. If the icon is unavailable, the area remains empty (no text fallback).
 
-### Rendering nel banner
+### Rendering in the banner
 
-Il banner è diviso in due fasce:
+The banner is split into two rows:
 
-**Fascia principale (`BANNER_MAIN_HEIGHT = 90 px`)** — `_draw_weather()`:
-- Data corrente in italiano (Playfair Display)
-- Temperatura attuale + max/min giornalieri (IBM Plex Sans)
-- **Icona condizione** a **48 px** caricata da `app/assets/icons/48/{nome}.png` via `load_icon()`, tintata con `palette["INK"]`, posizionata a sinistra della temperatura. Se l'icona non è disponibile, la zona icona rimane vuota (non c'è fallback testuale alla `description`).
+**Main row (`BANNER_MAIN_HEIGHT = 90 px`)** — `_draw_weather()`:
+- Current date (Playfair Display)
+- Current temperature + daily max/min (IBM Plex Sans)
+- **Condition icon** at **48 px** loaded from `app/assets/icons/48/{name}.png` via `load_icon()`, tinted with `palette["INK"]`, positioned to the left of the temperature. If the icon is unavailable, the icon area remains empty (no text fallback to `description`).
 
-**Fascia bioraria (`BANNER_HOURLY_HEIGHT = 127 px`)** — `_draw_hourly_row()`:
-- 6 celle affiancate, ognuna con: orario (IBM Plex Mono xs), icona condizione 48 px, temperatura prevista (IBM Plex Sans semibold sm)
-- I dati provengono da `WeatherData.hourly_forecast` (lista `HourlySlot`)
-- Se `hourly_forecast` è vuota (meteo disabilitato o errore), la fascia non viene disegnata
+**Bi-hourly row (`BANNER_HOURLY_HEIGHT = 127 px`)** — `_draw_hourly_row()`:
+- 6 side-by-side cells, each with: time (IBM Plex Mono xs), 48 px condition icon, forecast temperature (IBM Plex Sans semibold sm)
+- Data comes from `WeatherData.hourly_forecast` (list of `HourlySlot`)
+- If `hourly_forecast` is empty (weather disabled or error), the row is not drawn
 
-### Degradazione graceful
+### Graceful degradation
 
-In tutti i casi di errore (rete assente, API irraggiungibile, risposta malformata), `OpenMeteoProvider.get()` non rilancia eccezioni: restituisce la cache stale se disponibile, altrimenti `WeatherData()` vuoto. Il rendering non viene mai bloccato dalla mancanza di dati meteo.
-
----
-
-## Integrazione Apple Calendar
-
-Apple Calendar è supportato via **CalDAV** attraverso iCloud:
-
-- **URL endpoint**: `https://caldav.icloud.com`
-- **Autenticazione**: App-Specific Password generata su [appleid.apple.com](https://appleid.apple.com) (richiesta per account con 2FA attivo)
-- **Libreria**: `caldav` (Python)
-- Il provider recupera **tutti** i calendari disponibili sull'account (`principal.calendars()`) senza filtro. Il campo `name` nel config è l'etichetta visiva dell'aggregatore (usata nei log), mentre `color` è il colore degli eventi in rendering. Non viene applicato nessun filtro per nome del calendario.
-
-> **Nota sicurezza**: la password non è mai esposta via API web. Il file di configurazione deve avere permessi `600`.
+In all error cases (no network, unreachable API, malformed response), `OpenMeteoProvider.get()` does not raise exceptions: it returns the stale cache if available, otherwise an empty `WeatherData()`. Rendering is never blocked by missing weather data.
 
 ---
 
-## Integrazione Google Calendar (e feed iCal generici)
+## Apple Calendar Integration
 
-Google Calendar e qualsiasi servizio che espone un feed iCalendar via HTTP/HTTPS sono supportati dal tipo `ical`:
+Apple Calendar is supported via **CalDAV** through iCloud:
 
-- **URL**: si ottiene da Google Calendar → *Impostazioni* → *Integra il calendario* → *Indirizzo segreto in formato iCal*
-- **Autenticazione**: non richiesta — l'URL funge da token segreto; non è mai necessario username/password
-- **Schema `webcal://`**: accettato e convertito automaticamente in `https://` da `IcalProvider`
-- **Libreria**: `requests` (già inclusa) + `icalendar` (stessa pipeline di `IcsProvider`)
+- **Endpoint URL**: `https://caldav.icloud.com`
+- **Authentication**: App-Specific Password generated at [appleid.apple.com](https://appleid.apple.com) (required for accounts with 2FA enabled)
+- **Library**: `caldav` (Python)
+- The provider fetches **all** available calendars on the account (`principal.calendars()`) without filtering. The `name` field in the config is the aggregator's visual label (used in logs), while `color` is the event colour in rendering. No filtering by calendar name is applied.
+
+> **Security note**: the password is never exposed via the web API. The configuration file must have `600` permissions.
+
+---
+
+## Google Calendar Integration (and generic iCal feeds)
+
+Google Calendar and any service that exposes an iCalendar feed via HTTP/HTTPS are supported by the `ical` type:
+
+- **URL**: obtained from Google Calendar → *Settings* → *Integrate calendar* → *Secret address in iCal format*
+- **Authentication**: not required — the URL acts as a secret token; no username/password is ever needed
+- **`webcal://` scheme**: accepted and automatically converted to `https://` by `IcalProvider`
+- **Library**: `requests` (already included) + `icalendar` (same pipeline as `IcsProvider`)
 
 ```yaml
 calendars:
@@ -339,21 +339,21 @@ calendars:
     color: "#27AE60"
 ```
 
-> **Nota sicurezza**: l'URL iCal di Google Calendar contiene un identificatore segreto. Trattarlo come una password: non condividerlo e non includerlo nei log. Il file di configurazione deve avere permessi `600`.
+> **Security note**: the Google Calendar iCal URL contains a secret identifier. Treat it like a password: do not share it and do not include it in logs. The configuration file must have `600` permissions.
 
 ---
 
-## Strategie di Display
+## Display Strategies
 
-### Architettura generale
+### General architecture
 
-Family Planner adotta un **renderer unico** — `PillowEinkRenderer` — condiviso da HDMI ed e-ink. Non viene avviato alcun browser né processo Chromium.
+Family Planner uses a **single renderer** — `PillowEinkRenderer` — shared by HDMI and e-ink. No browser or Chromium process is started.
 
 ```
-           NavigationState() — sempre oggi
+           NavigationState() — always today
                     │
    PillowEinkRenderer (HDMI + e-ink)
-   Pillow nativo — render(state, events)
+   native Pillow — render(state, events)
    → PIL.Image
           │
    ┌──────┴──────┐                    ┌──────────────────┐
@@ -361,7 +361,7 @@ Family Planner adotta un **renderer unico** — `PillowEinkRenderer` — condivi
    │  (pygame)   │                    │ resize/quantize  │
    │ main thread │                    │ dither           │
    │ SDL window  │                    └─────────┬────────┘
-   └─────────────┘                             │ PIL.Image quantizzata
+   └─────────────┘                             │ quantised PIL.Image
                                     ┌──────────▼─────────┐
                                     │    EinkDisplay      │
                                     │    (Waveshare SPI)  │
@@ -370,91 +370,91 @@ Family Planner adotta un **renderer unico** — `PillowEinkRenderer` — condivi
 
 ### HDMI — pygame
 
-`display/hdmi.py` apre una finestra SDL tramite `pygame` e renderizza direttamente l'immagine `PIL.Image` prodotta da `PillowEinkRenderer`.
+`display/hdmi.py` opens an SDL window via `pygame` and renders the `PIL.Image` produced by `PillowEinkRenderer` directly.
 
-**Thread model**: su macOS SDL/Cocoa deve girare sul main thread. Per questo motivo:
-- `HdmiDisplay.run_blocking()` esegue il loop pygame sul thread chiamante (main thread)
-- Uvicorn gira in un background thread (`threading.Thread`)
+**Thread model**: on macOS, SDL/Cocoa must run on the main thread. For this reason:
+- `HdmiDisplay.run_blocking()` runs the pygame loop on the calling thread (main thread)
+- Uvicorn runs in a background thread (`threading.Thread`)
 
-**Loop pygame:**
+**pygame loop:**
 ```
 run_blocking()
   → pygame.init() → display.set_mode(width × height)
-  loop ogni ~100 ms:
+  loop every ~100 ms:
     NavigationState() → PillowEinkRenderer.render(state, events) → pygame.Surface
     pygame.display.flip()
-    eventi tastiera: q/F4 quit
+    keyboard events: q/F4 quit
 ```
 
-**Re-render**: a ogni quarto d'ora (rifetch del calendario; il meteo a `xx:00`) o al cambio di data a mezzanotte. Il frame viene ridisegnato solo se i dati cambiano. Cadenze in `app/scheduling.py`.
+**Re-render**: at every quarter-hour (calendar re-fetch; weather at `xx:00`) or on date change at midnight. The frame is redrawn only if data changes. Cadences in `app/scheduling.py`.
 
-**Modalità fullscreen** (`fullscreen: true`): `pygame.FULLSCREEN | pygame.NOFRAME` — nessun flag shell necessario.
+**Fullscreen mode** (`fullscreen: true`): `pygame.FULLSCREEN | pygame.NOFRAME` — no shell flags required.
 
-**Modalità sviluppo** (`fullscreen: false`): finestra dimensionata `width × height` dalla configurazione.
+**Development mode** (`fullscreen: false`): sized `width × height` window from configuration.
 
-**Su Raspberry Pi con Wayland**: impostare le variabili `WAYLAND_DISPLAY` / `XDG_RUNTIME_DIR` nell'environment del service systemd. Con X11: `DISPLAY=:0`.
+**On Raspberry Pi with Wayland**: set `WAYLAND_DISPLAY` / `XDG_RUNTIME_DIR` variables in the systemd service environment. With X11: `DISPLAY=:0`.
 
-### E-ink — PillowEinkRenderer (Pillow nativo, senza browser)
+### E-ink — PillowEinkRenderer (native Pillow, no browser)
 
-Il loop e-ink non avvia alcun processo Chromium. Il rendering avviene interamente in-process tramite **`PillowEinkRenderer`** (`renderer/pillow_eink_renderer.py`), che produce un `PIL.Image` direttamente da `NavigationState` e dalla lista eventi. I font TTF sono caricati da `app/assets/fonts/` — nessuna chiamata di rete.
+The e-ink loop starts no Chromium process. Rendering happens entirely in-process via **`PillowEinkRenderer`** (`renderer/pillow_eink_renderer.py`), which produces a `PIL.Image` directly from `NavigationState` and the event list. TTF fonts are loaded from `app/assets/fonts/` — no network calls.
 
-`main.py` avvia un thread daemon che si sveglia a ogni confine di quarto d'ora (`xx:00`/`xx:15`/`xx:30`/`xx:45`, vedi `app/scheduling.py`). A ogni tick rifetcha il calendario; il meteo solo a `xx:00`. Quando le due cadenze coincidono (`xx:00`) viene eseguito un solo ciclo. Il push al pannello avviene solo se la *content signature* (`_content_signature`) cambia. Il pulsante A forza un refresh immediato di meteo **e** calendario:
+`main.py` starts a daemon thread that wakes at every quarter-hour boundary (`xx:00`/`xx:15`/`xx:30`/`xx:45`, see `app/scheduling.py`). At each tick it re-fetches the calendar; weather only at `xx:00`. When both cadences coincide (`xx:00`) only one cycle is run. The push to the panel happens only if the *content signature* (`_content_signature`) changes. Button A forces an immediate refresh of both weather **and** calendar:
 
-1. **`NavigationState()`** crea un nuovo stato con `anchor_date = date.today()`.
-2. **`aggregator.get_events(start, end, force=True)`** recupera gli eventi freschi per l'intervallo della vista corrente.
-3. **`PillowEinkRenderer.render(state, events)`** produce un `PIL.Image` RGB nelle dimensioni configurate (`display.width × display.height`).
-4. **`EinkRenderer`** (`renderer/eink_renderer.py`) applica:
-   - **Ridimensionamento** alla risoluzione nativa del pannello (13 modelli Waveshare supportati)
-   - **Quantizzazione palette**: B&W (1 bit), BWR (3 colori), 4-gray — configurabile via `eink_palette`
-   - **Dithering Floyd-Steinberg** — opzionale, via `eink_dither: true`
-5. **`EinkDisplay`** (`display/eink.py`) invia l'immagine al pannello via il driver Waveshare appropriato, caricato dinamicamente:
+1. **`NavigationState()`** creates a new state with `anchor_date = date.today()`.
+2. **`aggregator.get_events(start, end, force=True)`** fetches fresh events for the current view's range.
+3. **`PillowEinkRenderer.render(state, events)`** produces an RGB `PIL.Image` at the configured dimensions (`display.width × display.height`).
+4. **`EinkRenderer`** (`renderer/eink_renderer.py`) applies:
+   - **Resize** to the panel's native resolution (13 Waveshare models supported)
+   - **Palette quantisation**: B&W (1-bit), BWR (3 colours), 4-gray — configurable via `eink_palette`
+   - **Floyd-Steinberg dithering** — optional, via `eink_dither: true`
+5. **`EinkDisplay`** (`display/eink.py`) sends the image to the panel via the appropriate Waveshare driver, loaded dynamically:
    ```python
-   # Import protetto — si attiva solo quando display.type == "eink"
-   from waveshare_epd import epd13in3k  # esempio modello 13.3"
+   # Guarded import — only active when display.type == "eink"
+   from waveshare_epd import epd13in3k  # example 13.3" model
    ```
-   Questo garantisce che il codice sia eseguibile su macOS/Linux senza le librerie hardware.
+   This ensures the code is runnable on macOS/Linux without hardware libraries.
 
-> **Pannelli supportati**: 13 modelli Waveshare (mappatura `eink_model → modulo` in `display/eink.py`) + 3 Pimoroni Inky Impression Spectra 6 (`inky_impression_4`, `inky_impression_7`, `inky_impression_13`) con risoluzioni definite in `renderer/eink_renderer.py`.
+> **Supported panels**: 13 Waveshare models (mapping `eink_model → module` in `display/eink.py`) + 3 Pimoroni Inky Impression Spectra 6 (`inky_impression_4`, `inky_impression_7`, `inky_impression_13`) with resolutions defined in `renderer/eink_renderer.py`.
 
-> **Refresh time**: i pannelli e-ink Waveshare impiegano tipicamente 15–30 secondi per un aggiornamento completo. Le cadenze (calendario 15 min, meteo 1 ora) sono fisse e ampiamente superiori a questo limite; il push avviene comunque solo quando i dati cambiano.
+> **Refresh time**: Waveshare e-ink panels typically take 15–30 seconds for a full update. The cadences (calendar 15 min, weather 1 hour) are fixed and well above this limit; the push occurs only when data changes.
 
-> **Su RPi**: il loop e-ink non richiede un display server — funziona su RPi OS Lite senza X11 o Wayland. Con `display.type: "eink"`, `pygame` non viene mai importato.
+> **On RPi**: the e-ink loop requires no display server — it runs on RPi OS Lite without X11 or Wayland. With `display.type: "eink"`, `pygame` is never imported.
 
-### Schermata Home — Unica Vista
+### Home Screen — Single View
 
-L'interfaccia è costituita da un'**unica schermata Home** — non esiste gerarchia di viste né navigazione. Il `NavigationState` porta un solo campo: `anchor_date = date.today()`, usato per determinare il mese del mini-calendario e la finestra di 30 giorni della lista appuntamenti.
+The interface consists of a **single Home screen** — no view hierarchy or navigation exists. `NavigationState` carries a single field: `anchor_date = date.today()`, used to determine the mini-calendar month and the 30-day appointment list window.
 
-`PillowEinkRenderer.render(state, events)` delega a quattro componenti, ognuno ricevendo il proprio `Rect`:
+`PillowEinkRenderer.render(state, events)` delegates to four components, each receiving its own `Rect`:
 
-| Componente | Metodo | `Rect` (portrait) | `Rect` (landscape) |
+| Component | Method | `Rect` (portrait) | `Rect` (landscape) |
 |---|---|---|---|
-| Banner meteo | `_draw_weather()` + `_draw_hourly_row()` | `(0, 0, W, 217)` | `(0, 0, col_left, 217)` |
-| Mini-calendario | `_draw_mini_calendar()` | `(0, 217, W, 560)` | `(0, 217, col_left, H−271)` |
-| Lista appuntamenti | `_draw_agenda()` | `(0, 777, W, H−831)` | `(col_left, 0, col_right, H−54)` |
+| Weather banner | `_draw_weather()` + `_draw_hourly_row()` | `(0, 0, W, 217)` | `(0, 0, col_left, 217)` |
+| Mini-calendar | `_draw_mini_calendar()` | `(0, 217, W, 560)` | `(0, 217, col_left, H−271)` |
+| Agenda list | `_draw_agenda()` | `(0, 777, W, H−831)` | `(col_left, 0, col_right, H−54)` |
 | Footer | `_draw_footer()` | `(0, H−54, W, 54)` | `(0, H−54, W, 54)` |
 
-dove `col_left = int(W × 0.50)` e `col_right = W − col_left`.
+where `col_left = int(W × 0.50)` and `col_right = W − col_left`.
 
-> **Componente meteo**: la struttura `WeatherData` (icona condizione, descrizione testuale, temperatura attuale, max/min giornalieri) è prodotta da `OpenMeteoProvider.get()` — chiamata dentro `PillowEinkRenderer.render()` se il provider è stato iniettato. In assenza di provider (o se `weather.enabled: false`), `WeatherData` rimane vuota e il banner mostra solo la data.
+> **Weather component**: the `WeatherData` structure (condition icon, text description, current temperature, daily max/min) is produced by `OpenMeteoProvider.get()` — called inside `PillowEinkRenderer.render()` if the provider was injected. Without a provider (or if `weather.enabled: false`), `WeatherData` remains empty and the banner shows date only.
 
 ---
 
-## Architettura Componenti Grafici — Bounds Espliciti
+## Graphic Component Architecture — Explicit Bounds
 
-Ogni componente `_draw_*` di `PillowEinkRenderer` riceve i propri limiti di disegno come parametro esplicito `rect: Rect`. Non legge costanti di layout globali al proprio interno.
+Each `_draw_*` component of `PillowEinkRenderer` receives its drawing bounds as an explicit `rect: Rect` parameter. It does not read global layout constants internally.
 
-### Tipo `Rect`
+### `Rect` type
 
 ```python
 # renderer/tokens.py
 Rect = tuple[int, int, int, int]  # (x, y, width, height)
 ```
 
-### Regola fondamentale
+### Fundamental rule
 
-`render()` è il **solo** punto dell'intera codebase dove si calcola la **partizione** dei `Rect` (suddivisione di `W × H` fra le zone banner/calendario/agenda/footer). I `_draw_*` **possono** leggere `self._layout` e le costanti di sotto-componente (es. `BANNER_MAIN_HEIGHT`, `BANNER_HOURLY_HEIGHT`) per posizionare elementi interni alla propria zona, ma non ricalcolano la partizione globale.
+`render()` is the **only** point in the entire codebase where the `Rect` **partition** is calculated (subdivision of `W × H` across banner/calendar/agenda/footer zones). The `_draw_*` methods **may** read `self._layout` and sub-component constants (e.g. `BANNER_MAIN_HEIGHT`, `BANNER_HOURLY_HEIGHT`) to position internal elements within their zone, but must not recalculate the global partition.
 
-### Firme dei componenti Home
+### Home component signatures
 
 ```python
 def _draw_weather(
@@ -483,7 +483,7 @@ def _draw_footer(
 ) -> None: ...
 ```
 
-### Calcolo dei `Rect` in `render()`
+### `Rect` calculation in `render()`
 
 ```python
 def render(self, state: NavigationState, events: list) -> Image.Image:
@@ -514,66 +514,66 @@ def render(self, state: NavigationState, events: list) -> Image.Image:
     return img
 ```
 
-### Coordinate assolute nei componenti
+### Absolute coordinates in components
 
-All'interno di ogni `_draw_*`, le coordinate assolute sul canvas si ricavano sempre dall'origine del `rect` ricevuto:
+Inside each `_draw_*`, absolute canvas coordinates are always derived from the origin of the received `rect`:
 
 ```python
 x0, y0, w, h = rect
-# disegno di un testo a (local_x, local_y) relativo al componente:
+# drawing text at (local_x, local_y) relative to the component:
 draw.text((x0 + local_x, y0 + local_y), text, font=font, fill=color)
 ```
 
-### Benefici
+### Benefits
 
-- **Testabilità**: ogni componente è esercitabile su un canvas di dimensioni arbitrarie, senza configurazione globale del display.
-- **Separazione di responsabilità**: il layout vive solo in `render()`; i componenti non conoscono la struttura globale.
-- **Estensibilità**: aggiungere un nuovo componente o variante di layout richiede solo un nuovo `Rect` in `render()` e un nuovo metodo `_draw_*`.
+- **Testability**: each component can be exercised on a canvas of arbitrary dimensions, without global display configuration.
+- **Separation of concerns**: layout lives only in `render()`; components have no knowledge of the global structure.
+- **Extensibility**: adding a new component or layout variant requires only a new `Rect` in `render()` and a new `_draw_*` method.
 
-### Scope del Refactoring
+### Refactoring scope
 
-Riguarda **esclusivamente** `PillowEinkRenderer` (`renderer/pillow_eink_renderer.py`) e l'aggiunta di `Rect` + costanti rinominate in `renderer/tokens.py`. I provider calendario e FastAPI non sono coinvolti.
+Concerns **exclusively** `PillowEinkRenderer` (`renderer/pillow_eink_renderer.py`) and the addition of `Rect` + renamed constants in `renderer/tokens.py`. Calendar providers and FastAPI are not involved.
 
 ---
 
-## Multipiattaforma
+## Cross-platform
 
-| Comportamento | Mac (sviluppo) | Linux / Raspberry Pi (produzione) |
+| Behaviour | Mac (development) | Linux / Raspberry Pi (production) |
 |---|---|---|
-| `display.fullscreen: false` | pygame, finestra `width × height` | pygame, finestra `width × height` |
+| `display.fullscreen: false` | pygame, `width × height` window | pygame, `width × height` window |
 | `display.fullscreen: true` | pygame fullscreen (SDL) | pygame fullscreen + Wayland/X11 |
-| Thread model HDMI | pygame sul main thread, Uvicorn in bg thread | idem |
-| Display e-ink | PillowEinkRenderer (Pillow nativo); driver Waveshare non caricato | PillowEinkRenderer (Pillow nativo); driver Waveshare via SPI |
-| Calendario | CalDAV / ICS / iCal via rete o file locale | CalDAV / ICS / iCal via rete o file locale |
-| Avvio automatico | Manuale / script locale | systemd (`family-planner.service`) |
+| HDMI thread model | pygame on main thread, Uvicorn in bg thread | same |
+| E-ink display | PillowEinkRenderer (native Pillow); Waveshare driver not loaded | PillowEinkRenderer (native Pillow); Waveshare driver via SPI |
+| Calendar | CalDAV / ICS / iCal via network or local file | CalDAV / ICS / iCal via network or local file |
+| Auto-start | Manual / local script | systemd (`family-planner.service`) |
 
 ---
 
-## Script di Deploy e Autostart
+## Deploy and Autostart Scripts
 
 ### `scripts/deploy.sh`
-Esegue il deploy sul Raspberry Pi via SSH + `rsync`:
+Deploys to the Raspberry Pi via SSH + `rsync`:
 
 ```
-1. rsync dell'intera cartella (esclusi .git, __pycache__, venv)
+1. rsync of the entire folder (excluding .git, __pycache__, venv)
 2. SSH: pip install -r requirements.txt
 3. SSH: systemctl daemon-reload && systemctl restart family-planner
 ```
 
-Variabili configurabili: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_PATH`.
+Configurable variables: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_PATH`.
 
 ### `scripts/install.sh`
-Eseguito una tantum sul dispositivo:
-- Installa dipendenze di sistema (`python3-pip`, `python3-pygame`, librerie SPI per e-ink)
-- Crea il virtualenv
-- Installa i pacchetti Python da `requirements.txt`
-- Copia il file systemd in `/etc/systemd/system/`
+Run once on the device:
+- Installs system dependencies (`python3-pip`, `python3-pygame`, SPI libraries for e-ink)
+- Creates the virtualenv
+- Installs Python packages from `requirements.txt`
+- Copies the systemd file to `/etc/systemd/system/`
 
 ### `scripts/setup-autostart.sh`
-- Abilita e avvia il servizio systemd:
-  - `family-planner.service` — server Python + gestione display (tutto in un unico processo)
-- Per display HDMI: imposta le variabili d'ambiente Wayland (`WAYLAND_DISPLAY`, `XDG_RUNTIME_DIR`) o X11 (`DISPLAY`) nel service
-- Per display e-ink: nessun display server richiesto
+- Enables and starts the systemd service:
+  - `family-planner.service` — Python server + display management (all in a single process)
+- For HDMI display: sets Wayland (`WAYLAND_DISPLAY`, `XDG_RUNTIME_DIR`) or X11 (`DISPLAY`) environment variables in the service
+- For e-ink display: no display server required
 
 ### `systemd/family-planner.service`
 ```ini
@@ -594,43 +594,43 @@ RestartSec=10
 WantedBy=multi-user.target
 ```
 
-> **Nota HDMI**: Per la modalità HDMI con pygame su RPi con Wayland, aggiungere `After=graphical.target` e le variabili `WAYLAND_DISPLAY` / `XDG_RUNTIME_DIR` (o `DISPLAY=:0` per X11) nell'environment del service. Per la modalità e-ink non è necessario alcun display server.
+> **HDMI note**: For HDMI mode with pygame on RPi with Wayland, add `After=graphical.target` and the `WAYLAND_DISPLAY` / `XDG_RUNTIME_DIR` variables (or `DISPLAY=:0` for X11) to the service environment. For e-ink mode no display server is needed.
 
 ---
 
-## Sicurezza
+## Security
 
-- Il file di configurazione (con credenziali) deve avere permessi `600` (`chmod 600 config.yaml`); la correttezza dei permessi è verificata all'avvio da `_check_file_permissions` in `config.py`
-- Il server web è in ascolto su `0.0.0.0` di default; se non è configurata la Basic Auth (vedi sotto) e il bind non è su loopback, all'avvio viene emesso un **warning esplicito** nei log
-- **`GET /config`**: le password CalDAV, gli URL iCal segreti e `server.auth_password` sono **azzerate** nella risposta tramite `_safe_config_dict` — mai esposte in chiaro
-- **`GET /api/config/download`**: restituisce un YAML sanitizzato (stessa logica di `_safe_config_dict`) — nessuna credenziale lascia il dispositivo via HTTP. Al ripristino del backup le password vanno reinserite manualmente
-- **Basic Auth opzionale** sulle rotte `/config` e `/api/config/*`: se `server.auth_username` e `server.auth_password` sono impostati nel config, un confronto in tempo costante protegge tutte le rotte di configurazione. Le rotte di sola anteprima (`/`, `/preview.png`, `/preview-eink.png`) restano sempre aperte — mostrano solo il calendario, privo di credenziali
-- Le credenziali non appaiono mai nei log di sistema o nei messaggi di errore
+- The configuration file (containing credentials) must have `600` permissions (`chmod 600 config.yaml`); correct permissions are verified at startup by `_check_file_permissions` in `config.py`
+- The web server listens on `0.0.0.0` by default; if Basic Auth is not configured (see below) and the bind is not on loopback, an **explicit warning** is emitted in the logs at startup
+- **`GET /config`**: CalDAV passwords, secret iCal URLs, and `server.auth_password` are **cleared** in the response via `_safe_config_dict` — never exposed in plaintext
+- **`GET /api/config/download`**: returns a sanitised YAML (same logic as `_safe_config_dict`) — no credentials leave the device via HTTP. Passwords must be re-entered manually on backup restore
+- **Optional Basic Auth** on `/config` and `/api/config/*` routes: if `server.auth_username` and `server.auth_password` are set in the config, a constant-time comparison protects all configuration routes. Preview-only routes (`/`, `/preview.png`, `/preview-eink.png`) remain always open — they show only the calendar, which contains no credentials
+- Credentials never appear in system logs or error messages
 
 ---
 
-## Dipendenze Principali (`requirements.txt`)
+## Main Dependencies (`requirements.txt`)
 
 ```
 fastapi
 uvicorn[standard]
 jinja2
 pydantic>=2.0
-eval_type_backport         # compatibilità type hints Python 3.9
+eval_type_backport         # Python 3.9 type hints compatibility
 pyyaml
 caldav
-requests                   # HTTP per iCal URL provider + Open-Meteo weather API
+requests                   # HTTP for iCal URL provider + Open-Meteo weather API
 icalendar
-pillow                     # renderer unico (PillowEinkRenderer) + post-processing (EinkRenderer)
-pygame                     # display HDMI — finestra SDL, rendering PIL.Image diretto
-python-multipart           # form POST /config
-python-dateutil            # rrule expansion in IcsProvider (ricorrenze)
-# waveshare-epaper (opzionale — solo su RPi con display e-ink)
+pillow                     # single renderer (PillowEinkRenderer) + post-processing (EinkRenderer)
+pygame                     # HDMI display — SDL window, direct PIL.Image rendering
+python-multipart           # POST /config form
+python-dateutil            # rrule expansion in IcsProvider (recurrences)
+# waveshare-epaper (optional — RPi with e-ink display only)
 ```
 
 ---
 
-## Diagramma Componenti
+## Component Diagram
 
 ```
 ┌───────────────────────────────────────────────────────────────────────┐
@@ -640,8 +640,8 @@ python-dateutil            # rrule expansion in IcsProvider (ricorrenze)
        │                                                 │
 ┌──────▼──────┐                                ┌────────▼────────┐
 │  FastAPI    │                                │   Aggregator    │
-│  GET /      │   NavigationState() creato     │   (calendari)   │
-│  GET /prev. │   fresh a ogni render          └────────┬────────┘
+│  GET /      │   NavigationState() created    │   (calendars)   │
+│  GET /prev. │   fresh at every render        └────────┬────────┘
 │  GET /prev-e│   anchor_date = date.today()     ┌──────┴──────┐
 │  GET /config│                                  │             │
 │  POST/config│                              ┌───▼──┐  ┌───────▼────┐
@@ -650,9 +650,9 @@ python-dateutil            # rrule expansion in IcsProvider (ricorrenze)
                           ┌──────────────────┐└─────┘  └────────────┘
                           │  PillowEinkRenderer │
                           │  (HDMI + e-ink)     │◀──── OpenMeteoProvider
-                          │  Pillow nativo      │      cache in-memory
+                          │  native Pillow      │      in-memory cache
                           │  state + events     │      TTL 1h
-                          │  + WeatherData      │      (opzionale)
+                          │  + WeatherData      │      (optional)
                           └─────────┬───────────┘
                                     │ PIL.Image
                ┌────────────────────┴─────────────────────┐
@@ -662,7 +662,7 @@ python-dateutil            # rrule expansion in IcsProvider (ricorrenze)
     │   pygame window   │                    │    resize/quantize │
     │   (main thread)   │                    │    dither          │
     └───────────────────┘                    └────────────┬───────┘
-                                                          │ PIL.Image quantizzata
+                                                          │ quantised PIL.Image
                                              ┌────────────▼───────┐
                                              │    EinkDisplay      │
                                              │    (Waveshare SPI)  │
@@ -671,19 +671,19 @@ python-dateutil            # rrule expansion in IcsProvider (ricorrenze)
 
 ---
 
-## Modalità Artwork e Privacy
+## Artwork and Privacy Mode
 
-### Razionale
+### Rationale
 
-Il display mostra dati calendario di famiglia in un luogo condiviso. Per preservare la privacy quando ci sono ospiti o quando il dispositivo non è in uso, il pulsante **B** (Inky Impression) o il tasto `B` (pygame HDMI) sostituisce istantaneamente la schermata del planner con un dipinto di dominio pubblico recuperato dall'**Art Institute of Chicago**.
+The display shows family calendar data in a shared location. To preserve privacy when guests are present or when the device is not in use, button **B** (Inky Impression) or key `B` (pygame HDMI) instantly replaces the planner screen with a public-domain painting fetched from the **Art Institute of Chicago**.
 
-### Flusso (e-ink)
+### Flow (e-ink)
 
 ```
-Pulsante B premuto (GPIO callback — thread gpiod)
+Button B pressed (GPIO callback — gpiod thread)
     │
     ▼
-artwork_mode.set()  ← il loop e-ink sopprime i push successivi
+artwork_mode.set()  ← the e-ink loop suppresses subsequent pushes
     │
     ▼
 threading.Thread("artwork-push").start()
@@ -691,80 +691,80 @@ threading.Thread("artwork-push").start()
     ├─ PillowEinkRenderer.render_artwork()
     │       └─ _fetch_artwork(W, H, query)
     │               └─ POST artic.edu/api/v1/artworks/search
-    │               └─ GET IIIF image  (fino a _MAX_ATTEMPTS=5 tentativi)
+    │               └─ GET IIIF image  (up to _MAX_ATTEMPTS=5 attempts)
     │               └─ ImageOps.fit → PIL.Image RGB (W×H)
     │               └─ _draw_artwork_caption()
-    ├─ EinkRenderer.process(img)  ← quantizzazione + rotazione
-    └─ EinkDisplay.push() → SPI → pannello
+    ├─ EinkRenderer.process(img)  ← quantisation + rotation
+    └─ EinkDisplay.push() → SPI → panel
 ```
 
-Pressione di **A** → `wake_event.set()` + `artwork_mode.clear()` → il loop normale riprende immediatamente, sovrascrivendo l'artwork con il planner aggiornato.
+Pressing **A** → `wake_event.set()` + `artwork_mode.clear()` → the normal loop resumes immediately, overwriting the artwork with the updated planner.
 
-### Flusso (HDMI)
+### Flow (HDMI)
 
-Tasto `D` → `shutdown_requested = True` → `render_artwork()` → `pygame.Surface` → `screen.blit` → `running = False` → `pygame.quit()`.
+Key `D` → `shutdown_requested = True` → `render_artwork()` → `pygame.Surface` → `screen.blit` → `running = False` → `pygame.quit()`.
 
-### Schermata di spegnimento
+### Shutdown screen
 
-Pressione di **D** avvia `_perform_shutdown()`:
+Pressing **D** starts `_perform_shutdown()`:
 
-1. `stop_event.set()` — ferma il loop e-ink
-2. `renderer.render_artwork()` → `EinkRenderer.process()` → `EinkDisplay.push()` (immagine statica finale sul pannello)
-3. `server.should_exit = True` — termina Uvicorn
-4. `subprocess.run(["sudo", "shutdown", "-h", "now"])` — spegne il sistema
+1. `stop_event.set()` — stops the e-ink loop
+2. `renderer.render_artwork()` → `EinkRenderer.process()` → `EinkDisplay.push()` (final static image on the panel)
+3. `server.should_exit = True` — terminates Uvicorn
+4. `subprocess.run(["sudo", "shutdown", "-h", "now"])` — shuts down the system
 
-In caso di errore durante il fetch/push dell'artwork, il fallback è uno schermo bianco (`BG` palette), per garantire comunque lo spegnimento.
+If an error occurs during artwork fetch/push, the fallback is a white screen (`BG` palette), to ensure shutdown proceeds regardless.
 
 ---
 
-## Rotazione Schermo
+## Screen Rotation
 
-`display.rotation` accetta i valori `0`, `90`, `180`, `270` (gradi orari). La rotazione avviene in **`EinkRenderer.process()`**, come ultimo step del post-processing:
+`display.rotation` accepts the values `0`, `90`, `180`, `270` (clockwise degrees). Rotation happens in **`EinkRenderer.process()`**, as the last step of post-processing:
 
 ```python
-# 1. Resize — per 90°/270° le dimensioni di input sono invertite rispetto alla
-#    risoluzione nativa del pannello.
+# 1. Resize — for 90°/270° the input dimensions are swapped relative to the
+#    panel's native resolution.
 W, H = self._size
 resize_target = (H, W) if self._rotation in (90, 270) else (W, H)
 resized = image.resize(resize_target, Image.Resampling.LANCZOS)
 
-# 2. Quantizzazione palette (bw / bwr / 4gray / spectra6)
+# 2. Palette quantisation (bw / bwr / 4gray / spectra6)
 result = self._quantise_*(resized, dither_mode)
 
-# 3. Rotazione — PIL usa convenzione antioraria; neghiamo il valore
-#    per ottenere la rotazione oraria attesa.
+# 3. Rotation — PIL uses a counter-clockwise convention; we negate the value
+#    to obtain the expected clockwise rotation.
 if self._rotation:
     result = result.rotate(-self._rotation, expand=True)
 ```
 
-**Logica dimensioni**: se il pannello è 800×480 e `rotation=90`, il renderer Pillow genera un'immagine 480×800 (orientamento portrait), che viene poi ruotata di -90° → 800×480 fisici. La configurazione `display.width` e `display.height` descrive sempre il **canvas logico** (prima della rotazione).
+**Dimension logic**: if the panel is 800×480 and `rotation=90`, the Pillow renderer produces a 480×800 image (portrait orientation), which is then rotated by -90° → 800×480 physical pixels. The `display.width` and `display.height` configuration always describes the **logical canvas** (before rotation).
 
-**Su HDMI**: la rotazione non è gestita da `HdmiDisplay` — la finestra pygame ha sempre le dimensioni `display.width × display.height`. Per ruotare un display fisico collegato via HDMI usare le impostazioni di sistema (Wayland/X11) o la configurazione del kernel RPi (`display_rotate` in `config.txt`).
+**On HDMI**: rotation is not handled by `HdmiDisplay` — the pygame window always has the `display.width × display.height` dimensions. To rotate a physical display connected via HDMI, use system settings (Wayland/X11) or the RPi kernel configuration (`display_rotate` in `config.txt`).
 
 ---
 
-## Debito tecnico noto
+## Known Technical Debt
 
-I seguenti item sono stati valutati e deliberatamente deferiti. Ogni voce indica i file coinvolti e la motivazione del rinvio.
+The following items have been evaluated and deliberately deferred. Each entry lists the files involved and the rationale for deferral.
 
-### 4.4 — Split di `pillow_eink_renderer.py`
+### 4.4 — Split of `pillow_eink_renderer.py`
 
-**File coinvolti:** `app/renderer/pillow_eink_renderer.py` (~1400 righe)
+**Files involved:** `app/renderer/pillow_eink_renderer.py` (~1400 lines)
 
-**Descrizione:** Il file può essere suddiviso in sottomoduli a comportamento invariato:
+**Description:** The file can be split into submodules with no behavioural change:
 
-| Nuovo modulo | Contenuto estratto |
+| New module | Extracted content |
 |---|---|
-| `artwork.py` | `_fetch_artwork`, costanti ARTIC, `render_artwork`, `_draw_artwork_caption` |
+| `artwork.py` | `_fetch_artwork`, ARTIC constants, `render_artwork`, `_draw_artwork_caption` |
 | `text_layout.py` | `_fit_mixed`, `_measure_mixed`, `_draw_mixed`, `_wrap_rich_lines`, `_ellipsize`, `_measure_span_text` |
-| `home_renderer.py` | la classe `PillowEinkRenderer` orchestratrice (`render`, `_draw_*`) |
+| `home_renderer.py` | the orchestrating `PillowEinkRenderer` class (`render`, `_draw_*`) |
 
-**Motivazione del rinvio:** Il refactoring è invasivo (molti import interni da aggiustare) e non porta benefici funzionali. I test visivi esistenti coprono già il comportamento. Rinviato a una versione futura quando le dimensioni del file diventeranno un ostacolo concreto alla manutenzione.
+**Rationale for deferral:** The refactoring is invasive (many internal imports to fix) and provides no functional benefit. Existing visual tests already cover the behaviour. Deferred to a future version when the file size becomes a concrete maintenance obstacle.
 
-### 4.5 — Deduplicare il parsing eventi CalDAV/ICS
+### 4.5 — Deduplicate CalDAV/ICS event parsing
 
-**File coinvolti:** `app/calendar/caldav_provider.py` (`_component_to_event`, riga ~128), `app/calendar/ics_provider.py` (`_expand_component`, riga ~110)
+**Files involved:** `app/calendar/caldav_provider.py` (`_component_to_event`, line ~128), `app/calendar/ics_provider.py` (`_expand_component`, line ~110)
 
-**Descrizione:** I due metodi condividono l'estrazione di DTSTART/DTEND/DURATION/attendees/UID/SUMMARY. Si potrebbe estrarre un helper comune in `base.py`.
+**Description:** The two methods share extraction of DTSTART/DTEND/DURATION/attendees/UID/SUMMARY. A common helper could be extracted into `base.py`.
 
-**Motivazione del rinvio:** L'estrazione ha sottili differenze tra i due provider (CalDAV gestisce timezone via `vDatetime`, ICS usa `rrulestr`). Un refactoring affrettato rischierebbe di introdurre regressioni su casi limite di timezone. Rinviato a quando entrambi i provider verranno estesi con nuove funzionalità che giustifichino l'unificazione.
+**Rationale for deferral:** The extraction has subtle differences between the two providers (CalDAV handles timezones via `vDatetime`, ICS uses `rrulestr`). A hasty refactoring would risk introducing regressions on timezone edge cases. Deferred until both providers are extended with new features that justify the unification.

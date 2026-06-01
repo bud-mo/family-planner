@@ -1,20 +1,20 @@
-# Best Practices — Configurazione Dispositivi Embedded (Raspberry Pi)
+# Best Practices - Embedded Device Configuration (Raspberry Pi)
 
-Questo documento raccoglie le pratiche consigliate per la configurazione di un Raspberry Pi come dispositivo embedded sempre attivo, con particolare attenzione alla **longevità della scheda SD** e alla stabilità del sistema.
+This document gathers recommended practices for configuring a Raspberry Pi as an always-on embedded device, with special attention to **SD card longevity** and system stability.
 
-> **Target di riferimento**: Raspberry Pi OS Lite **Bookworm 64-bit** su **Raspberry Pi 5** (4/8/16 GB) e **Raspberry Pi Zero 2 W** (512 MB). Due note trasversali a tutto il documento:
-> - **Path di boot**: su Bookworm la partizione FAT è montata su **`/boot/firmware`**, *non* su `/boot`. Tutti i riferimenti a `config.txt` e ai file di configurazione editabili da un altro PC usano quindi `/boot/firmware/...`. Un file scritto in `/boot/` finisce sulla partizione ext4 di root e **non** è leggibile montando la SD su Windows/macOS.
-> - **RAM ridotta sullo Zero 2 W**: con soli 512 MB, le dimensioni dei `tmpfs` e l'uso di `zram` (sez. 1 e 5) vanno calibrati con attenzione per non saturare la memoria.
+> **Reference target**: Raspberry Pi OS Lite **Bookworm 64-bit** on **Raspberry Pi 5** (4/8/16 GB) and **Raspberry Pi Zero 2 W** (512 MB). Two cross-cutting notes for the entire document:
+> - **Boot path**: on Bookworm the FAT partition is mounted at **`/boot/firmware`**, *not* `/boot`. All references to `config.txt` and configuration files editable from another PC therefore use `/boot/firmware/...`. A file written to `/boot/` ends up on the root ext4 partition and is **not** readable when mounting the SD card on Windows/macOS.
+> - **Limited RAM on Zero 2 W**: with only 512 MB, `tmpfs` sizing and `zram` usage (sections 1 and 5) must be tuned carefully to avoid memory saturation.
 
 ---
 
-## 1. Spostare i Log dalla SD alla RAM (`tmpfs`)
+## 1. Move Logs from SD to RAM (`tmpfs`)
 
-La principale causa di usura anticipata delle schede SD è la scrittura continua di log e file temporanei. La soluzione è montare queste directory su `tmpfs` (RAM), in modo che i write vengano assorbiti dalla memoria volatile invece che dalla flash.
+The main cause of early SD card wear is continuous writes of logs and temporary files. The solution is to mount these directories on `tmpfs` (RAM), so writes are absorbed by volatile memory instead of flash.
 
-### 1.1 Configurazione `/etc/fstab`
+### 1.1 `/etc/fstab` configuration
 
-Aggiungere le seguenti righe a `/etc/fstab`:
+Add the following lines to `/etc/fstab`:
 
 ```
 tmpfs   /tmp            tmpfs   defaults,noatime,nosuid,size=64m    0 0
@@ -22,15 +22,15 @@ tmpfs   /var/log        tmpfs   defaults,noatime,nosuid,mode=0755,size=64m  0 0
 tmpfs   /var/tmp        tmpfs   defaults,noatime,nosuid,size=32m    0 0
 ```
 
-> **Attenzione**: i log in `/var/log` vengono persi ad ogni riavvio. Per debug persistente usare `journald` con storage `volatile` (vedi sotto) o montare un disco esterno per i log.
+> **Warning**: logs in `/var/log` are lost at every reboot. For persistent debugging, use `journald` with `volatile` storage (see below) or mount an external disk for logs.
 
-> **Non montare `/var/cache/apt` su tmpfs piccolo**: durante `apt update`/`apt upgrade` i pacchetti scaricati possono superare facilmente 32–64 MB e un tmpfs sottodimensionato fa fallire l'aggiornamento con *"No space left on device"*. Se la SD si usura solo durante gli update (evento raro su un dispositivo embedded), è meglio lasciare `/var/cache/apt` sulla SD e fare `sudo apt clean` dopo ogni aggiornamento (sez. 6.2).
+> **Do not mount `/var/cache/apt` on a small tmpfs**: during `apt update`/`apt upgrade`, downloaded packages can easily exceed 32-64 MB, and an undersized tmpfs can make updates fail with *"No space left on device"*. If SD wear happens only during updates (a rare event on an embedded device), it is better to keep `/var/cache/apt` on SD and run `sudo apt clean` after each update (section 6.2).
 
-> **Zero 2 W (512 MB)**: i `size=` qui sopra sono **tetti massimi**, non allocazione fissa — il tmpfs occupa RAM solo per i dati realmente scritti. Tuttavia, sommati alle eventuali pagine `zram` (sez. 5), su 512 MB conviene ridurre: es. `/var/log` a `size=32m` e `/tmp` a `size=32m`. Verificare con `df -h /var/log /tmp` e `free -h` sotto carico reale.
+> **Zero 2 W (512 MB)**: `size=` values above are **maximum caps**, not fixed allocations. tmpfs only uses RAM for data actually written. However, combined with potential `zram` pages (section 5), on 512 MB it is often better to reduce them: for example, `/var/log` to `size=32m` and `/tmp` to `size=32m`. Verify with `df -h /var/log /tmp` and `free -h` under real load.
 
-### 1.2 `systemd-journald` in modalità volatile
+### 1.2 `systemd-journald` in volatile mode
 
-Modificare `/etc/systemd/journald.conf`:
+Edit `/etc/systemd/journald.conf`:
 
 ```ini
 [Journal]
@@ -39,17 +39,17 @@ RuntimeMaxUse=32M
 Compress=yes
 ```
 
-Questo forza `journald` a scrivere solo in `/run/log/journal` (già in RAM), non su disco.
+This forces `journald` to write only to `/run/log/journal` (already in RAM), not to disk.
 
-Applicare subito senza riavviare:
+Apply immediately without rebooting:
 
 ```bash
 sudo systemctl restart systemd-journald
 ```
 
-### 1.3 Disabilitare rsyslog (opzionale)
+### 1.3 Disable rsyslog (optional)
 
-Se `rsyslog` è attivo e scrive su `/var/log/syslog`, disabilitarlo se non si ha bisogno di log persistenti:
+If `rsyslog` is active and writes to `/var/log/syslog`, disable it if you do not need persistent logs:
 
 ```bash
 sudo systemctl disable rsyslog
@@ -58,77 +58,77 @@ sudo systemctl stop rsyslog
 
 ---
 
-## 2. Opzioni di Mount per Ridurre le Scritture
+## 2. Mount Options to Reduce Writes
 
-### 2.1 `noatime` e `nodiratime`
+### 2.1 `noatime` and `nodiratime`
 
-La SD card viene scritta ogni volta che un file viene **letto** (aggiornamento dell'access time). Disabilitare con `noatime` in `/etc/fstab` sulla partizione root:
+The SD card is written every time a file is **read** (access time update). Disable this behavior with `noatime` in `/etc/fstab` on the root partition:
 
 ```
 PARTUUID=xxxxxxxx-02  /  ext4  defaults,noatime,nodiratime  0  1
 ```
 
-> Su Raspberry Pi OS recente, `noatime` è già abilitato di default su alcune versioni. Verificare con `mount | grep " / "`.
+> On recent Raspberry Pi OS versions, `noatime` may already be enabled by default. Verify with `mount | grep " / "`.
 
-### 2.2 `commit` interval per ext4
+### 2.2 ext4 `commit` interval
 
-Aumentare l'intervallo di commit del journal ext4 riduce la frequenza di sync su disco:
+Increasing the ext4 journal commit interval reduces disk sync frequency:
 
 ```
 PARTUUID=xxxxxxxx-02  /  ext4  defaults,noatime,commit=600  0  1
 ```
 
-Il valore `600` significa che il filesystem sincronizza i dati ogni 600 secondi invece dei 5 secondi di default.
+The value `600` means the filesystem flushes data every 600 seconds instead of the default 5 seconds.
 
 ---
 
-## 3. Filesystem in Sola Lettura (Read-Only Root)
+## 3. Read-Only Filesystem (Read-Only Root)
 
-Per dispositivi embedded stabili, il root filesystem può essere montato in sola lettura. Questo elimina completamente le scritture sulla SD durante il normale funzionamento.
+For stable embedded devices, the root filesystem can be mounted read-only. This completely removes SD writes during normal operation.
 
-### 3.1 Abilitare overlay filesystem (Raspberry Pi OS)
+### 3.1 Enable overlay filesystem (Raspberry Pi OS)
 
-Raspberry Pi OS include un tool dedicato:
+Raspberry Pi OS includes a dedicated tool:
 
 ```bash
 sudo raspi-config
-# → Performance Options → Overlay File System → Enable
+# -> Performance Options -> Overlay File System -> Enable
 ```
 
-Questo monta il root in read-only e usa un overlay tmpfs per le scritture temporanee. Tutte le modifiche vengono perse al riavvio — ideale per dispositivi kiosk.
+This mounts root as read-only and uses a tmpfs overlay for temporary writes. All changes are lost at reboot, which is ideal for kiosk-like devices.
 
-### 3.2 Persistenza selettiva con bind mount
+### 3.2 Selective persistence with bind mount
 
-Per rendere persistenti solo alcune directory (es. la configurazione di Family Planner):
+To keep only specific paths persistent (for example Family Planner configuration):
 
 ```
 # /etc/fstab
 /boot/firmware/family-planner.config.yaml  /home/pi/family-planner/config/config.yaml  none  bind  0  0
 ```
 
-In questo modo il file di configurazione risiede su `/boot/firmware` (partizione FAT32, facilmente modificabile da qualsiasi computer) e viene montato nella posizione attesa dall'applicazione.
+This way, the configuration file lives on `/boot/firmware` (FAT32 partition, easily editable from any computer) and is mounted into the location expected by the application.
 
-> **Nota Bookworm**: su Raspberry Pi OS Bookworm la partizione FAT è `/boot/firmware`, non `/boot`. Coerentemente anche `family-planner.service` deve puntare a `--config /boot/firmware/family-planner.config.yaml`. Il bind mount su un singolo file richiede che il file di destinazione **esista già** (crearlo vuoto con `touch` prima del primo mount).
+> **Bookworm note**: on Raspberry Pi OS Bookworm the FAT partition is `/boot/firmware`, not `/boot`. Accordingly, `family-planner.service` should also point to `--config /boot/firmware/family-planner.config.yaml`. A bind mount on a single file requires the destination file to **already exist** (create an empty file with `touch` before the first mount).
 
 ---
 
-## 4. Configurazione systemd per Avvio Rapido
+## 4. systemd Configuration for Fast Startup
 
-### 4.1 Unit file ottimizzato
+### 4.1 Optimized unit file
 
-Il file `systemd/family-planner.service` usa già `After=network-online.target`. Per un avvio più rapido su rete lenta o assente, valutare:
+The file `systemd/family-planner.service` already uses `After=network-online.target`. For faster startup on slow or unavailable networks, consider:
 
 ```ini
 [Unit]
 Description=Family Planner Calendar Server
 After=network.target
-# Sostituire network-online.target con network.target
-# per non bloccare l'avvio se il router impiega tempo
+# Replace network-online.target with network.target
+# so startup is not blocked if the router takes time
 ```
 
-### 4.2 Timeout di restart
+### 4.2 Restart timeout
 
-Impostare un `RestartSec` ragionevole per evitare cicli di crash rapidi che stressano la SD:
+Set a reasonable `RestartSec` to avoid rapid crash loops that stress the SD:
 
 ```ini
 [Service]
@@ -138,11 +138,11 @@ StartLimitIntervalSec=120
 StartLimitBurst=3
 ```
 
-Dopo 3 crash in 120 secondi, il servizio smette di riavviarsi automaticamente.
+After 3 crashes in 120 seconds, the service stops restarting automatically.
 
-### 4.3 `StandardOutput` e `StandardError` su journal volatile
+### 4.3 `StandardOutput` and `StandardError` to volatile journal
 
-Nel service file, forzare l'output su journal (già volatile se configurato al punto 1.2):
+In the service file, force output to journal (already volatile if configured in section 1.2):
 
 ```ini
 [Service]
@@ -155,7 +155,7 @@ SyslogIdentifier=family-planner
 
 ## 5. Swap
 
-La swap su scheda SD è estremamente dannosa per la longevità. Disabilitarla:
+Swap on SD card is extremely harmful for longevity. Disable it:
 
 ```bash
 sudo dphys-swapfile swapoff
@@ -163,7 +163,7 @@ sudo dphys-swapfile uninstall
 sudo systemctl disable dphys-swapfile
 ```
 
-Se la RAM è insufficiente — caso tipico del **Raspberry Pi Zero 2 W (512 MB)**, dove disabilitare del tutto la swap rischia l'OOM-kill dell'applicazione — valutare uno swap file su disco USB o, meglio, in RAM compressa (`zram`):
+If RAM is insufficient - a typical case on **Raspberry Pi Zero 2 W (512 MB)**, where disabling swap entirely may risk OOM-killing the application - consider a swap file on USB disk or, better, compressed RAM swap (`zram`):
 
 ```bash
 sudo apt install zram-tools
@@ -172,17 +172,17 @@ ALGO=lz4
 PERCENT=25
 ```
 
-`zram` crea un dispositivo di swap compresso in RAM — molto più veloce e senza stress sulla SD.
+`zram` creates a compressed swap device in RAM - much faster and with no SD stress.
 
-> **Pi 5 vs Zero 2 W**: sul Pi 5 (≥ 4 GB) la swap è raramente necessaria e può restare disabilitata. Sullo Zero 2 W (512 MB) `zram` con `PERCENT=50` (≈ 256 MB di swap compressa) è un buon compromesso per evitare l'OOM-kill mantenendo zero scritture sulla SD.
+> **Pi 5 vs Zero 2 W**: on Pi 5 (>= 4 GB), swap is rarely needed and can stay disabled. On Zero 2 W (512 MB), `zram` with `PERCENT=50` (about 256 MB compressed swap) is a good compromise to avoid OOM kills while keeping SD writes at zero.
 
 ---
 
-## 6. Aggiornamenti e Pacchetti
+## 6. Updates and Packages
 
-### 6.1 Disabilitare gli aggiornamenti automatici
+### 6.1 Disable automatic updates
 
-Su un dispositivo embedded, gli aggiornamenti automatici possono riscrivere file di sistema in modo inatteso:
+On an embedded device, automatic updates may rewrite system files unexpectedly:
 
 ```bash
 sudo systemctl disable apt-daily.timer
@@ -190,9 +190,9 @@ sudo systemctl disable apt-daily-upgrade.timer
 sudo systemctl disable man-db.timer
 ```
 
-### 6.2 Pulizia cache APT
+### 6.2 Clean APT cache
 
-Dopo ogni installazione, pulire la cache per liberare spazio:
+After each installation, clean cache to free space:
 
 ```bash
 sudo apt clean
@@ -201,21 +201,21 @@ sudo apt autoremove --purge
 
 ---
 
-## 7. Watchdog Hardware
+## 7. Hardware Watchdog
 
-Il Raspberry Pi ha un watchdog hardware integrato. Abilitarlo garantisce il riavvio automatico in caso di blocco del sistema (kernel hang, deadlock).
+Raspberry Pi includes a hardware watchdog. Enabling it guarantees automatic reboot in case of system lockups (kernel hang, deadlock).
 
-### 7.1 Abilitare il watchdog
+### 7.1 Enable watchdog
 
-In `/boot/firmware/config.txt` (su Raspberry Pi OS Bookworm — vale per Pi 5 **e** Zero 2 W; il vecchio path `/boot/config.txt` è solo per OS pre-Bookworm):
+In `/boot/firmware/config.txt` (on Raspberry Pi OS Bookworm - valid for both Pi 5 **and** Zero 2 W; the old `/boot/config.txt` path is only for pre-Bookworm OS):
 
 ```
 dtparam=watchdog=on
 ```
 
-> Riavviare dopo la modifica e verificare che il device esista: `ls /dev/watchdog*`. Nei log comparirà `Broadcom BCM2835 Watchdog timer` (lo stesso driver è usato anche su Pi 5/Zero 2 W).
+> Reboot after the change and verify that the device exists: `ls /dev/watchdog*`. Logs will show `Broadcom BCM2835 Watchdog timer` (the same driver is used on Pi 5/Zero 2 W).
 
-### 7.2 Configurare `systemd` come watchdog supervisor
+### 7.2 Configure `systemd` as watchdog supervisor
 
 In `/etc/systemd/system.conf`:
 
@@ -224,48 +224,48 @@ RuntimeWatchdogSec=14
 RebootWatchdogSec=2min
 ```
 
-> **Limite hardware**: il watchdog del BCM (Pi 5 e Zero 2 W inclusi) accetta un timeout **massimo di 15 secondi**; impostando un valore più alto systemd lo tronca silenziosamente. Si consiglia `14` per restare sotto il limite con un margine.
+> **Hardware limit**: the BCM watchdog (including Pi 5 and Zero 2 W) supports a **maximum timeout of 15 seconds**; if you set a higher value, systemd silently clamps it. `14` is recommended to stay below the limit with margin.
 >
-> **Nome dell'opzione**: `ShutdownWatchdogSec` è **deprecato** — rinominato `RebootWatchdogSec` in systemd v243. Bookworm monta systemd 252, quindi usare `RebootWatchdogSec` (il vecchio nome è ancora accettato come alias ma non documentato).
+> **Option name**: `ShutdownWatchdogSec` is **deprecated** - renamed to `RebootWatchdogSec` in systemd v243. Bookworm ships systemd 252, so use `RebootWatchdogSec` (the old name is still accepted as an alias but no longer documented).
 
 ---
 
-## 8. Monitoraggio Temperatura e Throttling
+## 8. Temperature and Throttling Monitoring
 
-Il throttling termico causa scritture aggiuntive sui log e instabilità. Verificare la temperatura con:
+Thermal throttling causes extra log writes and instability. Check temperature with:
 
 ```bash
 vcgencmd measure_temp
 vcgencmd get_throttled
 ```
 
-Un valore di `throttled` diverso da `0x0` indica che il Pi ha ridotto la frequenza per surriscaldamento. Usare un dissipatore e/o ventola.
+A `throttled` value different from `0x0` means the Pi has reduced clock speed because of overheating. Use a heatsink and/or fan.
 
-> **Pi 5**: scalda sensibilmente più dei modelli precedenti e va in throttling soft già a 80 °C (hard a 85 °C). Per uso 24/7 è consigliato l'**Active Cooler ufficiale** (o equivalente con ventola PWM gestita dal firmware). Lo **Zero 2 W**, a basso consumo, di norma resta nei limiti con un piccolo dissipatore passivo, ma in enclosure chiuse senza ventilazione va comunque verificato sotto carico.
+> **Pi 5**: it runs significantly hotter than previous models and enters soft throttling at 80 C (hard at 85 C). For 24/7 use, the official **Active Cooler** (or equivalent with firmware-managed PWM fan) is recommended. **Zero 2 W**, with lower power draw, usually stays within limits with a small passive heatsink, but should still be verified under load in closed enclosures without ventilation.
 
 ---
 
-## 9. Scelta e Gestione della Scheda SD
+## 9. SD Card Choice and Management
 
-- Usare schede **Application Class A1 o A2** (progettate per I/O random intensivo)
-- Brand consigliati: SanDisk Endurance, Samsung PRO Endurance (progettate per CCTV/dashcam, cicli di scrittura molto superiori)
-- Creare un'**immagine di backup** dell'SD dopo il primo setup funzionante:
+- Use **Application Class A1 or A2** cards (designed for intensive random I/O)
+- Recommended brands: SanDisk Endurance, Samsung PRO Endurance (designed for CCTV/dashcam, with much higher write-cycle durability)
+- Create a **backup image** of the SD card after the first working setup:
   ```bash
   sudo dd if=/dev/mmcblk0 bs=4M status=progress | gzip > backup-$(date +%Y%m%d).img.gz
   ```
-- Considerare un **disco USB** (SSD esterno o chiavetta USB 3.0) per montare `/var` o l'intera home, lasciando la SD solo per il boot
+- Consider a **USB drive** (external SSD or USB 3.0 stick) to mount `/var` or the whole home, leaving SD only for boot
 
 ---
 
-## 10. Checklist Post-Installazione
+## 10. Post-Installation Checklist
 
-| # | Verifica | Comando |
+| # | Check | Command |
 |---|---|---|
-| 1 | `tmpfs` montato su `/tmp`, `/var/log` | `mount \| grep tmpfs` |
-| 2 | `noatime` attivo sulla root | `mount \| grep " / "` |
-| 3 | `journald` volatile | `journalctl --disk-usage` (deve restare in RAM) |
-| 4 | Swap disabilitata o su zram | `free -h` |
-| 5 | Watchdog abilitato | `ls /dev/watchdog*` |
-| 6 | Temperatura sotto 70°C a regime | `vcgencmd measure_temp` |
-| 7 | Aggiornamenti automatici disabilitati | `systemctl status apt-daily.timer` |
-| 8 | `family-planner.service` attivo e stabile | `systemctl status family-planner` |
+| 1 | `tmpfs` mounted on `/tmp`, `/var/log` | `mount \| grep tmpfs` |
+| 2 | `noatime` enabled on root | `mount \| grep " / "` |
+| 3 | `journald` volatile | `journalctl --disk-usage` (must remain in RAM) |
+| 4 | Swap disabled or on zram | `free -h` |
+| 5 | Watchdog enabled | `ls /dev/watchdog*` |
+| 6 | Temperature below 70 C at steady state | `vcgencmd measure_temp` |
+| 7 | Automatic updates disabled | `systemctl status apt-daily.timer` |
+| 8 | `family-planner.service` active and stable | `systemctl status family-planner` |
