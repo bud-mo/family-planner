@@ -1,18 +1,18 @@
 """Visual rendering tests for the agenda component (_draw_agenda).
 
-Ogni test produce un PNG in ``tests/visual_output/`` per ispezione manuale.
-I file sono deterministi (stessa data, stessi dati) ma vengono riscritti ad
-ogni esecuzione — non costituiscono un baseline di regressione pixel-perfect.
+Each test writes a PNG to ``tests/visual_output/`` for manual inspection.
+Files are deterministic (same date, same data) but rewritten on every run,
+so they are not a pixel-perfect regression baseline.
 
-Casi coperti:
-  1. Singolo evento con orario inizio/fine e titolo
-  2. Singolo evento con orario inizio/fine, titolo e descrizione
-  3. Singolo evento tutto-il-giorno con titolo
-  4. Due eventi nello stesso giorno con orario, titolo e descrizione
-  5. Quattro eventi su due giornate: mix tutto-il-giorno / con orario, con e senza descrizione
-  6. Due appuntamenti su due giorni diversi: primo solo titolo, secondo titolo e descrizione
-  7. Due eventi su due giorni: il primo ha un luogo impostato, il secondo no
-  8. Due eventi su due giorni: il primo ha descrizione e luogo, il secondo solo titolo
+Covered scenarios:
+    1. Single event with start/end time and title
+    2. Single event with start/end time, title, and description
+    3. Single all-day event with title
+    4. Two events on the same day with time, title, and description
+    5. Four events across two days: mixed all-day / timed, with and without description
+    6. Two appointments on two different days: first with title only, second with title and description
+    7. Two events on two days: first has a location, second does not
+    8. Two events on two days: first has description and location, second has title only
 """
 from __future__ import annotations
 
@@ -99,7 +99,7 @@ def _evt(
         attendees=[],
         recurrent=False,
         color=color,
-        calendar_name="Calendario Test",
+        calendar_name="Test Calendar",
     )
 
 
@@ -125,12 +125,12 @@ def today_state() -> NavigationState:
 
 
 # ---------------------------------------------------------------------------
-# Caso 1 — Singolo evento: orario, titolo
+# Case 1 — Single event: time, title
 # ---------------------------------------------------------------------------
 
 
-class TestCaso1SingleEventWithTime:
-    """Un solo evento nella giornata con orario di inizio/fine e titolo."""
+class TestCase1SingleEventWithTime:
+    """A single event in the day with start/end time and title."""
 
     HEIGHT = 128
 
@@ -139,7 +139,7 @@ class TestCaso1SingleEventWithTime:
         return [
             _evt(
                 uid="c1-e1",
-                title="Riunione di lavoro",
+                title="Work meeting",
                 start_h=8,
                 start_m=0,
                 end_h=8,
@@ -151,13 +151,13 @@ class TestCaso1SingleEventWithTime:
     def test_produces_png(self, renderer, palette, today_state, events, tmp_path):
         img, draw = _make_canvas(self.HEIGHT)
         renderer._draw_agenda(draw, img, (0, 0, _CANVAS_W, self.HEIGHT), today_state, events, palette)
-        out = _OUTPUT_DIR / "agenda_caso_1_singolo_con_orario.png"
+        out = _OUTPUT_DIR / "agenda_case_1_single_with_time.png"
         img.save(out)
         _to_spectra6(img).save(out.with_stem(out.stem + "_spectra6"))
         assert out.exists()
 
     def test_canvas_not_blank(self, renderer, palette, today_state, events):
-        """Deve esserci almeno un pixel non-background."""
+        """There should be at least one non-background pixel."""
         img, draw = _make_canvas(self.HEIGHT)
         renderer._draw_agenda(draw, img, (0, 0, _CANVAS_W, self.HEIGHT), today_state, events, palette)
         bg = Image.new("RGB", (_CANVAS_W, self.HEIGHT), COLOR_BG)
@@ -165,12 +165,12 @@ class TestCaso1SingleEventWithTime:
 
 
 # ---------------------------------------------------------------------------
-# Caso 2 — Singolo evento: orario, titolo, descrizione
+# Case 2 — Single event: time, title, description
 # ---------------------------------------------------------------------------
 
 
-class TestCaso2SingleEventWithTimeAndDescription:
-    """Un solo evento nella giornata con orario, titolo e descrizione HTML."""
+class TestCase2SingleEventWithTimeAndDescription:
+    """A single event in the day with time, title, and HTML description."""
 
     HEIGHT = 220
 
@@ -179,17 +179,17 @@ class TestCaso2SingleEventWithTimeAndDescription:
         return [
             _evt(
                 uid="c2-e1",
-                title="Call con cliente",
+                title="Client call",
                 start_h=11,
                 start_m=30,
                 end_h=12,
                 end_m=0,
                 description=(
-                    "Note di preparazione:\n"
+                    "Preparation notes:\n"
                     "<ul>"
-                    "<li>Revisione budget Q3</li>"
-                    "<li>Timeline rilascio</li>"
-                    "<li>Prossimi step</li>"
+                    "<li>Q3 budget review</li>"
+                    "<li>Release timeline</li>"
+                    "<li>Next steps</li>"
                     "</ul>"
                 ),
                 color="#4A90D9",
@@ -199,7 +199,7 @@ class TestCaso2SingleEventWithTimeAndDescription:
     def test_produces_png(self, renderer, palette, today_state, events):
         img, draw = _make_canvas(self.HEIGHT)
         renderer._draw_agenda(draw, img, (0, 0, _CANVAS_W, self.HEIGHT), today_state, events, palette)
-        out = _OUTPUT_DIR / "agenda_caso_2_singolo_con_orario_e_descrizione.png"
+        out = _OUTPUT_DIR / "agenda_case_2_single_with_time_and_description.png"
         img.save(out)
         _to_spectra6(img).save(out.with_stem(out.stem + "_spectra6"))
         assert out.exists()
@@ -212,12 +212,12 @@ class TestCaso2SingleEventWithTimeAndDescription:
 
 
 # ---------------------------------------------------------------------------
-# Caso 3 — Singolo evento: tutto il giorno, titolo
+# Case 3 — Single event: all day, title
 # ---------------------------------------------------------------------------
 
 
-class TestCaso3AllDayEvent:
-    """Un solo evento tutto-il-giorno con titolo."""
+class TestCase3AllDayEvent:
+    """A single all-day event with title."""
 
     HEIGHT = 128
 
@@ -226,7 +226,7 @@ class TestCaso3AllDayEvent:
         return [
             _evt(
                 uid="c3-e1",
-                title="Compleanno di Marco",
+                title="Marco's birthday",
                 start_h=0,
                 start_m=0,
                 end_h=23,
@@ -239,13 +239,13 @@ class TestCaso3AllDayEvent:
     def test_produces_png(self, renderer, palette, today_state, events):
         img, draw = _make_canvas(self.HEIGHT)
         renderer._draw_agenda(draw, img, (0, 0, _CANVAS_W, self.HEIGHT), today_state, events, palette)
-        out = _OUTPUT_DIR / "agenda_caso_3_tutto_il_giorno.png"
+        out = _OUTPUT_DIR / "agenda_case_3_all_day.png"
         img.save(out)
         _to_spectra6(img).save(out.with_stem(out.stem + "_spectra6"))
         assert out.exists()
 
-    def test_tutto_il_giorno_label_renders(self, renderer, palette, today_state, events):
-        """Il testo 'Tutto il giorno' deve produrre pixel nel canvas."""
+    def test_all_day_label_renders(self, renderer, palette, today_state, events):
+        """The 'All day' label should produce pixels on the canvas."""
         img, draw = _make_canvas(self.HEIGHT)
         renderer._draw_agenda(draw, img, (0, 0, _CANVAS_W, self.HEIGHT), today_state, events, palette)
         bg = Image.new("RGB", (_CANVAS_W, self.HEIGHT), COLOR_BG)
@@ -253,12 +253,12 @@ class TestCaso3AllDayEvent:
 
 
 # ---------------------------------------------------------------------------
-# Caso 4 — Due eventi nella stessa giornata: orario, titolo, descrizione
+# Case 4 — Two events on the same day: time, title, description
 # ---------------------------------------------------------------------------
 
 
-class TestCaso4TwoEventsWithDescription:
-    """Due eventi nello stesso giorno, entrambi con orario, titolo e descrizione."""
+class TestCase4TwoEventsWithDescription:
+    """Two events on the same day, both with time, title, and description."""
 
     HEIGHT = 336
 
@@ -267,25 +267,25 @@ class TestCaso4TwoEventsWithDescription:
         return [
             _evt(
                 uid="c4-e1",
-                title="Standup mattutino",
+                title="Morning standup",
                 start_h=9,
                 start_m=0,
                 end_h=9,
                 end_m=30,
-                description="Daily standup del team di sviluppo.\nAggiornamento attività in corso.",
+                description="Daily standup for the development team.\nUpdate on ongoing work.",
                 color="#E27B3E",
             ),
             _evt(
                 uid="c4-e2",
-                title="Review Sprint",
+                title="Sprint review",
                 start_h=15,
                 start_m=0,
                 end_h=16,
                 end_m=30,
                 description=(
-                    "<b>Sprint review</b> — demo delle features completate.\n"
+                    "<b>Sprint review</b> - demo of completed features.\n"
                     "<ul>"
-                    "<li>Team dev</li>"
+                    "<li>Development team</li>"
                     "<li>Product Owner</li>"
                     "<li>Stakeholder</li>"
                     "</ul>"
@@ -297,7 +297,7 @@ class TestCaso4TwoEventsWithDescription:
     def test_produces_png(self, renderer, palette, today_state, events):
         img, draw = _make_canvas(self.HEIGHT)
         renderer._draw_agenda(draw, img, (0, 0, _CANVAS_W, self.HEIGHT), today_state, events, palette)
-        out = _OUTPUT_DIR / "agenda_caso_4_due_eventi_con_descrizione.png"
+        out = _OUTPUT_DIR / "agenda_case_4_two_events_with_description.png"
         img.save(out)
         _to_spectra6(img).save(out.with_stem(out.stem + "_spectra6"))
         assert out.exists()
@@ -310,20 +310,20 @@ class TestCaso4TwoEventsWithDescription:
 
 
 # ---------------------------------------------------------------------------
-# Caso 5 — Quattro eventi su due giornate: mix tutto-il-giorno / con orario,
-#           con e senza descrizione
+# Case 5 — Four events across two days: mixed all-day / timed,
+#          with and without description
 # ---------------------------------------------------------------------------
 
 
-class TestCaso5FourEventsTwoDays:
-    """Quattro eventi distribuiti su due giorni consecutivi.
+class TestCase5FourEventsTwoDays:
+    """Four events distributed across two consecutive days.
 
-    Giorno 1 (oggi):
-      - Tutto il giorno, senza descrizione
-      - Con orario, con descrizione
-    Giorno 2 (domani):
-      - Con orario, senza descrizione
-      - Tutto il giorno, con descrizione
+    Day 1 (today):
+      - All day, no description
+      - Timed, with description
+    Day 2 (tomorrow):
+      - Timed, no description
+      - All day, with description
     """
 
     HEIGHT = 412
@@ -331,10 +331,10 @@ class TestCaso5FourEventsTwoDays:
     @pytest.fixture()
     def events(self) -> list[CalendarEvent]:
         return [
-            # Giorno 1 — tutto il giorno, senza descrizione
+            # Day 1 — all day, no description
             _evt(
                 uid="c5-e1",
-                title="Festa della Repubblica",
+                title="Republic Day",
                 start_h=0,
                 start_m=0,
                 end_h=23,
@@ -343,28 +343,28 @@ class TestCaso5FourEventsTwoDays:
                 color="#5BAD6F",
                 day_offset=0,
             ),
-            # Giorno 1 — con orario, con descrizione
+            # Day 1 — timed, with description
             _evt(
                 uid="c5-e2",
-                title="Riunione di kick-off",
+                title="Kick-off meeting",
                 start_h=10,
                 start_m=0,
                 end_h=11,
                 end_m=30,
                 description=(
-                    "<b>Obiettivi della riunione:</b>\n"
+                    "<b>Meeting goals:</b>\n"
                     "<ul>"
-                    "<li>Definire scope del progetto</li>"
-                    "<li>Assegnare responsabilità</li>"
+                    "<li>Define project scope</li>"
+                    "<li>Assign responsibilities</li>"
                     "</ul>"
                 ),
                 color="#E27B3E",
                 day_offset=0,
             ),
-            # Giorno 2 — con orario, senza descrizione
+            # Day 2 — timed, no description
             _evt(
                 uid="c5-e3",
-                title="Standup mattutino",
+                title="Morning standup",
                 start_h=9,
                 start_m=0,
                 end_h=9,
@@ -372,16 +372,16 @@ class TestCaso5FourEventsTwoDays:
                 color="#4A90D9",
                 day_offset=1,
             ),
-            # Giorno 2 — tutto il giorno, con descrizione
+            # Day 2 — all day, with description
             _evt(
                 uid="c5-e4",
-                title="Scadenza consegna report",
+                title="Report delivery deadline",
                 start_h=0,
                 start_m=0,
                 end_h=23,
                 end_m=59,
                 all_day=True,
-                description="Inviare il report trimestrale via email entro fine giornata.",
+                description="Send the quarterly report by email before end of day.",
                 color="#9B59B6",
                 day_offset=1,
             ),
@@ -390,7 +390,7 @@ class TestCaso5FourEventsTwoDays:
     def test_produces_png(self, renderer, palette, today_state, events):
         img, draw = _make_canvas(self.HEIGHT)
         renderer._draw_agenda(draw, img, (0, 0, _CANVAS_W, self.HEIGHT), today_state, events, palette)
-        out = _OUTPUT_DIR / "agenda_caso_5_quattro_eventi_due_giornate.png"
+        out = _OUTPUT_DIR / "agenda_case_5_four_events_two_days.png"
         img.save(out)
         _to_spectra6(img).save(out.with_stem(out.stem + "_spectra6"))
         assert out.exists()
@@ -403,16 +403,16 @@ class TestCaso5FourEventsTwoDays:
 
 
 # ---------------------------------------------------------------------------
-# Caso 6 — Due appuntamenti su due giorni diversi:
-#           il primo solo titolo, il secondo titolo e descrizione
+# Case 6 — Two appointments on two different days:
+#          first with title only, second with title and description
 # ---------------------------------------------------------------------------
 
 
-class TestCaso6TwoEventsTwoDaysTitleVsDescription:
-    """Due appuntamenti su giorni consecutivi.
+class TestCase6TwoEventsTwoDaysTitleVsDescription:
+    """Two appointments across consecutive days.
 
-    Giorno 1 (oggi):   solo titolo (nessuna descrizione).
-    Giorno 2 (domani): titolo + descrizione HTML.
+    Day 1 (today): title only (no description).
+    Day 2 (tomorrow): title + HTML description.
     """
 
     HEIGHT = 300
@@ -420,10 +420,10 @@ class TestCaso6TwoEventsTwoDaysTitleVsDescription:
     @pytest.fixture()
     def events(self) -> list[CalendarEvent]:
         return [
-            # Giorno 1 — solo titolo
+            # Day 1 — title only
             _evt(
                 uid="c6-e1",
-                title="Visita medica",
+                title="Medical checkup",
                 start_h=10,
                 start_m=0,
                 end_h=10,
@@ -431,20 +431,20 @@ class TestCaso6TwoEventsTwoDaysTitleVsDescription:
                 color="#E27B3E",
                 day_offset=0,
             ),
-            # Giorno 2 — titolo + descrizione
+            # Day 2 — title + description
             _evt(
                 uid="c6-e2",
-                title="Riunione di progetto",
+                title="Project meeting",
                 start_h=14,
                 start_m=30,
                 end_h=16,
                 end_m=0,
                 description=(
-                    "<b>Ordine del giorno:</b>\n"
+                    "<b>Agenda:</b>\n"
                     "<ul>"
-                    "<li>Avanzamento attività</li>"
-                    "<li>Blocchi e rischi</li>"
-                    "<li>Prossimi step</li>"
+                    "<li>Progress update</li>"
+                    "<li>Blockers and risks</li>"
+                    "<li>Next steps</li>"
                     "</ul>"
                 ),
                 color="#4A90D9",
@@ -455,7 +455,7 @@ class TestCaso6TwoEventsTwoDaysTitleVsDescription:
     def test_produces_png(self, renderer, palette, today_state, events):
         img, draw = _make_canvas(self.HEIGHT)
         renderer._draw_agenda(draw, img, (0, 0, _CANVAS_W, self.HEIGHT), today_state, events, palette)
-        out = _OUTPUT_DIR / "agenda_caso_6_due_eventi_due_giorni_titolo_vs_descrizione.png"
+        out = _OUTPUT_DIR / "agenda_case_6_two_events_two_days_title_vs_description.png"
         img.save(out)
         _to_spectra6(img).save(out.with_stem(out.stem + "_spectra6"))
         assert out.exists()
@@ -468,15 +468,15 @@ class TestCaso6TwoEventsTwoDaysTitleVsDescription:
 
 
 # ---------------------------------------------------------------------------
-# Caso 7 — Due eventi su due giorni: il primo ha un luogo impostato
+# Case 7 — Two events on two days: the first has a location
 # ---------------------------------------------------------------------------
 
 
-class TestCaso7TwoEventsTwoDaysWithLocation:
-    """Due appuntamenti su giorni consecutivi.
+class TestCase7TwoEventsTwoDaysWithLocation:
+    """Two appointments across consecutive days.
 
-    Giorno 1 (oggi):   orario, titolo e luogo.
-    Giorno 2 (domani): orario e titolo (nessun luogo).
+    Day 1 (today): time, title, and location.
+    Day 2 (tomorrow): time and title (no location).
     """
 
     HEIGHT = 260
@@ -484,22 +484,22 @@ class TestCaso7TwoEventsTwoDaysWithLocation:
     @pytest.fixture()
     def events(self) -> list[CalendarEvent]:
         return [
-            # Giorno 1 — con luogo
+            # Day 1 — with location
             _evt(
                 uid="c7-e1",
-                title="Colloquio di lavoro",
+                title="Job interview",
                 start_h=10,
                 start_m=0,
                 end_h=11,
                 end_m=0,
-                location="Via Roma 42, Milano",
+                location="42 Via Roma, Milan",
                 color="#E27B3E",
                 day_offset=0,
             ),
-            # Giorno 2 — senza luogo
+            # Day 2 — without location
             _evt(
                 uid="c7-e2",
-                title="Standup mattutino",
+                title="Morning standup",
                 start_h=9,
                 start_m=0,
                 end_h=9,
@@ -512,7 +512,7 @@ class TestCaso7TwoEventsTwoDaysWithLocation:
     def test_produces_png(self, renderer, palette, today_state, events):
         img, draw = _make_canvas(self.HEIGHT)
         renderer._draw_agenda(draw, img, (0, 0, _CANVAS_W, self.HEIGHT), today_state, events, palette)
-        out = _OUTPUT_DIR / "agenda_caso_7_due_eventi_due_giorni_con_luogo.png"
+        out = _OUTPUT_DIR / "agenda_case_7_two_events_two_days_with_location.png"
         img.save(out)
         _to_spectra6(img).save(out.with_stem(out.stem + "_spectra6"))
         assert out.exists()
@@ -525,15 +525,15 @@ class TestCaso7TwoEventsTwoDaysWithLocation:
 
 
 # ---------------------------------------------------------------------------
-# Caso 8 — Due eventi su due giorni: il primo ha descrizione e luogo
+# Case 8 — Two events on two days: the first has description and location
 # ---------------------------------------------------------------------------
 
 
-class TestCaso8TwoEventsTwoDaysLocationAndDescription:
-    """Due appuntamenti su giorni consecutivi.
+class TestCase8TwoEventsTwoDaysLocationAndDescription:
+    """Two appointments across consecutive days.
 
-    Giorno 1 (oggi):   orario, titolo, luogo e descrizione HTML.
-    Giorno 2 (domani): orario e titolo (nessun luogo, nessuna descrizione).
+    Day 1 (today): time, title, location, and HTML description.
+    Day 2 (tomorrow): time and title (no location, no description).
     """
 
     HEIGHT = 320
@@ -541,30 +541,30 @@ class TestCaso8TwoEventsTwoDaysLocationAndDescription:
     @pytest.fixture()
     def events(self) -> list[CalendarEvent]:
         return [
-            # Giorno 1 — con luogo e descrizione
+            # Day 1 — with location and description
             _evt(
                 uid="c8-e1",
-                title="Riunione con fornitore",
+                title="Supplier meeting",
                 start_h=14,
                 start_m=0,
                 end_h=15,
                 end_m=30,
-                location="Sala Riunioni B, Via Montenapoleone 8, Milano",
+                location="Meeting Room B, 8 Via Montenapoleone, Milan",
                 description=(
-                    "<b>Punti all'ordine del giorno:</b>\n"
+                    "<b>Agenda items:</b>\n"
                     "<ul>"
-                    "<li>Revisione contratto</li>"
-                    "<li>Tempi di consegna</li>"
-                    "<li>Prezzi e sconti</li>"
+                    "<li>Contract review</li>"
+                    "<li>Delivery timelines</li>"
+                    "<li>Pricing and discounts</li>"
                     "</ul>"
                 ),
                 color="#E27B3E",
                 day_offset=0,
             ),
-            # Giorno 2 — solo titolo
+            # Day 2 — title only
             _evt(
                 uid="c8-e2",
-                title="Standup mattutino",
+                title="Morning standup",
                 start_h=9,
                 start_m=0,
                 end_h=9,
@@ -577,7 +577,7 @@ class TestCaso8TwoEventsTwoDaysLocationAndDescription:
     def test_produces_png(self, renderer, palette, today_state, events):
         img, draw = _make_canvas(self.HEIGHT)
         renderer._draw_agenda(draw, img, (0, 0, _CANVAS_W, self.HEIGHT), today_state, events, palette)
-        out = _OUTPUT_DIR / "agenda_caso_8_due_eventi_due_giorni_luogo_e_descrizione.png"
+        out = _OUTPUT_DIR / "agenda_case_8_two_events_two_days_location_and_description.png"
         img.save(out)
         _to_spectra6(img).save(out.with_stem(out.stem + "_spectra6"))
         assert out.exists()
