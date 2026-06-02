@@ -13,6 +13,7 @@ import logging
 from PIL import Image
 
 from app.config import DisplayConfig
+from app.renderer.palette import flat_palette
 
 logger = logging.getLogger(__name__)
 
@@ -40,31 +41,11 @@ EINK_RESOLUTIONS: dict[str, tuple[int, int]] = {
     "inky_impression_13": (1600, 1200),
 }
 
-# 3-colour BWR palette entries (R, G, B)
-_BWR_PALETTE: list[int] = [
-    255, 255, 255,  # white
-    0,   0,   0,   # black
-    255, 0,   0,   # red
-]
-
-# 4-grey palette entries (R, G, B)  — black, dark-grey, light-grey, white
-_4GRAY_PALETTE: list[int] = [
-    0,   0,   0,
-    85,  85,  85,
-    170, 170, 170,
-    255, 255, 255,
-]
-
-# 6-colour Pimoroni Spectra 6 palette entries (R, G, B)
-# Colours: black, white, red, green, blue, yellow
-_SPECTRA6_PALETTE: list[int] = [
-    0,   0,   0,    # black
-    255, 255, 255,  # white
-    255, 0,   0,    # red
-    0,   255, 0,    # green
-    0,   0,   255,  # blue
-    255, 255, 0,    # yellow
-]
+# Flat palette entries (R, G, B …) — sourced from app.renderer.palette, the
+# single source of truth for physical panel colours.
+_BWR_PALETTE: list[int] = flat_palette("bwr")
+_4GRAY_PALETTE: list[int] = flat_palette("4gray")
+_SPECTRA6_PALETTE: list[int] = flat_palette("spectra6")
 
 
 def _build_palette_image(entries: list[int]) -> Image.Image:
@@ -103,14 +84,24 @@ class EinkRenderer:
 
         Steps:
         1. Resize to the panel's native resolution (LANCZOS).
-        2. Quantise to the configured palette (``bw`` / ``bwr`` / ``4gray`` / ``spectra6``).
-        3. Apply Floyd-Steinberg dithering if ``eink_dither`` is enabled.
+        2. Quantise to the configured palette (``bw`` / ``bwr`` / ``4gray`` / ``spectra6``)
+           **without** dithering — flat, crisp text and UI.
+        3. Apply Floyd-Steinberg dithering **selectively**: only the regions
+           marked in ``image.info["dither_mask"]`` (photographic content and
+           secondary grey text/rules) are taken from a dithered copy and
+           composited over the crisp version.  This keeps glyph edges and flat
+           fills sharp while still reproducing greys/photos through dithering.
+
+        Backward compatibility: when no ``dither_mask`` is attached and
+        ``eink_dither`` is enabled, the whole image is dithered (legacy
+        behaviour).  When ``eink_dither`` is disabled, no dithering ever occurs.
 
         Returns a new ``PIL.Image`` in ``"RGB"`` mode for ``bw`` / ``bwr`` / ``4gray``
         palettes, or in palette mode (``"P"``) for ``spectra6`` (Pimoroni Inky Impression).
         The ``"P"`` image can be passed directly to ``inky.set_image()``.
         """
-        dither_mode = Image.Dither.FLOYDSTEINBERG if self._dither else Image.Dither.NONE
+        # Read the dither mask *before* any transform (resize discards .info).
+        mask = image.info.get("dither_mask")
 
         # 1. Resize — for 90°/270° the input canvas is transposed relative to
         #    the panel's native resolution, so swap the resize target dimensions.
@@ -118,20 +109,28 @@ class EinkRenderer:
         resize_target = (H, W) if self._rotation in (90, 270) else (W, H)
         resized = image.resize(resize_target, Image.Resampling.LANCZOS)
 
-        # 2 + 3. Quantise
-        if self._palette == "bw":
-            result = self._quantise_bw(resized, dither_mode)
-        elif self._palette == "bwr":
-            result = self._quantise_bwr(resized, dither_mode)
-        elif self._palette == "4gray":
-            result = self._quantise_4gray(resized, dither_mode)
-        elif self._palette == "spectra6":
-            result = self._quantise_spectra6(resized, dither_mode)
-        else:
-            logger.warning(
-                "EinkRenderer: unknown palette %r — using bw", self._palette
+        # 2. Crisp (no-dither) quantisation — always produced.
+        flat = self._quantise(resized, Image.Dither.NONE)
+
+        # 3. Dither selectively.
+        if self._dither and mask is not None:
+            # Marked regions only: composite a dithered copy over the crisp one.
+            mask_resized = mask.convert("L").resize(
+                resize_target, Image.Resampling.NEAREST
             )
-            result = self._quantise_bw(resized, dither_mode)
+            if mask_resized.getbbox() is not None:  # at least one marked pixel
+                dithered = self._quantise(resized, Image.Dither.FLOYDSTEINBERG)
+                result = flat.copy()
+                # paste() with a binary "L" mask is a clean pixel-wise select,
+                # valid for both "RGB" and "P" (spectra6) modes.
+                result.paste(dithered, (0, 0), mask_resized)
+            else:
+                result = flat
+        elif self._dither:
+            # No mask supplied — dither the whole image (legacy behaviour).
+            result = self._quantise(resized, Image.Dither.FLOYDSTEINBERG)
+        else:
+            result = flat
 
         # 4. Rotate — PIL.Image.rotate uses counter-clockwise convention;
         #    negate the angle for a clockwise physical rotation correction.
@@ -139,6 +138,19 @@ class EinkRenderer:
             result = result.rotate(-self._rotation, expand=True)
 
         return result
+
+    def _quantise(self, image: Image.Image, dither: Image.Dither) -> Image.Image:
+        """Dispatch to the configured palette quantiser."""
+        if self._palette == "bw":
+            return self._quantise_bw(image, dither)
+        if self._palette == "bwr":
+            return self._quantise_bwr(image, dither)
+        if self._palette == "4gray":
+            return self._quantise_4gray(image, dither)
+        if self._palette == "spectra6":
+            return self._quantise_spectra6(image, dither)
+        logger.warning("EinkRenderer: unknown palette %r — using bw", self._palette)
+        return self._quantise_bw(image, dither)
 
     # ------------------------------------------------------------------
     # Private quantisation helpers
