@@ -223,7 +223,7 @@ def _eink_loop(
     renderer_ref: list,
     eink_renderer_ref: list,
     display: "EinkDisplay",
-    aggregator: CalendarAggregator,
+    aggregator_ref: list,
     stop_event: threading.Event,
     artwork_mode: threading.Event,
     wake_event: threading.Event,
@@ -287,7 +287,7 @@ def _eink_loop(
             # hourly tick — meanwhile the cached data is served with its
             # already-elapsed forecast slots dropped (see drop_past_hourly_slots).
             fetch_weather = manual_refresh or is_weather_tick(now) or weather_retry
-            events = aggregator.get_events(start, end, force=True)
+            events = aggregator_ref[0].get_events(start, end, force=True)
             if weather_provider is not None:
                 weather = weather_provider.get(force=fetch_weather)
                 weather_retry = fetch_weather and weather_provider.last_fetch_failed
@@ -521,6 +521,7 @@ def main() -> None:
     _hdmi_ref: list = [None]
     _eink_renderer_ref: list = [None]
     _renderer_ref: list = [renderer]
+    _aggregator_ref: list = [aggregator]
 
     # ------------------------------------------------------------------
     # Web server
@@ -571,6 +572,7 @@ def main() -> None:
                 cache_ttl=WEB_REFRESH_SECONDS,
             )
             web_app.state.aggregator = new_aggregator
+            _aggregator_ref[0] = new_aggregator
             if _hdmi_ref[0] is not None:
                 _hdmi_ref[0].set_aggregator(new_aggregator)
             # Rebuild weather provider with updated settings.
@@ -628,7 +630,7 @@ def main() -> None:
                 _renderer_ref,
                 _eink_renderer_ref,
                 display_obj,
-                aggregator,
+                _aggregator_ref,
                 eink_stop_event,
                 _artwork_mode,
                 _wake_event,

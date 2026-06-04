@@ -47,6 +47,7 @@ class HdmiDisplay:
         self._aggregator = aggregator
         self._weather_provider = weather_provider
         self._stop_event = threading.Event()
+        self._force_refetch = threading.Event()
         self.shutdown_requested: bool = False
 
     # ------------------------------------------------------------------
@@ -60,6 +61,7 @@ class HdmiDisplay:
     def set_aggregator(self, aggregator: CalendarAggregator) -> None:
         """Replace the calendar aggregator (called on config reload)."""
         self._aggregator = aggregator
+        self._force_refetch.set()
 
     def set_weather_provider(self, provider: "WeatherProvider | None") -> None:
         """Replace the weather provider (called on config reload)."""
@@ -122,7 +124,8 @@ class HdmiDisplay:
 
             # Quarter-hour tick (or date rollover at midnight): re-fetch the
             # calendar fresh; refresh the weather only on the hour (xx:00).
-            if current_slot != last_slot or state.anchor_date != last_fetched_anchor:
+            if current_slot != last_slot or state.anchor_date != last_fetched_anchor or self._force_refetch.is_set():
+                self._force_refetch.clear()
                 start, end = events_range_for_state(state)
                 try:
                     events = self._aggregator.get_events(start, end, force=True)
