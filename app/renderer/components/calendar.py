@@ -4,7 +4,9 @@ from __future__ import annotations
 from datetime import date
 from typing import TYPE_CHECKING
 
-from app.calendar.data_builders import _build_rolling_week_grid
+from PIL import ImageColor
+
+from app.calendar.data_builders import _build_rolling_week_grid, event_local_dates
 from app.renderer.components.text import ellipsize
 from app.renderer.locale_it import (
     DAY_NAMES_IT as _DAY_NAMES_IT,
@@ -29,10 +31,10 @@ def draw_mini_calendar(
     palette = ctx.palette
     fonts = ctx.fonts
     today = date.today()
-    weeks = _build_rolling_week_grid(state.anchor_date, events, today)
+    weeks = _build_rolling_week_grid(state.anchor_date, events, today, tz=ctx.tz)
     N_ROWS = 5
 
-    dow_header_h = 24
+    dow_header_h = 40  # 24px text height + 8px padding top + 8px padding bottom
     separator_h = 40  # height reserved for each between-row month separator
 
     # DOW header
@@ -140,18 +142,30 @@ def draw_mini_calendar(
             for line_idx, evt in enumerate(events_to_show):
                 line_top = int(event_area_top + line_idx * event_line_h)
                 line_y = line_top + event_line_h // 2
-                # Coloured dot — snapped to a visible panel colour on e-ink.
+                # Coloured dot — kept at its true colour (no palette snap) and
+                # reproduced via dithering on e-ink, so the calendar indicator
+                # preserves the event colour.
                 dot_color = evt.color if evt.color else palette["INK_FAINT"]
                 try:
-                    dot_fill = ctx.snap_visible(dot_color)
-                except (ValueError, AttributeError):
-                    dot_fill = ctx.snap_visible(palette["INK_FAINT"])
+                    ImageColor.getrgb(dot_color)
+                except (ValueError, AttributeError, TypeError):
+                    dot_color = palette["INK_FAINT"]
                 dot_cx = int(cx0 + cell_pad_x) + dot_r
                 ctx.ellipse(
                     [(dot_cx - dot_r, line_y - dot_r), (dot_cx + dot_r, line_y + dot_r)],
-                    fill=dot_fill,
+                    fill=dot_color,
+                    dither=True,
                 )
-                text = ellipsize(evt.title, fonts.event, max_text_w)
+                # Multi-day events repeat in every spanned cell; continuation
+                # arrows show that the event extends beyond this day.
+                span = event_local_dates(evt, None if evt.all_day else ctx.tz)
+                cont_before = cell["date"] > span[0]
+                cont_after = cell["date"] < span[-1]
+                prefix = "‹" if cont_before else ""
+                suffix = "›" if cont_after else ""
+                affix_w = int(fonts.event.getlength(prefix + " " + " " + suffix))
+                core = ellipsize(evt.title, fonts.event, max_text_w - affix_w)
+                text = f"{prefix} {core} {suffix}".strip() if (prefix or suffix) else core
                 if text:
                     ctx.text(
                         (cx0 + text_x_offset, line_y),

@@ -4,6 +4,8 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import TYPE_CHECKING
 
+from PIL import ImageColor
+
 from app.renderer.components.text import (
     draw_mixed,
     draw_rich_description,
@@ -11,6 +13,7 @@ from app.renderer.components.text import (
     parse_html_description,
     wrap_rich_lines,
 )
+from app.calendar.data_builders import event_local_dates
 from app.renderer.emoji_icons import split_text_emoji
 from app.renderer.locale_it import DAY_NAMES_IT as _DAY_NAMES_IT
 from app.renderer.state import NavigationState
@@ -59,13 +62,10 @@ def draw_agenda(
         days_events[window_start + timedelta(days=d_offset)] = []
 
     for evt in events:
-        if evt.all_day:
-            evt_date = evt.start.date()
-        else:
-            local_start = evt.start.astimezone(ctx.tz) if ctx.tz else evt.start
-            evt_date = local_start.date()
-        if window_start <= evt_date <= window_end:
-            days_events[evt_date].append(evt)
+        # Multi-day events are listed under every day they span.
+        for evt_date in event_local_dates(evt, None if evt.all_day else ctx.tz):
+            if window_start <= evt_date <= window_end:
+                days_events[evt_date].append(evt)
 
     for d in days_events:
         days_events[d].sort(key=lambda e: (not e.all_day, e.start))
@@ -82,20 +82,28 @@ def draw_agenda(
         )
         return
 
-    # Build ordered list: (day, event) — skip days with no events
-    items: list[tuple[date, object]] = []
+    # Build ordered list: (day, event, multiday_index, multiday_total) — skip
+    # days with no events.  ``show_details`` below suppresses the repeated
+    # location/description on the continuation days of a multi-day event.
+    items: list[tuple[date, object, int, int]] = []
     for d_offset in range(_WINDOW_DAYS):
         day = window_start + timedelta(days=d_offset)
         if not days_events[day]:
             continue
         for evt in days_events[day]:
-            items.append((day, evt))
+            span = event_local_dates(evt, None if evt.all_day else ctx.tz)
+            total = len(span) if len(span) > 1 else 0
+            index = span.index(day) + 1 if total else 0
+            items.append((day, evt, index, total))
+
+    def _show_details(index: int, total: int) -> bool:
+        return not (total > 1 and index > 1)
 
     _desc_max_w = w - (padding_x + date_col_w + time_col_w + 8 + 8)
 
-    def _row_height(evt: object, max_desc_lines: int = 10) -> int:
-        has_loc = bool(getattr(evt, "location", None))
-        desc_raw: str = getattr(evt, "description", None) or ""
+    def _row_height(evt: object, max_desc_lines: int = 10, show_details: bool = True) -> int:
+        has_loc = bool(getattr(evt, "location", None)) and show_details
+        desc_raw: str = (getattr(evt, "description", None) or "") if show_details else ""
         if desc_raw and max_desc_lines > 0:
             rich_lines = parse_html_description(desc_raw, max_lines=max_desc_lines)
             wrapped = wrap_rich_lines(rich_lines, _desc_max_w, fonts, max_lines=max_desc_lines)
@@ -106,52 +114,57 @@ def draw_agenda(
     # First pass: determine what fits and count overflow
     cur_y = y0
     max_y = y0 + h
-    rendered: list[tuple[date, object, int]] = []
+    rendered: list[tuple[date, object, int, int, int]] = []
     remaining_count = 0
     in_overflow = False
 
-    for day, evt in items:
+    for day, evt, index, total in items:
         if in_overflow:
             remaining_count += 1
             continue
 
-        full_h = _row_height(evt, 10)
+        show_details = _show_details(index, total)
+        full_h = _row_height(evt, 10, show_details)
         available = max_y - cur_y - event_row_h
 
         if full_h <= available:
-            rendered.append((day, evt, 10))
+            rendered.append((day, evt, 10, index, total))
             cur_y += full_h
         else:
-            base_h = _row_height(evt, 0)  # height with no description
+            base_h = _row_height(evt, 0, show_details)  # height with no description
             if base_h > available:
                 in_overflow = True
                 remaining_count += 1
                 continue
 
-            has_desc = bool(getattr(evt, "description", None))
+            has_desc = show_details and bool(getattr(evt, "description", None))
             if has_desc:
                 max_lines_fit = max(0, (available - base_h - 8) // (TEXT_XS + 4))
                 max_lines_fit = min(10, max_lines_fit)
             else:
                 max_lines_fit = 0
 
-            effective_h = _row_height(evt, max_lines_fit)
-            rendered.append((day, evt, max_lines_fit))
+            effective_h = _row_height(evt, max_lines_fit, show_details)
+            rendered.append((day, evt, max_lines_fit, index, total))
             cur_y += effective_h
 
     # Second pass: draw
     cur_y = y0
     prev_day: date | None = None
     is_first_rendered = True
-    for day, evt, max_desc_lines in rendered:
+    for day, evt, max_desc_lines, index, total in rendered:
         first_in_day = day != prev_day
-        row_h_item = _row_height(evt, max_desc_lines)
+        show_details = _show_details(index, total)
+        row_h_item = _row_height(evt, max_desc_lines, show_details)
         _draw_event_row(
             ctx, evt, x0, cur_y, w, row_h_item,
             padding_x, time_col_w, date_col_w,
             day_date=day if first_in_day else None,
             draw_top_separator=not is_first_rendered,
-            max_desc_lines=max_desc_lines,
+            max_desc_lines=max_desc_lines if show_details else 0,
+            multiday_index=index,
+            multiday_total=total,
+            show_details=show_details,
         )
         cur_y += row_h_item
         prev_day = day
@@ -181,6 +194,9 @@ def _draw_event_row(
     day_date: date | None = None,
     draw_top_separator: bool = True,
     max_desc_lines: int = 10,
+    multiday_index: int = 0,
+    multiday_total: int = 0,
+    show_details: bool = True,
 ) -> None:
     palette = ctx.palette
     fonts = ctx.fonts
@@ -214,41 +230,48 @@ def _draw_event_row(
     sep_x = time_area_x + time_col_w
     time_y = y0 + 30
 
-    # Coloured dot — snapped to a visible panel colour on e-ink.
+    # Coloured dot — always reproduced via dithering so the true calendar
+    # colour survives on e-ink instead of being snapped to a panel colour.
     raw_color = getattr(evt, "color", "") or ""
     dot_color = raw_color if (raw_color.startswith("#") and len(raw_color) == 7) else palette["RULE"]
     try:
-        dot_rgb = ctx.snap_visible(dot_color)
+        dot_rgb = ImageColor.getrgb(dot_color)
     except ValueError:
-        dot_rgb = ctx.snap_visible(palette["RULE"])
+        dot_rgb = ImageColor.getrgb(palette["RULE"])
     dot_r = 7
     time_col_pad = 8
     dot_cx = time_area_x + time_col_pad + dot_r
     ctx.ellipse(
         [(dot_cx - dot_r, time_y - dot_r), (dot_cx + dot_r, time_y + dot_r)],
         fill=dot_rgb,
+        dither=True,
     )
 
-    # Time text — single line to the right of the dot
+    # Time text — single line to the right of the dot.  Multi-day events show a
+    # "Giorno X/N" counter (all-day) or directional arrows (timed) so each
+    # occurrence reads as part of a span rather than a separate event.
     time_text_x = time_area_x + time_col_pad + dot_r * 2 + 6
+    multiday = multiday_total > 1
     if evt.all_day:
-        ctx.text(
-            (time_text_x, time_y),
-            "Tutto il giorno",
-            font=fonts.mono_xs,
-            fill=palette["INK"],
-            anchor="lm",
-        )
+        time_str = f"Giorno {multiday_index}/{multiday_total}" if multiday else "Tutto il giorno"
     else:
         local_start = evt.start.astimezone(ctx.tz) if ctx.tz else evt.start
         local_end = evt.end.astimezone(ctx.tz) if ctx.tz else evt.end
-        ctx.text(
-            (time_text_x, time_y),
-            f"{local_start.strftime('%H:%M')} - {local_end.strftime('%H:%M')}",
-            font=fonts.mono_xs,
-            fill=palette["INK"],
-            anchor="lm",
-        )
+        if not multiday:
+            time_str = f"{local_start.strftime('%H:%M')} - {local_end.strftime('%H:%M')}"
+        elif multiday_index == 1:
+            time_str = f"{local_start.strftime('%H:%M')} →"
+        elif multiday_index == multiday_total:
+            time_str = f"→ {local_end.strftime('%H:%M')}"
+        else:
+            time_str = "↔ tutto il giorno"
+    ctx.text(
+        (time_text_x, time_y),
+        time_str,
+        font=fonts.mono_xs,
+        fill=palette["INK"],
+        anchor="lm",
+    )
 
     # --- Content ---
     title_x = sep_x + 8
@@ -259,17 +282,20 @@ def _draw_event_row(
     draw_mixed(ctx, title_segs, title_x, time_y, fonts.body, palette["INK"], icon_size_title)
 
     icon_size_sub = int(fonts.label.size * 0.75)
-    loc_y: int | None = (y0 + 70) if evt.location else None
+    show_loc = bool(evt.location) and show_details
+    show_desc = bool(evt.description) and show_details
+    loc_y: int | None = (y0 + 70) if show_loc else None
     desc_block_y: int | None = None
-    if evt.description and max_desc_lines > 0:
-        desc_block_y = y0 + 60 + (20 if evt.location else 0)
+    if show_desc and max_desc_lines > 0:
+        desc_block_y = y0 + 60 + (20 if show_loc else 0)
 
-    if evt.location and loc_y is not None:
-        loc_segs = split_text_emoji(evt.location)
+    if show_loc and loc_y is not None:
+        loc_text = evt.location.replace("\r\n", " · ").replace("\n", " · ")
+        loc_segs = split_text_emoji(loc_text)
         loc_segs = fit_mixed(ctx.draw, loc_segs, fonts.label, icon_size_sub, title_max_w)
         draw_mixed(ctx, loc_segs, title_x, loc_y, fonts.label, palette["INK_MUTED"], icon_size_sub)
 
-    if evt.description and desc_block_y is not None:
+    if show_desc and desc_block_y is not None:
         rich_lines = parse_html_description(evt.description, max_lines=max_desc_lines)
         if rich_lines:
             draw_rich_description(
