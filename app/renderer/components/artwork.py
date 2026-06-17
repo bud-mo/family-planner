@@ -11,7 +11,8 @@ import logging
 import random
 from typing import TYPE_CHECKING
 
-from PIL import Image, ImageOps
+import numpy as np
+from PIL import Image, ImageEnhance, ImageOps
 
 if TYPE_CHECKING:
     from app.renderer.components.context import RenderContext
@@ -31,16 +32,92 @@ ARTWORK_QUERY_DEFAULT: str = "landscape painting"
 
 Rect = tuple[int, int, int, int]
 
+# ---------------------------------------------------------------------------
+# E-ink colour enhancement
+# ---------------------------------------------------------------------------
+
+# Default enhancement values tuned for the Spectra 6 panel.
+# The panel absorbs brightness and desaturates colours compared to a monitor;
+# these defaults compensate for that effect before dithering.
+_DEFAULT_GAMMA: float = 0.50       # < 1.0 → schiarisce; prova 0.45–0.60
+_DEFAULT_SATURATION: float = 1.45  # boost colori prima dello snap alla palette
+_DEFAULT_BRIGHTNESS: float = 1.15  # leggero boost finale di luminosità
+
+
+def enhance_for_eink(
+    image: Image.Image,
+    *,
+    gamma: float = _DEFAULT_GAMMA,
+    saturation: float = _DEFAULT_SATURATION,
+    brightness: float = _DEFAULT_BRIGHTNESS,
+) -> Image.Image:
+    """Enhance a photographic ``Image`` to look natural on an e-ink Spectra 6 panel.
+
+    The Spectra 6 display renders colours significantly darker and more muted
+    than a monitor or print.  This pipeline compensates by:
+
+    1. **Saturation boost** — vivid hues survive the palette snap better.
+    2. **Gamma correction** — raises mid-tones without blowing out highlights
+       (``gamma < 1.0`` brightens; ``gamma > 1.0`` darkens).
+    3. **Brightness nudge** — a final linear lift to recover any remaining
+       darkness after quantisation.
+
+    The function is a no-op when the display is not e-ink (``gamma=1``,
+    ``saturation=1``, ``brightness=1``).
+
+    Args:
+        image:      RGB ``PIL.Image`` to enhance (not modified in place).
+        gamma:      Exponent applied per-channel.  Default ``0.50``.
+        saturation: Colour saturation multiplier.  Default ``1.45``.
+        brightness: Linear brightness multiplier applied last.  Default ``1.15``.
+
+    Returns:
+        A new RGB ``PIL.Image`` with the corrections applied.
+    """
+    img = image.convert("RGB")
+
+    # 1. Saturation — do this first, before gamma shifts luminance.
+    if saturation != 1.0:
+        img = ImageEnhance.Color(img).enhance(saturation)
+
+    # 2. Gamma correction via numpy (fast, avoids LUT rounding on float ops).
+    if gamma != 1.0:
+        arr = np.asarray(img, dtype=np.float32) / 255.0
+        arr = np.power(arr, gamma)
+        img = Image.fromarray((arr * 255.0).clip(0, 255).astype(np.uint8), "RGB")
+
+    # 3. Final brightness nudge.
+    if brightness != 1.0:
+        img = ImageEnhance.Brightness(img).enhance(brightness)
+
+    return img
+
 
 def fetch_artwork(
     width: int,
     height: int,
     query: str = ARTWORK_QUERY_DEFAULT,
+    *,
+    eink_enhance: bool = False,
+    gamma: float = _DEFAULT_GAMMA,
+    saturation: float = _DEFAULT_SATURATION,
+    brightness: float = _DEFAULT_BRIGHTNESS,
 ) -> "tuple[Image.Image, str] | None":
     """Fetch a random public-domain artwork matching *query* and crop-fill it.
 
     Returns a ``(image, caption)`` tuple, or ``None`` on any network/parse error
     (the caller falls back to a plain background).
+
+    Args:
+        width:         Target canvas width in pixels.
+        height:        Target canvas height in pixels.
+        query:         Free-text search query for the ARTIC API.
+        eink_enhance:  When ``True``, applies :func:`enhance_for_eink` before
+                       returning.  Pass ``True`` for e-ink targets, ``False``
+                       for HDMI/browser preview.
+        gamma:         Forwarded to :func:`enhance_for_eink`.
+        saturation:    Forwarded to :func:`enhance_for_eink`.
+        brightness:    Forwarded to :func:`enhance_for_eink`.
     """
     _MAX_ATTEMPTS = 5
     _BROWSER_HEADERS = {
@@ -96,6 +173,13 @@ def fetch_artwork(
                 continue
             img = Image.open(io.BytesIO(img_resp.content)).convert("RGB")
             cover = ImageOps.fit(img, (width, height), Image.Resampling.LANCZOS)
+            if eink_enhance:
+                cover = enhance_for_eink(
+                    cover,
+                    gamma=gamma,
+                    saturation=saturation,
+                    brightness=brightness,
+                )
 
             title = (artwork.get("title") or "").strip()
             artist = (artwork.get("artist_display") or "").split("\n")[0].strip()

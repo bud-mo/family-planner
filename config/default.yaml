@@ -16,7 +16,9 @@ display:
   eink_model: 7in5_V2
   eink_palette: bw
   eink_dither: false
-  eink_saturation: 0.5
+  eink_gamma: 0.50       # default
+  eink_saturation: 1.45  # default
+  eink_brightness: 1.15  # default
   rotation: 0
 weather:
   enabled: false

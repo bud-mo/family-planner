@@ -90,6 +90,13 @@ class PillowEinkRenderer:
             _artwork_cfg.query if _artwork_cfg is not None else _ARTWORK_QUERY_DEFAULT
         )
 
+        # E-ink artwork enhancement — only meaningful when display_type == "eink".
+        # Values can be overridden via config.display.eink_gamma / saturation / brightness.
+        _disp = config.display
+        self._eink_gamma: float = float(getattr(_disp, "eink_gamma", 0.50))
+        self._eink_saturation: float = float(getattr(_disp, "eink_saturation", 1.45))
+        self._eink_brightness: float = float(getattr(_disp, "eink_brightness", 1.15))
+
         tz_name: str = getattr(config, "timezone", "local")
         if tz_name and tz_name != "local":
             try:
@@ -174,13 +181,26 @@ class PillowEinkRenderer:
 
         The painting region is marked as ditherable; the caption box is left
         crisp.  Falls back to a plain ``BG`` background if the fetch fails.
+
+        When ``display_type`` is ``"eink"``, :func:`~app.renderer.components.artwork.enhance_for_eink`
+        is applied before pasting, using the gamma/saturation/brightness values from
+        ``config.display`` (defaults: gamma=0.50, saturation=1.45, brightness=1.15).
+        This compensates for the Spectra 6 panel's tendency to render photographs
+        darker and more muted than the source image.
         """
         W, H = self._size
         palette = self._palette
         img = Image.new("RGB", (W, H), palette["BG"])
         ctx = self._make_ctx(img, palette)
 
-        result = _artwork.fetch_artwork(W, H, self._artwork_query)
+        is_eink = self._display_type == "eink"
+        result = _artwork.fetch_artwork(
+            W, H, self._artwork_query,
+            eink_enhance=is_eink,
+            gamma=self._eink_gamma,
+            saturation=self._eink_saturation,
+            brightness=self._eink_brightness,
+        )
         if result is not None:
             artwork_img, caption = result
             img.paste(artwork_img)
