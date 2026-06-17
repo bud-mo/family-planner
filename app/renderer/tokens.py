@@ -97,7 +97,8 @@ COLOR_RULE_STRONG: str = "#333333"
 # ---------------------------------------------------------------------------
 
 WEATHER_ICON_COLORS: dict[str, str] = {
-    "sun":        "#F5A623",  # giallo-arancio (sole, cielo sereno)
+    "sun":        "#FF6600",  # arancione (sole, cielo sereno) — riprodotto via dithering
+    "moon":       "#666666",  # grigio (luna, cielo sereno notturno)
     "cloud":      "#9CA3AF",  # grigio (nuvola, nebbia, coperto)
     "cloud-rain": "#3B82F6",  # blu (pioggia, rovesci, temporale)
     "snowflake":  "#93C5FD",  # azzurro chiaro (neve, grandine)

@@ -196,10 +196,22 @@ class RenderContext:
             self.mask_draw.rectangle(xy, fill=255)
 
     def ellipse(
-        self, xy, *, fill: Color | None = None, outline: Color | None = None
+        self,
+        xy,
+        *,
+        fill: Color | None = None,
+        outline: Color | None = None,
+        dither: bool = False,
     ) -> None:
+        """Draw an ellipse, optionally reproducing *fill* via dithering.
+
+        When ``dither=True`` the ellipse region is marked in the dither mask so
+        the post-processor reproduces *fill* with Floyd-Steinberg dithering
+        instead of snapping it to the nearest panel colour. The caller is
+        responsible for passing the true (un-snapped) colour.
+        """
         self.draw.ellipse(xy, fill=fill, outline=outline)
-        if self._is_ditherable(fill) or self._is_ditherable(outline):
+        if dither or self._is_ditherable(fill) or self._is_ditherable(outline):
             self.mask_draw.ellipse(xy, fill=255)
 
     def mark_dither(self, box: tuple[int, int, int, int]) -> None:
@@ -216,18 +228,27 @@ class RenderContext:
         size: int,
         xy: tuple[int, int],
         color: Color,
+        *,
+        dither: bool = False,
     ) -> bool:
         """Composite a recoloured icon at top-left *xy*; returns ``True`` if drawn.
 
-        Icons are recoloured to a snapped (crisp) panel colour, so they are not
-        added to the dither mask.  ``snap_visible`` is used so an icon whose
-        colour would snap to the (white) background — e.g. the grey cloud on a
-        Spectra 6 panel — falls back to black instead of disappearing.
+        When ``dither=False`` (default) the colour is snapped to the nearest panel
+        colour so the icon stays crisp.  When ``dither=True`` the original colour
+        is kept and the icon bounding box is marked in the dither mask so the
+        post-processor reproduces it via Floyd-Steinberg dithering.
         """
         icon_img = load_icon(name, size)
         if icon_img is None:
             return False
-        r, g, b = self.snap_visible(color)
+        if dither:
+            r, g, b = ImageColor.getrgb(color) if isinstance(color, str) else color
+            iw, ih = icon_img.size
+            self.mask_draw.rectangle(
+                [xy[0], xy[1], xy[0] + iw - 1, xy[1] + ih - 1], fill=255
+            )
+        else:
+            r, g, b = self.snap_visible(color)
         _, _, _, alpha = icon_img.split()
         tinted = Image.new("RGBA", icon_img.size, (r, g, b, 255))
         tinted.putalpha(alpha)

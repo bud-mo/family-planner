@@ -6,8 +6,8 @@ required, GDPR-compliant, updates available every hour.
 API endpoint:
     GET https://api.open-meteo.com/v1/forecast
     ?latitude=<lat>&longitude=<lon>
-    &current=temperature_2m,weather_code
-    &hourly=temperature_2m,weather_code
+    &current=temperature_2m,weather_code,is_day
+    &hourly=temperature_2m,weather_code,is_day
     &daily=temperature_2m_max,temperature_2m_min
     &temperature_unit=celsius
     &timezone=auto
@@ -40,6 +40,10 @@ _CACHE_TTL: int = 3600  # seconds — refresh at most once per hour
 # ---------------------------------------------------------------------------
 # WMO 4677 weather code → Tabler icon name (subset used in design.md)
 # ---------------------------------------------------------------------------
+# Icona usata di notte (is_day == 0) al posto di "sun" per cielo sereno/poco
+# nuvoloso — vedi :func:`_resolve_icon`.
+_NIGHT_CLEAR_ICON = "moon"
+
 WMO_TO_ICON: dict[int, str] = {
     0: "sun",
     1: "sun",
@@ -104,6 +108,18 @@ _WMO_TO_DESC: dict[int, str] = {
     96: "Temporale con grandine",
     99: "Temporale con grandine intensa",
 }
+
+
+def _resolve_icon(code: int, is_day: bool) -> str | None:
+    """Mappa un codice WMO sull'icona Tabler, usando la luna di notte.
+
+    Per cielo sereno o poco nuvoloso (icona "sun") durante le ore serali e
+    notturne (``is_day`` False) si usa l'icona della luna invece del sole.
+    """
+    icon = WMO_TO_ICON.get(code)
+    if icon == "sun" and not is_day:
+        return _NIGHT_CLEAR_ICON
+    return icon
 
 
 class OpenMeteoProvider(WeatherProvider):
@@ -182,8 +198,8 @@ class OpenMeteoProvider(WeatherProvider):
         params: dict[str, object] = {
             "latitude": self._latitude,
             "longitude": self._longitude,
-            "current": "temperature_2m,weather_code",
-            "hourly": "temperature_2m,weather_code",
+            "current": "temperature_2m,weather_code,is_day",
+            "hourly": "temperature_2m,weather_code,is_day",
             "daily": "temperature_2m_max,temperature_2m_min",
             "temperature_unit": self._units,
             "timezone": "auto",
@@ -201,9 +217,10 @@ class OpenMeteoProvider(WeatherProvider):
             current = data["current"]
             daily = data["daily"]
             code = int(current["weather_code"])
+            is_day = bool(int(current.get("is_day", 1)))
             hourly_forecast = self._parse_hourly(data.get("hourly", {}))
             return WeatherData(
-                condition_icon=WMO_TO_ICON.get(code),
+                condition_icon=_resolve_icon(code, is_day),
                 description=_WMO_TO_DESC.get(code),
                 temp_current=float(current["temperature_2m"]),
                 temp_max=float(daily["temperature_2m_max"][0]),
@@ -225,6 +242,7 @@ class OpenMeteoProvider(WeatherProvider):
         """
         temps = hourly.get("temperature_2m", [])
         codes = hourly.get("weather_code", [])
+        is_days = hourly.get("is_day", [])
         if not temps or not codes:
             return []
 
@@ -236,7 +254,8 @@ class OpenMeteoProvider(WeatherProvider):
             idx = slot_start + offset
             try:
                 temp = float(temps[idx])
-                icon = WMO_TO_ICON.get(int(codes[idx]))
+                is_day = bool(int(is_days[idx])) if idx < len(is_days) else True
+                icon = _resolve_icon(int(codes[idx]), is_day)
             except (IndexError, TypeError, ValueError):
                 temp = None
                 icon = None

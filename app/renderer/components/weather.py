@@ -36,12 +36,12 @@ def draw_weather(ctx: "RenderContext", rect: Rect, weather: WeatherData) -> None
     )
     # In narrow landscape columns, shorten the date to prevent overflow onto weather data
     _max_date_w = int(w * 0.65)
-    if draw.textlength(date_str, font=fonts.display) > _max_date_w:
+    if draw.textlength(date_str, font=fonts.temp) > _max_date_w:
         date_str = (
             f"{_DAY_NAMES_FULL_IT[today.weekday()]}, "
             f"{today.day} {_MONTH_NAMES_SHORT_IT[today.month - 1]} {today.year}"
         )
-        if draw.textlength(date_str, font=fonts.display) > _max_date_w:
+        if draw.textlength(date_str, font=fonts.temp) > _max_date_w:
             date_str = (
                 f"{_DAY_NAMES_FULL_IT[today.weekday()]}, "
                 f"{today.day} {_MONTH_NAMES_SHORT_IT[today.month - 1]}"
@@ -50,7 +50,7 @@ def draw_weather(ctx: "RenderContext", rect: Rect, weather: WeatherData) -> None
     ctx.text(
         (x0 + 12, y_mid),
         date_str,
-        font=fonts.display,
+        font=fonts.temp,
         fill=palette["INK"],
         anchor="lm",
     )
@@ -110,7 +110,10 @@ def draw_weather(ctx: "RenderContext", rect: Rect, weather: WeatherData) -> None
             icon_color = WEATHER_ICON_COLORS.get(weather.condition_icon, palette["INK"])
             icon_x = temp_right_x - temp_w - 10 - 48
             icon_y = y_mid - 24
-            ctx.draw_icon(weather.condition_icon, 48, (icon_x, icon_y), icon_color)
+            ctx.draw_icon(
+                weather.condition_icon, 48, (icon_x, icon_y), icon_color,
+                dither=weather.condition_icon == "sun",
+            )
 
     _draw_hourly_row(
         ctx, (x0, y0 + BANNER_MAIN_HEIGHT, w, BANNER_HOURLY_HEIGHT), weather
@@ -175,7 +178,10 @@ def _draw_hourly_row(ctx: "RenderContext", rect: Rect, weather: WeatherData) -> 
         # Condition icon (48px) — centred between time text and temperature text
         if slot.condition_icon is not None:
             icon_color = WEATHER_ICON_COLORS.get(slot.condition_icon, palette["INK"])
-            ctx.draw_icon(slot.condition_icon, 48, (cx - 24, _icon_y), icon_color)
+            ctx.draw_icon(
+                slot.condition_icon, 48, (int(cx - 24), int(_icon_y)), icon_color,
+                dither=slot.condition_icon == "sun",
+            )
 
         # Temperature — number part centred on cx, degree symbol to the right
         if slot.temp is not None:
