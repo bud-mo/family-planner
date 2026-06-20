@@ -1,7 +1,7 @@
 """Cadenze di aggiornamento allineate all'orologio.
 
-Singola fonte di verità per *quando* aggiornare dati e display, condivisa dal
-loop e-ink ([app/main.py]) e dal loop HDMI ([app/display/hdmi.py]).
+Singola fonte di verità per *quando* aggiornare dati e display, usata dal
+loop e-ink ([app/main.py]) e dall'anteprima web.
 
 Politica:
 - Calendario: ogni ``CALENDAR_INTERVAL_MINUTES`` (quarto d'ora) ai confini

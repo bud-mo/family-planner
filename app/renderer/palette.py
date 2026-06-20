@@ -96,20 +96,16 @@ def snap_to_palette(
     )
 
 
-def resolve_palette(display_type: str, eink_palette: str) -> dict[str, str]:
-    """Return the semantic palette for the target display.
+def resolve_palette(eink_palette: str) -> dict[str, str]:
+    """Return the semantic palette snapped to the e-ink panel.
 
-    For ``hdmi`` the full day palette is returned unchanged.  For e-ink, tokens
-    that are *ditherable* for the palette (see :func:`ditherable_tokens`) keep
-    their original grey (reproduced via dithering); the rest are snapped to an
-    exact panel colour.  On multicolour panels the secondary text/rules are
+    Tokens that are *ditherable* for the palette (see :func:`ditherable_tokens`)
+    keep their original grey (reproduced via dithering); the rest are snapped to
+    an exact panel colour.  On multicolour panels the secondary text/rules are
     additionally forced to solid black so they stay crisp and legible instead of
     becoming coloured noise — only the today highlight stays dithered.
     """
     base = get_palette()
-    if display_type != "eink":
-        return dict(base)
-
     grayscale = is_grayscale_palette(eink_palette)
     dith = ditherable_tokens(eink_palette)
     resolved: dict[str, str] = {}

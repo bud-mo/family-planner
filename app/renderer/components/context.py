@@ -113,7 +113,6 @@ class RenderContext:
         fonts: Fonts,
         *,
         layout: str,
-        display_type: str,
         eink_palette: str,
         tz: "ZoneInfo | None",
     ) -> None:
@@ -123,9 +122,10 @@ class RenderContext:
         self.palette = palette
         self.fonts = fonts
         self.layout = layout
-        self.display_type = display_type
         self.eink_palette = eink_palette
-        self.is_eink = display_type == "eink"
+        # The e-ink panel is the only output, so palette-snapping/dithering is
+        # always active.
+        self.is_eink = True
         # Grayscale panels reproduce grey via dithering; multicolour panels snap
         # secondary UI to crisp colours (see app.renderer.palette).
         self.is_grayscale = is_grayscale_palette(eink_palette)

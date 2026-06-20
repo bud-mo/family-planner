@@ -64,7 +64,6 @@ echo "[4/5] Installing systemd service..."
 ssh -t "$TARGET" "sed \"s|/home/pi|/home/$REMOTE_USER|g; s|User=pi|User=$REMOTE_USER|g\" \
     $REMOTE_DIR/systemd/family-planner.service | \
     sudo tee /etc/systemd/system/family-planner.service > /dev/null && \
-    sudo usermod -aG video $REMOTE_USER && \
     if [ ! -f /boot/firmware/family-planner.config.yaml ]; then \
         sudo cp $REMOTE_DIR/config/default.yaml /boot/firmware/family-planner.config.yaml && \
         sudo chmod 644 /boot/firmware/family-planner.config.yaml && \

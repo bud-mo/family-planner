@@ -95,25 +95,22 @@ class TestSelectiveDither:
 # ---------------------------------------------------------------------------
 
 class TestPaletteResolution:
-    def test_hdmi_returns_day_palette_unchanged(self) -> None:
-        assert resolve_palette("hdmi", "bw") == get_palette()
-
     def test_eink_snaps_crisp_tokens(self) -> None:
-        resolved = resolve_palette("eink", "bw")
+        resolved = resolve_palette("bw")
         assert resolved["BG"] == "#FFFFFF"
         assert resolved["INK"] == "#000000"
         assert resolved["RULE_STRONG"] == "#000000"
 
     def test_eink_keeps_ditherable_tokens_grey(self) -> None:
         base = get_palette()
-        resolved = resolve_palette("eink", "bw")
+        resolved = resolve_palette("bw")
         for token in DITHERABLE_TOKENS:
             assert resolved[token] == base[token], (
                 f"ditherable token {token} must keep its original grey"
             )
 
     def test_multicolour_forces_secondary_text_black(self) -> None:
-        resolved = resolve_palette("eink", "spectra6")
+        resolved = resolve_palette("spectra6")
         for token in ("INK_MUTED", "INK_FAINT", "HOLIDAY", "RULE"):
             assert resolved[token] == "#000000", (
                 f"{token} must be crisp black on multicolour panels"
@@ -123,7 +120,7 @@ class TestPaletteResolution:
         # The today highlight (BG_ALT) keeps its grey on every e-ink palette,
         # so it is reproduced via dithering (coloured stipple on multicolour).
         for pal in ("bw", "4gray", "bwr", "spectra6"):
-            assert resolve_palette("eink", pal)["BG_ALT"] == get_palette()["BG_ALT"]
+            assert resolve_palette(pal)["BG_ALT"] == get_palette()["BG_ALT"]
 
     def test_multicolour_dithers_only_the_highlight(self) -> None:
         base = get_palette()
@@ -151,8 +148,7 @@ class TestRendererAttachesMask:
 
         cfg = types.SimpleNamespace(
             display=types.SimpleNamespace(
-                width=480, height=800, layout="portrait", type="eink",
-                eink_palette="bw",
+                resolution=(480, 800), layout="portrait", eink_palette="bw",
             ),
             timezone="local",
             artwork=types.SimpleNamespace(query="landscape"),

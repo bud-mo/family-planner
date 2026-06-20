@@ -7,11 +7,9 @@ server:
   # auth_password: null
 timezone: "Europe/Rome"
 display:
-  fullscreen: false
-  type: hdmi
+  # The e-ink panel is the only supported output. The canvas resolution is
+  # derived automatically from eink_model + rotation (see EINK_RESOLUTIONS).
   layout: landscape
-  width: 1920
-  height: 1080
   show_buttons: false
   eink_model: 7in5_V2
   eink_palette: bw

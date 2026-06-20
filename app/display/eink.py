@@ -53,6 +53,24 @@ _MODEL_TO_MODULE: dict[str, str] = {
 }
 
 
+def panel_available() -> bool:
+    """Return True when running on a Raspberry Pi (where an e-ink panel can drive).
+
+    Used by the entry point to decide between the e-ink push loop and
+    web-server-only mode.  Detection reads ``/proc/device-tree/model``; on a
+    development machine (macOS / non-Pi Linux) the file is absent and this
+    returns False, so the app serves only the browser preview instead of
+    spinning an e-ink loop that would fail on every push.
+    """
+    try:
+        from pathlib import Path
+
+        model = Path("/proc/device-tree/model").read_text(errors="ignore")
+    except OSError:
+        return False
+    return "raspberry pi" in model.lower()
+
+
 class EinkDisplay:
     """Pushes a composed ``PIL.Image`` to a Waveshare e-ink panel."""
 

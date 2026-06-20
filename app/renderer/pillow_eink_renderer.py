@@ -5,8 +5,8 @@ Single-screen layout: weather banner · mini-calendar · agenda · footer.
 ``PillowEinkRenderer`` orchestrates the per-component drawing modules in
 :mod:`app.renderer.components`, rendering a ``PIL.Image`` directly from
 ``NavigationState`` and a list of ``CalendarEvent`` objects, without involving a
-browser or network.  It is the sole renderer for both HDMI (pygame) and e-ink
-(Waveshare / Inky) displays.
+browser or network.  It is the sole renderer for the e-ink panel
+(Waveshare / Inky) and the browser preview.
 
 On e-ink, colours are resolved against the panel palette (see
 :func:`app.renderer.palette.resolve_palette`) and a *dither mask* is built during
@@ -81,9 +81,8 @@ class PillowEinkRenderer:
         config: "AppConfig",
         weather_provider: "WeatherProvider | None" = None,
     ) -> None:
-        self._size: tuple[int, int] = (config.display.width, config.display.height)
+        self._size: tuple[int, int] = config.display.resolution
         self._layout: str = config.display.layout
-        self._display_type: str = config.display.type
         self._eink_palette: str = getattr(config.display, "eink_palette", "bw")
         self._weather_provider = weather_provider
         _artwork_cfg = getattr(config, "artwork", None)
@@ -107,7 +106,7 @@ class PillowEinkRenderer:
         # a button press shows the next image. Cycles via modulo in the loader.
         self._artwork_index: int = 0
 
-        # E-ink artwork enhancement — only meaningful when display_type == "eink".
+        # E-ink artwork enhancement knobs.
         # Values can be overridden via config.display.eink_gamma / saturation / brightness.
         _disp = config.display
         self._eink_gamma: float = float(getattr(_disp, "eink_gamma", 0.50))
@@ -127,10 +126,8 @@ class PillowEinkRenderer:
         else:
             self._tz = None
 
-        # Resolved semantic palette for the target display (snapped on e-ink).
-        self._palette: dict[str, str] = resolve_palette(
-            self._display_type, self._eink_palette
-        )
+        # Resolved semantic palette for the e-ink panel (palette-snapped tokens).
+        self._palette: dict[str, str] = resolve_palette(self._eink_palette)
 
         # Fonts are loaded once and shared across renders.
         self._fonts = build_fonts()
@@ -152,8 +149,8 @@ class PillowEinkRenderer:
         """Render the Home view for *state* and *events* as an RGB ``PIL.Image``.
 
         *updated_at* is the moment the displayed data last changed; it is shown
-        in the footer ("Ultimo aggiornamento").  When ``None`` (browser preview,
-        HDMI) the current time is used.  The returned image carries a dither mask
+        in the footer ("Ultimo aggiornamento").  When ``None`` (browser preview)
+        the current time is used.  The returned image carries a dither mask
         in ``img.info["dither_mask"]``.
         """
         W, H = self._size
@@ -258,7 +255,6 @@ class PillowEinkRenderer:
             palette if palette is not None else self._palette,
             self._fonts,
             layout=self._layout,
-            display_type=self._display_type,
             eink_palette=self._eink_palette,
             tz=self._tz,
         )

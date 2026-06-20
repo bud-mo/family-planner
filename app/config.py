@@ -21,17 +21,39 @@ class ServerConfig(BaseModel):
 
 
 class DisplayConfig(BaseModel):
-    fullscreen: bool = False
-    type: Literal["hdmi", "eink"] = "hdmi"
-    width: int = 1920
-    height: int = 1080
     layout: Literal["portrait", "landscape"] = "landscape"
-    show_buttons: bool = False      # show on-screen navigation overlay (for touchscreen / debug)
+    show_buttons: bool = False      # browser-preview navigation overlay only
     eink_model: str = "7in5_V2"
     eink_palette: Literal["bw", "bwr", "4gray", "spectra6"] = "bw"
     eink_dither: bool = True
     eink_saturation: float = 0.5
     rotation: Literal[0, 90, 180, 270] = 0
+
+    @field_validator("eink_model")
+    @classmethod
+    def validate_eink_model(cls, v: str) -> str:
+        from app.renderer.eink_renderer import EINK_RESOLUTIONS
+
+        if v not in EINK_RESOLUTIONS:
+            raise ValueError(
+                f"Unknown eink_model: {v!r}. Supported models: "
+                f"{', '.join(sorted(EINK_RESOLUTIONS))}."
+            )
+        return v
+
+    @property
+    def resolution(self) -> tuple[int, int]:
+        """Canvas (width, height) derived from the panel model and rotation.
+
+        For a 90°/270° rotation the rendered image must fit the panel in
+        transposed orientation, so width and height are swapped.
+        """
+        from app.renderer.eink_renderer import EINK_RESOLUTIONS
+
+        w, h = EINK_RESOLUTIONS[self.eink_model]
+        if self.rotation in (90, 270):
+            w, h = h, w
+        return w, h
 
 
 class CalendarConfig(BaseModel):
@@ -157,6 +179,17 @@ def load_config(path: Path) -> AppConfig:
 
     if raw is None:
         raw = {}
+
+    if isinstance(raw, dict) and isinstance(raw.get("display"), dict):
+        _legacy = [k for k in ("type", "width", "height", "fullscreen") if k in raw["display"]]
+        if _legacy:
+            logger.warning(
+                "HDMI support was removed in v0.7.0 — the e-ink panel is now the "
+                "only output. Ignoring obsolete display field(s) %s in %s; remove "
+                "them from the display section.",
+                ", ".join(_legacy),
+                path,
+            )
 
     try:
         config = AppConfig.model_validate(raw)

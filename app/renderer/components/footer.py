@@ -23,7 +23,7 @@ def draw_footer(
     ctx.line([(x0, y0), (x0 + w, y0)], fill=palette["RULE"])
 
     # *updated_at* riflette l'ultima variazione dei dati, non il mero repaint;
-    # se assente (anteprima web / HDMI) si usa l'ora corrente.
+    # se assente (anteprima web) si usa l'ora corrente.
     ts = updated_at or datetime.now()
     status_text = f"Ultimo aggiornamento: {ts.strftime('%H:%M')}"
     _bbox = ctx.draw.textbbox((0, 0), status_text, font=fonts.label)

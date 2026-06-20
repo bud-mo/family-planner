@@ -19,7 +19,7 @@ from app.renderer.state import NavigationState
 def _make_renderer(tz_name: str) -> PillowEinkRenderer:
     cfg = types.SimpleNamespace(
         display=types.SimpleNamespace(
-            width=800, height=480, layout="portrait", type="hdmi"
+            resolution=(800, 480), layout="portrait"
         ),
         timezone=tz_name,
     )

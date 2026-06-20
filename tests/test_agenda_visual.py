@@ -58,7 +58,7 @@ def _to_spectra6(img: Image.Image) -> Image.Image:
 def _make_renderer() -> PillowEinkRenderer:
     cfg = types.SimpleNamespace(
         display=types.SimpleNamespace(
-            width=800, height=480, layout="portrait", type="hdmi"
+            resolution=(800, 480), layout="portrait"
         ),
         timezone="local",
     )

@@ -29,7 +29,7 @@ from app.renderer.tokens import get_palette
 def renderer() -> PillowEinkRenderer:
     cfg = types.SimpleNamespace(
         display=types.SimpleNamespace(
-            width=800, height=480, layout="portrait", type="hdmi"
+            resolution=(800, 480), layout="portrait"
         ),
         timezone="local",
     )

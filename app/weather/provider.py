@@ -45,7 +45,7 @@ class WeatherProvider(ABC):
     """Returns current weather data for the configured location.
 
     Implementations must be thread-safe: ``get()`` may be called concurrently
-    from the pygame render loop, the e-ink daemon thread, and FastAPI routes.
+    from the e-ink daemon thread and FastAPI routes.
     """
 
     @abstractmethod

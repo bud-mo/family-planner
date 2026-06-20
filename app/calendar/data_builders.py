@@ -1,6 +1,6 @@
 """Calendar data-preparation helpers.
 
-Functions shared between the FastAPI routes, HdmiDisplay and
+Functions shared between the FastAPI routes, the e-ink loop and
 ``PillowEinkRenderer``.  This module must not import anything from
 ``app.server`` or ``fastapi``.
 """

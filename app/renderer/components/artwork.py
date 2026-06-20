@@ -119,8 +119,8 @@ def fetch_artwork(
         height:        Target canvas height in pixels.
         query:         Free-text search query for the ARTIC API.
         eink_enhance:  When ``True``, applies :func:`enhance_for_eink` before
-                       returning.  Pass ``True`` for e-ink targets, ``False``
-                       for HDMI/browser preview.
+                       returning.  Pass ``True`` for the e-ink panel, ``False``
+                       for the browser preview.
         gamma:         Forwarded to :func:`enhance_for_eink`.
         saturation:    Forwarded to :func:`enhance_for_eink`.
         brightness:    Forwarded to :func:`enhance_for_eink`.

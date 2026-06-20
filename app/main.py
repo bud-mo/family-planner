@@ -4,7 +4,7 @@ Wires together all subsystems:
   - Configuration (Pydantic / YAML)
   - Calendar aggregator (ICS + CalDAV)
   - Renderer (PillowEinkRenderer — Pillow-native, no browser)
-  - Display (HDMI pygame main-thread loop *or* e-ink periodic push)
+  - Display (e-ink periodic push; web-server-only when no panel is attached)
   - Web server (FastAPI / Uvicorn)
 
 Usage::
@@ -524,7 +524,6 @@ def main() -> None:
     # ------------------------------------------------------------------
     display_obj: "EinkDisplay | InkyDisplay | None" = None
     eink_stop_event: threading.Event | None = None
-    _hdmi_ref: list = [None]
     _eink_renderer_ref: list = [None]
     _renderer_ref: list = [renderer]
     _aggregator_ref: list = [aggregator]
@@ -554,9 +553,6 @@ def main() -> None:
         # Signal the e-ink loop to stop (non-blocking — just sets an event).
         if eink_stop_event is not None:
             eink_stop_event.set()
-        # Signal the pygame window to close (if running).
-        if _hdmi_ref[0] is not None:
-            _hdmi_ref[0].stop()
         # Uvicorn handles SIGINT via its own asyncio signal handlers; setting
         # should_exit here is a belt-and-suspenders fallback for other signals.
         server.should_exit = True
@@ -579,8 +575,6 @@ def main() -> None:
             )
             web_app.state.aggregator = new_aggregator
             _aggregator_ref[0] = new_aggregator
-            if _hdmi_ref[0] is not None:
-                _hdmi_ref[0].set_aggregator(new_aggregator)
             # Rebuild weather provider with updated settings.
             new_weather_provider: "WeatherProvider | None" = None
             if new_config.weather.enabled:
@@ -594,9 +588,6 @@ def main() -> None:
             new_renderer = PillowEinkRenderer(new_config, weather_provider=new_weather_provider)
             web_app.state.renderer = new_renderer
             _renderer_ref[0] = new_renderer
-            if _hdmi_ref[0] is not None:
-                _hdmi_ref[0].set_renderer(new_renderer)
-                _hdmi_ref[0].set_weather_provider(new_weather_provider)
             # Rebuild EinkRenderer so palette/dithering/rotation changes take effect
             # in the e-ink push loop without requiring a full process restart.
             if _eink_renderer_ref[0] is not None:
@@ -614,7 +605,9 @@ def main() -> None:
     if hasattr(signal, "SIGHUP"):  # not available on Windows
         signal.signal(signal.SIGHUP, _reload_config)
 
-    if config.display.type == "eink":
+    from app.display.eink import panel_available
+
+    if panel_available():
         from app.renderer.eink_renderer import EinkRenderer
 
         _eink_renderer_ref[0] = EinkRenderer(config.display)
@@ -737,9 +730,16 @@ def main() -> None:
                 _artwork_button,
                 _shutdown_button,
             )
+    else:
+        logger.info(
+            "No e-ink panel detected (not running on a Raspberry Pi) — "
+            "running in web-server-only mode; open the browser preview at /."
+        )
 
     # ------------------------------------------------------------------
-    # Run (blocks until server exits)
+    # Run (blocks until server exits) — Uvicorn always runs on the main thread.
+    # The e-ink panel (when present) refreshes from its own daemon loop started
+    # above; when no panel is attached the app serves only the browser preview.
     # ------------------------------------------------------------------
     logger.info(
         "Web server starting on http://%s:%d",
@@ -747,47 +747,6 @@ def main() -> None:
         config.server.port,
     )
 
-    if config.display.type == "hdmi":
-        from app.display.hdmi import HdmiDisplay
-
-        if not HdmiDisplay.probe():
-            logger.warning(
-                "HDMI display not available (pygame could not open a window). "
-                "Check SDL_VIDEODRIVER and display hardware. "
-                "Falling back to web-server-only mode."
-            )
-        else:
-            hdmi = HdmiDisplay(config.display, renderer, aggregator, weather_provider)
-            _hdmi_ref[0] = hdmi
-
-            # Uvicorn in daemon thread — must start before run_blocking()
-            uv_thread = threading.Thread(
-                target=server.run,
-                daemon=True,
-                name="uvicorn",
-            )
-            uv_thread.start()
-
-            hdmi.run_blocking()  # blocks main thread until window is closed
-
-            # Shutdown after pygame exits
-            if eink_stop_event is not None:
-                eink_stop_event.set()
-            server.should_exit = True
-            if hdmi.shutdown_requested:
-                logger.info("Tasto D: esecuzione sudo shutdown -h now")
-                result = subprocess.run(["sudo", "shutdown", "-h", "now"], check=False)  # noqa: S603 S607
-                if result.returncode != 0:
-                    logger.error(
-                        "sudo shutdown fallito (exit %d). "
-                        "Verificare che sudoers sia configurato con setup-autostart.sh.",
-                        result.returncode,
-                    )
-            else:
-                logger.info("Family Planner stopped.")
-            return
-
-    # E-ink / no display — Uvicorn runs on the main thread
     async def _serve() -> None:
         """Run uvicorn with an exception handler that suppresses harmless
         BrokenPipeError futures that arise when the client disconnects
