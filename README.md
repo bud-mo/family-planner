@@ -37,7 +37,7 @@ A minimalist calendar viewer inspired by *Wall Street Journal* typography, desig
 - Python 3.11+
 - Dependencies listed in `requirements.txt`
 
-**On Raspberry Pi**: the panel driver libraries (`waveshare-epaper` for Waveshare, `inky` for Pimoroni) are imported lazily and only needed on the device. On macOS/Linux the app runs in web-server-only mode (browser preview), no panel libraries required.
+**On Raspberry Pi**: the panel driver libraries are imported lazily, so they are only needed at runtime on the device. `inky` (Pimoroni) is listed in `requirements.txt` and installs everywhere but is imported lazily; `waveshare-epaper` (Waveshare) is optional and installed on the target Pi only. On macOS/Linux the app runs in web-server-only mode (browser preview) — no panel hardware required.
 
 ---
 
@@ -121,8 +121,10 @@ server:
   # auth_username: null
   # auth_password: null
 
+timezone: "Europe/Rome"      # IANA name (e.g. "Europe/Rome") or "local"
+
 weather:
-  enabled: true              # false → hides the weather section
+  enabled: false             # true → shows the weather section
   latitude: 45.4654          # GPS coordinates of the location
   longitude: 9.1866
   units: "celsius"           # "celsius" | "fahrenheit"
@@ -138,7 +140,10 @@ display:
   # The canvas width/height are derived automatically from eink_model + rotation.
 
 artwork:
+  source: "endpoint"           # "endpoint" → random painting from the ARTIC API (uses `query`)
+                               # "folder"   → local images from `folder`, alphabetical
   query: "landscape painting"  # search query for artwork (Art Institute of Chicago)
+  folder: "pictures"           # folder scanned in "folder" mode (relative to project root)
   slideshow_interval_minutes: 30  # button C in artwork mode auto-advances at this cadence (min 1)
 
 calendars:
