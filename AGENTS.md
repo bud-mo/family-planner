@@ -8,7 +8,7 @@ This file defines always-active instructions for all AI agents working on this r
 
 ## Project Identity
 
-**Family Planner** is a Python embedded application for Raspberry Pi that displays a calendar on an HDMI or Waveshare e-ink display. It includes a FastAPI web server for configuration and browser preview. Rendering is based on **Pillow** (`PillowEinkRenderer`): all graphics are generated in native Python without a browser. On HDMI the window is managed by **pygame** (SDL); on e-ink the image goes through a Pillow post-processor and is sent to the Waveshare panel via SPI. The design follows the typographic aesthetic of the *Wall Street Journal*: no shadows, no rounded corners, no animations.
+**Family Planner** is a Python embedded application for Raspberry Pi that displays a calendar on an e-ink display (Waveshare EPD or Pimoroni Inky Impression). It includes a FastAPI web server for configuration and browser preview. Rendering is based on **Pillow** (`PillowEinkRenderer`): all graphics are generated in native Python without a browser. The image goes through a Pillow post-processor (`EinkRenderer`) and is sent to the panel via SPI; on a non-Pi machine the app runs in web-server-only mode (browser preview). The design follows the typographic aesthetic of the *Wall Street Journal*: no shadows, no rounded corners, no animations.
 
 ---
 
@@ -23,8 +23,7 @@ This file defines always-active instructions for all AI agents working on this r
 | E-ink post-processing | `EinkRenderer` — resize, palette quantization, Floyd-Steinberg dithering |
 | CalDAV | `caldav` + `icalendar` |
 | Config | YAML + Pydantic v2 |
-| HDMI display | `pygame` (SDL) — SDL window, direct `PIL.Image` → surface rendering |
-| E-ink display | Waveshare (dynamic import) |
+| E-ink display | Waveshare EPD / Pimoroni Inky (dynamic import) |
 | Target hardware | Raspberry Pi 3B+ / 4 / 5 |
 | Target OS | Raspberry Pi OS Lite Bookworm 64-bit |
 
@@ -63,12 +62,12 @@ This file defines always-active instructions for all AI agents working on this r
 
 ## Architecture — Invariant Rules
 
-1. **Unified rendering pipeline**: `PillowEinkRenderer` is the single rendering source — `render(state, events)` → `PIL.Image` shared by HDMI and e-ink. No browser or Chromium process is started.
+1. **Unified rendering pipeline**: `PillowEinkRenderer` is the single rendering source — `render(state, events)` → `PIL.Image` consumed by the e-ink loop and the browser preview. No browser or Chromium process is started.
 2. **EinkRenderer** is post-processing only: it receives an already-composited `PIL.Image` and applies palette quantization + Floyd-Steinberg dithering.
 3. **FastAPI serves only preview and configuration**, never calendar rendering via HTML/CSS. Actual routes: `GET /` (minimal HTML page with auto-refresh `<img src="/preview.png">`), `GET /preview.png` (calls `PillowEinkRenderer.render()` on-demand), `GET /preview-eink.png` (preview with e-ink palette quantization), `GET`/`POST /config`, `POST /api/test-weather`, `POST /api/test-connection`, `GET /api/config/download`, `POST /api/config/upload`.
 4. **Graceful reload**: `POST /config` saves the YAML file and sends SIGHUP to the process (`_reload_config` in `main.py`) — do not terminate the process abruptly. The reload rebuilds config, aggregator, weather provider, `PillowEinkRenderer`, and `EinkRenderer`; the display is **not** restarted.
 5. **Single Home view, anchored to today**: the interface is a single screen (weather banner · mini-calendar · agenda · footer). No navigation, pagination, or scroll exists; no `StateManager` or `/state` route exists. `NavigationState` is an immutable dataclass with the single field `anchor_date = date.today()`, recreated on every render.
-6. **Physical buttons and keys**: on e-ink Pimoroni Inky Impression the button mapping depends on `display.rotation`: **standard (0°/90°)**: A = return to planner, B = artwork (privacy), D = shutdown; **inverted (180°/270°)**: A = shutdown, C = artwork (privacy), D = return to planner, B = ignored. Button C (BCM16) is not acquired on standard Inky models due to SPI CS1 conflict; it is available (BCM25) on `inky_impression_13`. The mapping is computed once at startup from `config.display.rotation` (`InkyButtonHandler` → callbacks in `main.py`). On HDMI/pygame: key `B` shows artwork, `D` initiates shutdown, `q`/`F4` quit. No dependency on Playwright or DOM clicks.
+6. **Physical buttons and keys**: on e-ink Pimoroni Inky Impression the button mapping depends on `display.rotation`: **standard (0°/90°)**: A = return to planner, B = artwork (privacy), D = shutdown; **inverted (180°/270°)**: A = shutdown, C = artwork (privacy), D = return to planner, B = ignored. Button C (BCM16) is not acquired on standard Inky models due to SPI CS1 conflict; it is available (BCM25) on `inky_impression_13`. The mapping is computed once at startup from `config.display.rotation` (`InkyButtonHandler` → callbacks in `main.py`). Physical Inky buttons are the only interaction method. No dependency on Playwright or DOM clicks.
 7. **Components with explicit bounds**: each `_draw_*` in `PillowEinkRenderer` receives its own `rect: Rect` as a parameter. The **`Rect` partition calculation** (subdivision of `W × H` across banner/calendar/agenda/footer, for portrait and landscape layouts) happens **only** in `render()`. The `_draw_*` methods may read `self._layout` and sub-component constants (e.g. `BANNER_MAIN_HEIGHT`, `BANNER_HOURLY_HEIGHT`) to position internal elements, but must not recalculate the global partition.
 
 ---
@@ -94,7 +93,7 @@ source .venv/bin/activate
 python app/main.py --config config/config.yaml
 ```
 
-Use `display.type: "hdmi"` and `fullscreen: false` for development on macOS/Linux.
+On macOS/Linux (non-Pi) the app runs in web-server-only mode — use the browser preview at `/` for development.
 
 ### Deploy to Raspberry Pi
 
@@ -106,7 +105,7 @@ Use `display.type: "hdmi"` and `fullscreen: false` for development on macOS/Linu
 ### Before Every Change
 
 1. Read the source file before editing it
-2. Verify that changes to `PillowEinkRenderer` produce visually correct output for both displays — take screenshots via `GET /preview.png` at the configured `width`/`height`
+2. Verify that changes to `PillowEinkRenderer` produce visually correct output — take screenshots via `GET /preview.png` (canvas size is derived from `eink_model` + `rotation`)
 3. Validate config schema changes against the Pydantic models in `app/config.py`
 
 ### After Every Critical Change

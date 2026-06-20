@@ -20,7 +20,7 @@ On e-ink devices, where each refresh takes 15-30 seconds, artwork mode also work
 | **Public domain** | The collection can be filtered with `is_public_domain: true` - no copyright issues |
 | **IIIF** | High-resolution images are served through standard IIIF - direct width request, server-side computed height |
 | **Variety** | The collection has over 100,000 indexed works, with structured metadata (title, artist, year) |
-| **Quality** | High-resolution digitizations, suitable for both HDMI displays and e-ink panels |
+| **Quality** | High-resolution digitizations, suitable for e-ink panels |
 | **No cost** | Free for personal / non-commercial use |
 
 Other APIs considered and rejected:

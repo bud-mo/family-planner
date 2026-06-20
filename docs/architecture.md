@@ -2,7 +2,7 @@
 
 ## Overview
 
-**Family Planner** is a calendar viewer optimised for Raspberry Pi (3+) devices with an HDMI or e-ink display, also runnable locally (Mac/Linux) for development and testing. It exposes a web service for both calendar display and configuration.
+**Family Planner** is a calendar viewer optimised for Raspberry Pi (3+) devices with an e-ink display, also runnable locally (Mac/Linux) in web-server-only mode for development and testing. It exposes a web service for both calendar display and configuration.
 
 ---
 
@@ -13,12 +13,11 @@
 | Language | Python 3.11+ |
 | Web server | FastAPI + Uvicorn |
 | HTML templates | Jinja2 (configuration only) |
-| Rendering (HDMI + e-ink) | `PillowEinkRenderer` — native Pillow from `NavigationState` + events, no browser |
+| Rendering | `PillowEinkRenderer` — native Pillow from `NavigationState` + events, no browser |
 | E-ink post-processing | `EinkRenderer` — resize, palette quantisation, Floyd-Steinberg dithering |
 | CalDAV calendar | `caldav` + `icalendar` |
 | Configuration | YAML (`pyyaml`) + Pydantic v2 |
-| HDMI display | `pygame` — SDL window, direct `PIL.Image` → surface rendering |
-| E-ink display | Waveshare (dynamic import — requires RPi hardware) |
+| E-ink display | Waveshare EPD / Pimoroni Inky (dynamic import — requires RPi hardware) |
 
 ---
 
@@ -49,7 +48,7 @@ family-planner/
 │   ├── renderer/
 │   │   ├── __init__.py
 │   │   ├── base.py                      # Abstract Renderer class
-│   │   ├── pillow_eink_renderer.py      # PillowEinkRenderer: native Pillow rendering (HDMI + e-ink)
+│   │   ├── pillow_eink_renderer.py      # PillowEinkRenderer: native Pillow rendering (e-ink + preview)
 │   │   │                                #   render() → calendar screen
 │   │   │                                #   render_artwork() → ARTIC painting (privacy/shutdown)
 │   │   ├── eink_renderer.py             # E-ink post-processing: resize, palette quantisation,
@@ -64,8 +63,7 @@ family-planner/
 │   └── display/
 │       ├── __init__.py
 │       ├── buttons.py           # InkyButtonHandler: GPIO A/B/D on Pimoroni Inky (gpiod)
-│       ├── hdmi.py              # HdmiDisplay: pygame window — direct PIL.Image rendering
-│       └── eink.py              # EinkDisplay: push image via SPI (Waveshare library)
+│       └── eink.py              # EinkDisplay / InkyDisplay: push image via SPI; panel_available()
 ├── config/
 │   └── default.yaml             # Default configuration (included in repo)
 ├── scripts/
@@ -111,18 +109,14 @@ weather:
   units: "celsius"           # "celsius" | "fahrenheit"
 
 display:
-  type: "hdmi"               # "hdmi" | "eink"
   layout: "landscape"        # "landscape" | "portrait"
-  width: 1024
-  height: 600
-  width: 1024
-  height: 600
-  fullscreen: false          # true → fullscreen window; false → sized window (development)
-  show_buttons: false        # show/hide navigation buttons (HDMI touchscreen only)
+  show_buttons: false        # on-screen navigation overlay (browser preview only)
   rotation: 0                # screen rotation: 0 | 90 | 180 | 270
-  # only if type: "eink":
+  eink_model: "7in5_V2"      # panel model — also determines the canvas resolution
+  eink_palette: "bw"         # bw | bwr | 4gray | spectra6
   eink_dither: true          # enable Floyd-Steinberg dithering
   eink_saturation: 0.5       # colour intensity for quantisation (0.0–1.0)
+  # The canvas width/height are derived from eink_model + rotation (not configured).
 
 artwork:
   query: "landscape painting"  # artwork search query (Art Institute of Chicago)
@@ -169,23 +163,14 @@ Startup (main.py --config ...)
   (in-memory cache TTL 1h, thread-safe)
         │
         ▼
-  Initialise PillowEinkRenderer(config, weather_provider)  ← single renderer for HDMI and e-ink
+  Initialise PillowEinkRenderer(config, weather_provider)  ← single renderer (panel + preview)
         │
         ▼
-  Start Display (conditional on type)
+  Start Display (only when panel_available() — i.e. running on a Raspberry Pi)
         │
-        ├── HDMI ──▶  HdmiDisplay(config, pillow_renderer, aggregator)
-        │             Uvicorn started in background thread
-        │             ├─── GET /             ──▶  HTML preview (img auto-refresh)
-        │             ├─── GET /preview.png  ──▶  PillowEinkRenderer.render() → PNG
-        │             ├─── GET /config       ──▶  Show configuration form
-        │             └─── POST /config      ──▶  Save config.yaml → SIGHUP
-        │             HdmiDisplay.run_blocking() blocks the main thread with pygame:
-        │               loop: NavigationState() → PillowEinkRenderer.render()
-        │                     → pygame.Surface → screen
-        │               keys: q/F4 quit
+        ├── No panel (dev) ──▶  web-server-only mode (browser preview at /)
         │
-        └── E-ink ──▶  PillowEinkRenderer(config)  [no browser, no display server]
+        └── E-ink ──▶  EinkRenderer(config.display)  [no browser, no display server]
                         Uvicorn on main thread
                         InkyButtonHandler.start() — GPIO daemon thread (gpiod)
                           A → wake_event.set()  → skip sleep, immediate re-render (back to planner)
@@ -347,52 +332,30 @@ calendars:
 
 ### General architecture
 
-Family Planner uses a **single renderer** — `PillowEinkRenderer` — shared by HDMI and e-ink. No browser or Chromium process is started.
+Family Planner uses a **single renderer** — `PillowEinkRenderer` — shared by the e-ink panel and the browser preview. No browser or Chromium process is started.
 
 ```
            NavigationState() — always today
                     │
-   PillowEinkRenderer (HDMI + e-ink)
+   PillowEinkRenderer (e-ink + browser preview)
    native Pillow — render(state, events)
    → PIL.Image
           │
-   ┌──────┴──────┐                    ┌──────────────────┐
-   │ HdmiDisplay │                    │   EinkRenderer   │
-   │  (pygame)   │                    │ resize/quantize  │
-   │ main thread │                    │ dither           │
-   │ SDL window  │                    └─────────┬────────┘
-   └─────────────┘                             │ quantised PIL.Image
-                                    ┌──────────▼─────────┐
-                                    │    EinkDisplay      │
-                                    │    (Waveshare SPI)  │
-                                    └────────────────────┘
+   ┌──────┴────────┐                  ┌──────────────────┐
+   │ GET /preview  │                  │   EinkRenderer   │
+   │ .png (browser)│                  │ resize/quantize  │
+   │ same PIL.Image│                  │ dither           │
+   │ as PNG        │                  └─────────┬────────┘
+   └───────────────┘                           │ quantised PIL.Image
+                                    ┌──────────▼──────────┐
+                                    │ EinkDisplay /        │
+                                    │ InkyDisplay (SPI)    │
+                                    └─────────────────────┘
 ```
 
-### HDMI — pygame
+### Web-server-only mode (development)
 
-`display/hdmi.py` opens an SDL window via `pygame` and renders the `PIL.Image` produced by `PillowEinkRenderer` directly.
-
-**Thread model**: on macOS, SDL/Cocoa must run on the main thread. For this reason:
-- `HdmiDisplay.run_blocking()` runs the pygame loop on the calling thread (main thread)
-- Uvicorn runs in a background thread (`threading.Thread`)
-
-**pygame loop:**
-```
-run_blocking()
-  → pygame.init() → display.set_mode(width × height)
-  loop every ~100 ms:
-    NavigationState() → PillowEinkRenderer.render(state, events) → pygame.Surface
-    pygame.display.flip()
-    keyboard events: q/F4 quit
-```
-
-**Re-render**: at every quarter-hour (calendar re-fetch; weather at `xx:00`) or on date change at midnight. The frame is redrawn only if data changes. Cadences in `app/scheduling.py`.
-
-**Fullscreen mode** (`fullscreen: true`): `pygame.FULLSCREEN | pygame.NOFRAME` — no shell flags required.
-
-**Development mode** (`fullscreen: false`): sized `width × height` window from configuration.
-
-**On Raspberry Pi with Wayland**: set `WAYLAND_DISPLAY` / `XDG_RUNTIME_DIR` variables in the systemd service environment. With X11: `DISPLAY=:0`.
+When the app is not running on a Raspberry Pi (`panel_available()` returns `False`), no e-ink loop is started: only the web server runs and the calendar is viewed through the browser preview at `/`. This is the standard way to develop on macOS/Linux — no display server or panel libraries are required.
 
 ### E-ink — PillowEinkRenderer (native Pillow, no browser)
 
@@ -402,14 +365,14 @@ The e-ink loop starts no Chromium process. Rendering happens entirely in-process
 
 1. **`NavigationState()`** creates a new state with `anchor_date = date.today()`.
 2. **`aggregator.get_events(start, end, force=True)`** fetches fresh events for the current view's range.
-3. **`PillowEinkRenderer.render(state, events)`** produces an RGB `PIL.Image` at the configured dimensions (`display.width × display.height`).
+3. **`PillowEinkRenderer.render(state, events)`** produces an RGB `PIL.Image` at the canvas resolution derived from `eink_model` + `rotation` (`config.display.resolution`).
 4. **`EinkRenderer`** (`renderer/eink_renderer.py`) applies:
    - **Resize** to the panel's native resolution (13 Waveshare models supported)
    - **Palette quantisation**: B&W (1-bit), BWR (3 colours), 4-gray — configurable via `eink_palette`
    - **Floyd-Steinberg dithering** — optional, via `eink_dither: true`
 5. **`EinkDisplay`** (`display/eink.py`) sends the image to the panel via the appropriate Waveshare driver, loaded dynamically:
    ```python
-   # Guarded import — only active when display.type == "eink"
+   # Guarded import — only executed inside the driver, on the device
    from waveshare_epd import epd13in3k  # example 13.3" model
    ```
    This ensures the code is runnable on macOS/Linux without hardware libraries.
@@ -418,7 +381,7 @@ The e-ink loop starts no Chromium process. Rendering happens entirely in-process
 
 > **Refresh time**: Waveshare e-ink panels typically take 15–30 seconds for a full update. The cadences (calendar 15 min, weather 1 hour) are fixed and well above this limit; the push occurs only when data changes.
 
-> **On RPi**: the e-ink loop requires no display server — it runs on RPi OS Lite without X11 or Wayland. With `display.type: "eink"`, `pygame` is never imported.
+> **On RPi**: the e-ink loop requires no display server — it runs on RPi OS Lite without X11 or Wayland.
 
 ### Home Screen — Single View
 
@@ -540,10 +503,9 @@ Concerns **exclusively** `PillowEinkRenderer` (`renderer/pillow_eink_renderer.py
 
 | Behaviour | Mac (development) | Linux / Raspberry Pi (production) |
 |---|---|---|
-| `display.fullscreen: false` | pygame, `width × height` window | pygame, `width × height` window |
-| `display.fullscreen: true` | pygame fullscreen (SDL) | pygame fullscreen + Wayland/X11 |
-| HDMI thread model | pygame on main thread, Uvicorn in bg thread | same |
-| E-ink display | PillowEinkRenderer (native Pillow); Waveshare driver not loaded | PillowEinkRenderer (native Pillow); Waveshare driver via SPI |
+| Display mode | web-server-only (`panel_available()` → False) | e-ink loop + web server |
+| E-ink display | PillowEinkRenderer (native Pillow); panel driver not loaded | PillowEinkRenderer + EinkRenderer; panel driver via SPI |
+| Preview | browser at `/` | browser at `/` (same image as the panel) |
 | Calendar | CalDAV / ICS / iCal via network or local file | CalDAV / ICS / iCal via network or local file |
 | Auto-start | Manual / local script | systemd (`family-planner.service`) |
 
@@ -564,16 +526,15 @@ Configurable variables: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_PATH`.
 
 ### `scripts/install.sh`
 Run once on the device:
-- Installs system dependencies (`python3-pip`, `python3-pygame`, SPI libraries for e-ink)
+- Installs system dependencies (`python3-pip`, SPI/I2C libraries for e-ink)
 - Creates the virtualenv
 - Installs Python packages from `requirements.txt`
 - Copies the systemd file to `/etc/systemd/system/`
 
 ### `scripts/setup-autostart.sh`
 - Enables and starts the systemd service:
-  - `family-planner.service` — Python server + display management (all in a single process)
-- For HDMI display: sets Wayland (`WAYLAND_DISPLAY`, `XDG_RUNTIME_DIR`) or X11 (`DISPLAY`) environment variables in the service
-- For e-ink display: no display server required
+  - `family-planner.service` — Python server + e-ink display management (all in a single process)
+- No display server (X11/Wayland) is required — the e-ink loop drives the panel directly via SPI
 
 ### `systemd/family-planner.service`
 ```ini
@@ -594,7 +555,7 @@ RestartSec=10
 WantedBy=multi-user.target
 ```
 
-> **HDMI note**: For HDMI mode with pygame on RPi with Wayland, add `After=graphical.target` and the `WAYLAND_DISPLAY` / `XDG_RUNTIME_DIR` variables (or `DISPLAY=:0` for X11) to the service environment. For e-ink mode no display server is needed.
+> **Note**: the e-ink loop drives the panel directly via SPI, so no display server (X11/Wayland) and no `graphical.target` dependency are needed.
 
 ---
 
@@ -622,10 +583,10 @@ caldav
 requests                   # HTTP for iCal URL provider + Open-Meteo weather API
 icalendar
 pillow                     # single renderer (PillowEinkRenderer) + post-processing (EinkRenderer)
-pygame                     # HDMI display — SDL window, direct PIL.Image rendering
 python-multipart           # POST /config form
 python-dateutil            # rrule expansion in IcsProvider (recurrences)
-# waveshare-epaper (optional — RPi with e-ink display only)
+inky                       # Pimoroni Inky Impression driver (lazy import, safe on dev)
+# waveshare-epaper (optional — RPi with Waveshare e-ink panel only)
 ```
 
 ---
@@ -649,7 +610,7 @@ python-dateutil            # rrule expansion in IcsProvider (recurrences)
                                              │Prov. │  │  Provider  │
                           ┌──────────────────┐└─────┘  └────────────┘
                           │  PillowEinkRenderer │
-                          │  (HDMI + e-ink)     │◀──── OpenMeteoProvider
+                          │  (panel + preview)  │◀──── OpenMeteoProvider
                           │  native Pillow      │      in-memory cache
                           │  state + events     │      TTL 1h
                           │  + WeatherData      │      (optional)
@@ -658,14 +619,14 @@ python-dateutil            # rrule expansion in IcsProvider (recurrences)
                ┌────────────────────┴─────────────────────┐
                │                                          │
     ┌──────────▼────────┐                    ┌────────────▼───────┐
-    │   HdmiDisplay     │                    │    EinkRenderer    │
-    │   pygame window   │                    │    resize/quantize │
-    │   (main thread)   │                    │    dither          │
+    │  GET /preview.png │                    │    EinkRenderer    │
+    │  (browser, PNG)   │                    │    resize/quantize │
+    │                   │                    │    dither          │
     └───────────────────┘                    └────────────┬───────┘
                                                           │ quantised PIL.Image
                                              ┌────────────▼───────┐
-                                             │    EinkDisplay      │
-                                             │    (Waveshare SPI)  │
+                                             │ EinkDisplay /       │
+                                             │ InkyDisplay (SPI)   │
                                              └────────────────────┘
 ```
 
@@ -675,7 +636,7 @@ python-dateutil            # rrule expansion in IcsProvider (recurrences)
 
 ### Rationale
 
-The display shows family calendar data in a shared location. To preserve privacy when guests are present or when the device is not in use, button **B** (Inky Impression) or key `B` (pygame HDMI) instantly replaces the planner screen with a public-domain painting fetched from the **Art Institute of Chicago**.
+The display shows family calendar data in a shared location. To preserve privacy when guests are present or when the device is not in use, button **B** (Inky Impression) instantly replaces the planner screen with a public-domain painting fetched from the **Art Institute of Chicago** (or a local image).
 
 ### Flow (e-ink)
 
@@ -699,10 +660,6 @@ threading.Thread("artwork-push").start()
 ```
 
 Pressing **A** → `wake_event.set()` + `artwork_mode.clear()` → the normal loop resumes immediately, overwriting the artwork with the updated planner.
-
-### Flow (HDMI)
-
-Key `D` → `shutdown_requested = True` → `render_artwork()` → `pygame.Surface` → `screen.blit` → `running = False` → `pygame.quit()`.
 
 ### Shutdown screen
 
@@ -737,9 +694,7 @@ if self._rotation:
     result = result.rotate(-self._rotation, expand=True)
 ```
 
-**Dimension logic**: if the panel is 800×480 and `rotation=90`, the Pillow renderer produces a 480×800 image (portrait orientation), which is then rotated by -90° → 800×480 physical pixels. The `display.width` and `display.height` configuration always describes the **logical canvas** (before rotation).
-
-**On HDMI**: rotation is not handled by `HdmiDisplay` — the pygame window always has the `display.width × display.height` dimensions. To rotate a physical display connected via HDMI, use system settings (Wayland/X11) or the RPi kernel configuration (`display_rotate` in `config.txt`).
+**Dimension logic**: if the panel is 800×480 and `rotation=90`, the Pillow renderer produces a 480×800 image (portrait orientation), which is then rotated by -90° → 800×480 physical pixels. `config.display.resolution` returns this **logical canvas** size (before rotation), derived from `eink_model` and `rotation`.
 
 ---
 
