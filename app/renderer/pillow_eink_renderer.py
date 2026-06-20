@@ -94,14 +94,12 @@ class PillowEinkRenderer:
             getattr(_artwork_cfg, "source", "endpoint") if _artwork_cfg is not None else "endpoint"
         )
         # Folder scanned in "folder" mode; relative paths resolve against the
-        # project root (two levels above this file: app/renderer/ -> project/).
+        # project root via the shared helper (single source of truth shared with
+        # the picture-management routes).
         _folder = (
             getattr(_artwork_cfg, "folder", "pictures") if _artwork_cfg is not None else "pictures"
         )
-        _folder_path = Path(_folder)
-        if not _folder_path.is_absolute():
-            _folder_path = Path(__file__).resolve().parents[2] / _folder_path
-        self._artwork_folder: Path = _folder_path
+        self._artwork_folder: Path = _artwork.resolve_artwork_folder(_folder)
         # Cursor into the alphabetically-sorted folder; advances on each render so
         # a button press shows the next image. Cycles via modulo in the loader.
         self._artwork_index: int = 0

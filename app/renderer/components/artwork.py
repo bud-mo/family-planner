@@ -38,6 +38,22 @@ ARTWORK_QUERY_DEFAULT: str = "landscape painting"
 
 Rect = tuple[int, int, int, int]
 
+# Project root = three levels above this file: app/renderer/components/ -> project/
+_PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
+
+def resolve_artwork_folder(folder: "str | Path") -> Path:
+    """Resolve a configured artwork folder to an absolute path.
+
+    Relative paths resolve against the project root (matching the renderer's
+    historical behaviour). The path is returned resolved (symlinks collapsed) so
+    callers can safely use it as a containment boundary.
+    """
+    p = Path(folder)
+    if not p.is_absolute():
+        p = _PROJECT_ROOT / p
+    return p.resolve()
+
 # ---------------------------------------------------------------------------
 # E-ink colour enhancement
 # ---------------------------------------------------------------------------

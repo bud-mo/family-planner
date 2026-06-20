@@ -31,9 +31,11 @@ family-planner/
 │   ├── server/
 │   │   ├── __init__.py
 │   │   ├── app.py               # FastAPI app definition and routes
+│   │   ├── auth.py              # Optional Basic Auth dependency for config routes
+│   │   ├── pictures.py          # Picture-folder service: safe path, list, upload, rename, delete, thumbnail
 │   │   ├── routes/
 │   │   │   ├── index.py         # GET / — HTML preview; GET /preview.png — PNG image
-│   │   │   └── config.py        # GET/POST /config — configuration UI
+│   │   │   └── config.py        # GET/POST /config + /api/pictures* + /api/test-* routes
 │   │   └── templates/           # Jinja2 templates
 │   │       ├── base.html        # Base configuration layout
 │   │       └── config.html      # Configuration interface
@@ -204,6 +206,29 @@ Web interface for configuration: add/remove calendars, modify display parameters
 
 ### `POST /config`
 Saves changes to the configuration file and restarts the server gracefully (SIGHUP or Uvicorn restart).
+
+### Picture-folder management
+
+The `/config` page can manage the local artwork folder (the directory used by
+artwork *folder* mode) directly. These routes mutate the folder on disk only —
+they never rewrite the YAML and never trigger a reload; the renderer rescans the
+folder on every render, so changes appear on the next artwork frame.
+
+| Method & path | Purpose | Response |
+|---|---|---|
+| `GET /api/pictures` | list folder images + size/mtime | JSON `{ok, folder, pictures}` |
+| `GET /api/pictures/thumbnail?name=` | PIL-downscaled JPEG (never the raw file) | `image/jpeg`, `Cache-Control: no-store` |
+| `POST /api/pictures/upload` | upload one image (multipart `file`) | JSON `{ok, name}` |
+| `POST /api/pictures/rename` | rename (`old`, `new`) | JSON `{ok, name}` |
+| `POST /api/pictures/delete` | delete (`name`) | JSON `{ok}` |
+| `POST /api/test-artwork` | dry-run: fetch one image for `query`, return caption + base64 PNG | JSON `{ok, caption, image}` |
+
+The service layer lives in `app/server/pictures.py`. Its `safe_picture_path`
+confines every named file inside the configured folder (rejecting `..`,
+separators, absolute paths, dotfiles, and symlink escapes); uploads are validated
+as real images via Pillow. The folder is resolved through the single helper
+`resolve_artwork_folder` (in `app/renderer/components/artwork.py`), shared with
+the renderer.
 
 ---
 

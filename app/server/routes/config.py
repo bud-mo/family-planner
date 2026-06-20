@@ -17,7 +17,12 @@ from pydantic import ValidationError
 from app.calendar.caldav_provider import CalDavProvider
 from app.calendar.ical_provider import IcalProvider
 from app.config import AppConfig, ArtworkConfig, CalendarConfig, WeatherConfig
+from app.renderer.components.artwork import (
+    ARTWORK_QUERY_DEFAULT,
+    resolve_artwork_folder,
+)
 from app.renderer.eink_renderer import EINK_RESOLUTIONS
+from app.server import pictures as picture_service
 from app.server.auth import require_config_auth
 
 logger = logging.getLogger(__name__)
@@ -350,3 +355,149 @@ async def test_connection(request: Request) -> JSONResponse:
     ok = caldav_provider.test_connection()
     message = "Connessione riuscita." if ok else "Connessione al server CalDAV fallita."
     return JSONResponse({"ok": ok, "message": message})
+
+
+# ---------------------------------------------------------------------------
+# Pictures folder management
+#
+# These endpoints mutate the local artwork folder on disk only. They never
+# rewrite the config YAML and never trigger a reload (no SIGHUP): the renderer
+# rescans the folder on every render, so picture changes are picked up on the
+# next artwork frame. Do not "helpfully" add a reload here.
+#
+# Every operation that names a file goes through picture_service.safe_picture_path
+# (via the service functions), which confines the path inside the configured
+# folder; PictureError is caught and returned as a short Italian message.
+# ---------------------------------------------------------------------------
+
+
+def _artwork_folder(request: Request) -> Path:
+    """Resolve the configured artwork folder to an absolute path."""
+    config: AppConfig = request.app.state.config
+    return resolve_artwork_folder(config.artwork.folder)
+
+
+@router.get("/api/pictures", dependencies=[Depends(require_config_auth)])
+async def list_pictures(request: Request) -> JSONResponse:
+    """List the image files in the configured artwork folder."""
+    folder = _artwork_folder(request)
+    pics = picture_service.list_pictures(folder)
+    return JSONResponse({"ok": True, "folder": str(folder), "pictures": pics})
+
+
+@router.get("/api/pictures/thumbnail", dependencies=[Depends(require_config_auth)])
+async def picture_thumbnail(request: Request, name: str) -> Response:
+    """Return a PIL-downscaled JPEG thumbnail for one folder image.
+
+    Never streams the raw (multi-megabyte) file. ``Cache-Control: no-store``
+    because names are reused after rename — a cached thumbnail could go stale.
+    """
+    folder = _artwork_folder(request)
+    try:
+        path = picture_service.safe_picture_path(folder, name)
+        if not path.is_file():
+            raise picture_service.PictureError("File inesistente.")
+        data = picture_service.thumbnail_bytes(path)
+    except picture_service.PictureError as exc:
+        logger.warning("picture_thumbnail rejected %r: %s", name, exc)
+        return JSONResponse({"ok": False, "message": str(exc)}, status_code=404)
+    except Exception:  # noqa: BLE001
+        logger.exception("picture_thumbnail failed for %r", name)
+        return JSONResponse(
+            {"ok": False, "message": "Impossibile generare l'anteprima."},
+            status_code=500,
+        )
+    return Response(
+        content=data,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@router.post("/api/pictures/upload", dependencies=[Depends(require_config_auth)])
+async def picture_upload(request: Request, file: UploadFile = File(...)) -> JSONResponse:
+    """Upload one image into the artwork folder (validated as a real image)."""
+    folder = _artwork_folder(request)
+    data = await file.read()
+    try:
+        name = picture_service.save_upload(folder, file.filename or "", data)
+    except picture_service.PictureError as exc:
+        logger.warning("picture_upload rejected %r: %s", file.filename, exc)
+        return JSONResponse({"ok": False, "message": str(exc)}, status_code=400)
+    return JSONResponse({"ok": True, "name": name})
+
+
+@router.post("/api/pictures/rename", dependencies=[Depends(require_config_auth)])
+async def picture_rename(request: Request) -> JSONResponse:
+    """Rename a file within the artwork folder."""
+    folder = _artwork_folder(request)
+    form = await request.form()
+    old = str(form.get("old", "")).strip()
+    new = str(form.get("new", "")).strip()
+    try:
+        name = picture_service.rename_picture(folder, old, new)
+    except picture_service.PictureError as exc:
+        logger.warning("picture_rename rejected %r->%r: %s", old, new, exc)
+        return JSONResponse({"ok": False, "message": str(exc)}, status_code=400)
+    return JSONResponse({"ok": True, "name": name})
+
+
+@router.post("/api/pictures/delete", dependencies=[Depends(require_config_auth)])
+async def picture_delete(request: Request) -> JSONResponse:
+    """Delete a file from the artwork folder."""
+    folder = _artwork_folder(request)
+    form = await request.form()
+    name = str(form.get("name", "")).strip()
+    try:
+        picture_service.delete_picture(folder, name)
+    except picture_service.PictureError as exc:
+        logger.warning("picture_delete rejected %r: %s", name, exc)
+        return JSONResponse({"ok": False, "message": str(exc)}, status_code=400)
+    return JSONResponse({"ok": True})
+
+
+@router.post("/api/test-artwork", dependencies=[Depends(require_config_auth)])
+async def test_artwork(request: Request) -> JSONResponse:
+    """Dry-run: fetch one artwork for the submitted query and return a preview.
+
+    Does not touch config or the display. Returns the caption and a small base64
+    PNG data URI so the UI can show it inline. The blocking network fetch runs in
+    a worker thread so it never blocks the event loop.
+    """
+    import anyio
+
+    config: AppConfig = request.app.state.config
+    form = await request.form()
+    query = str(form.get("query", "")).strip() or ARTWORK_QUERY_DEFAULT
+
+    # Preview size: keep the display aspect ratio but cap the width so the fetch
+    # stays small/fast — a full-panel image is unnecessary for a thumbnail.
+    disp_w, disp_h = config.display.resolution
+    preview_w = min(disp_w, 640)
+    preview_h = max(1, round(disp_h * preview_w / disp_w))
+
+    from app.renderer.components.artwork import fetch_artwork
+
+    try:
+        result = await anyio.to_thread.run_sync(
+            lambda: fetch_artwork(preview_w, preview_h, query, eink_enhance=False)
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("test_artwork: fetch failed for query %r", query)
+        return JSONResponse(
+            {"ok": False, "message": "Errore durante il recupero dell'artwork."}
+        )
+
+    if result is None:
+        return JSONResponse(
+            {"ok": False, "message": "Nessun artwork trovato per questa query."}
+        )
+
+    import base64
+    import io
+
+    image, caption = result
+    buf = io.BytesIO()
+    image.save(buf, format="PNG")
+    data_uri = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+    return JSONResponse({"ok": True, "caption": caption, "image": data_uri})

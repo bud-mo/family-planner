@@ -180,6 +180,32 @@ The query is passed directly to ARTIC's Elasticsearch full-text engine (`q` fiel
 
 ---
 
+## Managing artwork from `/config`
+
+The web configuration page (`/config`, Artwork section) lets you manage the
+artwork without editing files on the device:
+
+- **Query Test/preview** — next to the query field, a **Test** button performs a
+  dry-run: it fetches one image matching the current query and shows it inline
+  with its caption, without changing any state. Use it to try queries before
+  saving.
+- **Picture library** (folder mode) — the *Immagini in `pictures/`* subsection
+  lists the files currently in the local artwork folder, each with a thumbnail.
+  You can **upload** a new image (`+ Carica immagine`), **rename** a file inline
+  (✎ → edit → Salva/Annulla), and **delete** a file (🗑, with confirmation).
+
+Folder edits apply on the **next artwork frame** — no save, no reload. The
+renderer rescans the folder on every render, so the config YAML is never
+rewritten by a picture operation.
+
+All these endpoints are auth-protected (when Basic Auth is configured) and
+confined to the configured folder: file names that contain `..`, path
+separators, or that resolve outside the folder (including via symlink) are
+rejected, and uploads must be real images. Thumbnails are always PIL-downscaled
+— the multi-megabyte originals are never streamed to the browser.
+
+---
+
 ## Error Handling
 
 | Scenario | Behavior |

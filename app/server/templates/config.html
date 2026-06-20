@@ -115,6 +115,52 @@
   display: none;
 }
 
+/* Pictures folder list */
+.pic-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--color-rule);
+}
+
+.pic-row__thumb {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border: 1px solid var(--color-rule-strong);
+  flex: 0 0 auto;
+  background: var(--color-bg-alt);
+}
+
+.pic-row__name {
+  flex: 1 1 auto;
+  font-size: var(--text-sm);
+  word-break: break-all;
+}
+
+.pic-row__name-input {
+  flex: 1 1 auto;
+}
+
+.pic-row__actions {
+  display: flex;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.pic-icon-btn {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  padding: 4px 9px;
+  border: 1px solid var(--color-rule-strong);
+  background: var(--color-bg);
+  color: var(--color-ink);
+  cursor: pointer;
+}
+
+.pic-icon-btn:hover { background: var(--color-bg-alt); }
+
 /* Buttons */
 .btn {
   font-family: var(--font-body);
@@ -379,7 +425,7 @@
         </div>
 
         <label class="field-label" for="artwork_query">query</label>
-        <div style="display:flex; gap:8px; align-items:center; max-width:360px;">
+        <div style="display:flex; gap:8px; align-items:center; max-width:480px;">
           <input class="field-input" type="text" id="artwork_query" name="artwork_query"
                  value="{{ config.artwork.query }}"
                  style="flex:1; max-width:none;"
@@ -388,7 +434,33 @@
                   onclick="document.getElementById('artwork_query').value='landscape painting'">
             Default
           </button>
+          <button type="button" class="btn" onclick="testArtwork(this)">Test</button>
         </div>
+      </div>
+
+      <!-- Endpoint query preview (hidden until first successful test) -->
+      <div id="artwork-preview" style="display:none; margin-top:14px;">
+        <img id="artwork-preview-img" alt="anteprima artwork"
+             style="max-width:320px; max-height:240px; border:1px solid var(--color-rule-strong);" />
+        <div id="artwork-preview-caption" class="test-result" style="display:block; margin-top:6px;"></div>
+      </div>
+      <span id="artwork-test-result" class="test-result"></span>
+
+      <!-- ------------------------------------------------------------ -->
+      <!-- Pictures folder management                                    -->
+      <!-- ------------------------------------------------------------ -->
+      <div style="margin-top:20px;">
+        <h3 style="font-size:var(--text-sm); font-weight:600; margin:0 0 10px;">
+          Immagini in <code>pictures/</code>
+        </h3>
+        <div class="btn-row" style="margin-bottom:10px;">
+          <button type="button" class="btn" id="pic-upload-btn" onclick="picUpload()">
+            + Carica immagine
+          </button>
+          <input type="file" id="pic-upload-input" accept="image/*" style="display:none;" />
+          <span id="pic-upload-result" class="test-result"></span>
+        </div>
+        <ul id="pic-list" style="list-style:none; padding:0; margin:0;"></ul>
       </div>
     </section>
 
@@ -654,6 +726,220 @@
       })
       .finally(function () { btn.disabled = false; });
   };
+
+  /* ------------------------------------------------------------------ */
+  /* Artwork endpoint-query preview (dry-run)                            */
+  /* ------------------------------------------------------------------ */
+
+  window.testArtwork = function (btn) {
+    var query   = document.getElementById('artwork_query').value;
+    var result  = document.getElementById('artwork-test-result');
+    var preview = document.getElementById('artwork-preview');
+
+    var fd = new FormData();
+    fd.append('query', query);
+
+    btn.disabled = true;
+    result.style.display = 'inline';
+    result.style.color = 'var(--color-ink-muted)';
+    result.textContent = 'Recupero anteprima…';
+
+    fetch('/api/test-artwork', { method: 'POST', body: fd })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.ok) {
+          result.style.display = 'none';
+          document.getElementById('artwork-preview-img').src = data.image;
+          document.getElementById('artwork-preview-caption').textContent = data.caption || '';
+          preview.style.display = 'block';
+        } else {
+          preview.style.display = 'none';
+          result.textContent = '✗ ' + data.message;
+          result.style.color = '#b00020';
+        }
+      })
+      .catch(function () {
+        preview.style.display = 'none';
+        result.textContent = '✗ Errore di rete.';
+        result.style.color = '#b00020';
+      })
+      .finally(function () { btn.disabled = false; });
+  };
+
+  /* ------------------------------------------------------------------ */
+  /* Pictures folder management (list / upload / rename / delete)        */
+  /* ------------------------------------------------------------------ */
+
+  function picStatus(msg, ok) {
+    var el = document.getElementById('pic-upload-result');
+    el.style.display = 'inline';
+    el.textContent = (ok ? '✓ ' : '✗ ') + msg;
+    el.style.color = ok ? 'var(--color-ink)' : '#b00020';
+  }
+
+  function refreshPictures() {
+    fetch('/api/pictures')
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        var list = document.getElementById('pic-list');
+        list.innerHTML = '';
+        if (!data.ok) { return; }
+        if (!data.pictures.length) {
+          var empty = document.createElement('li');
+          empty.className = 'test-result';
+          empty.style.display = 'block';
+          empty.textContent = 'Nessuna immagine nella cartella.';
+          list.appendChild(empty);
+          return;
+        }
+        data.pictures.forEach(function (pic) { list.appendChild(buildPicRow(pic)); });
+      })
+      .catch(function () { /* leave list as-is on transient error */ });
+  }
+
+  function buildPicRow(pic) {
+    var li = document.createElement('li');
+    li.className = 'pic-row';
+
+    var thumb = document.createElement('img');
+    thumb.className = 'pic-row__thumb';
+    thumb.alt = pic.name;
+    thumb.src = '/api/pictures/thumbnail?name=' + encodeURIComponent(pic.name);
+
+    var nameSpan = document.createElement('span');
+    nameSpan.className = 'pic-row__name';
+    nameSpan.textContent = pic.name;
+
+    var actions = document.createElement('span');
+    actions.className = 'pic-row__actions';
+
+    var renameBtn = document.createElement('button');
+    renameBtn.type = 'button';
+    renameBtn.className = 'pic-icon-btn';
+    renameBtn.textContent = '✎ rinomina';
+    renameBtn.onclick = function () { enterRename(li, pic.name); };
+
+    var deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'pic-icon-btn';
+    deleteBtn.textContent = '🗑 elimina';
+    deleteBtn.onclick = function () { deletePicture(pic.name); };
+
+    actions.appendChild(renameBtn);
+    actions.appendChild(deleteBtn);
+
+    li.appendChild(thumb);
+    li.appendChild(nameSpan);
+    li.appendChild(actions);
+    return li;
+  }
+
+  function enterRename(li, currentName) {
+    // Only one row editable at a time: cancel any other open editor first.
+    refreshPictures();
+    // refreshPictures rebuilds the list, so re-find the row by name and edit it.
+    setTimeout(function () {
+      var rows = document.querySelectorAll('#pic-list .pic-row');
+      var target = null;
+      rows.forEach(function (r) {
+        var n = r.querySelector('.pic-row__name');
+        if (n && n.textContent === currentName) { target = r; }
+      });
+      if (!target) { return; }
+      openEditor(target, currentName);
+    }, 0);
+  }
+
+  function openEditor(li, currentName) {
+    var nameSpan = li.querySelector('.pic-row__name');
+    var actions = li.querySelector('.pic-row__actions');
+
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'field-input pic-row__name-input';
+    input.value = currentName;
+
+    var saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.className = 'pic-icon-btn';
+    saveBtn.textContent = '✓ salva';
+
+    var cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'pic-icon-btn';
+    cancelBtn.textContent = '✕ annulla';
+
+    function doSave() { savePicture(currentName, input.value); }
+    function doCancel() { refreshPictures(); }
+
+    saveBtn.onclick = doSave;
+    cancelBtn.onclick = doCancel;
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); doSave(); }
+      else if (e.key === 'Escape') { e.preventDefault(); doCancel(); }
+    });
+
+    li.replaceChild(input, nameSpan);
+    actions.innerHTML = '';
+    actions.appendChild(saveBtn);
+    actions.appendChild(cancelBtn);
+    input.focus();
+    input.select();
+  }
+
+  function savePicture(oldName, newName) {
+    var fd = new FormData();
+    fd.append('old', oldName);
+    fd.append('new', newName);
+    fetch('/api/pictures/rename', { method: 'POST', body: fd })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.ok) { picStatus('Rinominata in ' + data.name, true); refreshPictures(); }
+        else { picStatus(data.message, false); }
+      })
+      .catch(function () { picStatus('Errore di rete.', false); });
+  }
+
+  function deletePicture(name) {
+    if (!window.confirm('Eliminare "' + name + '"?')) { return; }
+    var fd = new FormData();
+    fd.append('name', name);
+    fetch('/api/pictures/delete', { method: 'POST', body: fd })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.ok) { picStatus('Eliminata ' + name, true); refreshPictures(); }
+        else { picStatus(data.message, false); }
+      })
+      .catch(function () { picStatus('Errore di rete.', false); });
+  }
+
+  window.picUpload = function () {
+    document.getElementById('pic-upload-input').click();
+  };
+
+  document.getElementById('pic-upload-input').addEventListener('change', function () {
+    var input = this;
+    if (!input.files || !input.files.length) { return; }
+    var btn = document.getElementById('pic-upload-btn');
+    var fd = new FormData();
+    fd.append('file', input.files[0]);
+
+    btn.disabled = true;
+    picStatus('Caricamento…', true);
+    document.getElementById('pic-upload-result').style.color = 'var(--color-ink-muted)';
+
+    fetch('/api/pictures/upload', { method: 'POST', body: fd })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.ok) { picStatus('Caricata ' + data.name, true); refreshPictures(); }
+        else { picStatus(data.message, false); }
+      })
+      .catch(function () { picStatus('Errore di rete.', false); })
+      .finally(function () { btn.disabled = false; input.value = ''; });
+  });
+
+  // Initial load of the pictures list.
+  refreshPictures();
 }());
 </script>
 {% endblock %}
