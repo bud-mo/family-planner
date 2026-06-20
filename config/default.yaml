@@ -16,9 +16,11 @@ display:
   eink_model: 7in5_V2
   eink_palette: bw
   eink_dither: false
-  eink_gamma: 0.50       # default
-  eink_saturation: 1.45  # default
-  eink_brightness: 1.15  # default
+  # Saturation passed to the Inky library for photo/artwork rendering (0..1).
+  # The library blends its desaturated/saturated hardware palettes by this
+  # amount; the official Spectra 6 example uses 0.5. Values >1 are out of range
+  # and distort/darken colours.
+  eink_saturation: 0.5
   rotation: 0
 weather:
   enabled: false
@@ -27,4 +29,8 @@ weather:
   units: celsius       # celsius | fahrenheit
 artwork:
   query: "landscape painting"
+  # "endpoint" → random painting from the online ARTIC API (using `query`).
+  # "folder"   → local images from `folder`, alphabetical, next one per button press.
+  source: "endpoint"
+  folder: "pictures"
 calendars: []

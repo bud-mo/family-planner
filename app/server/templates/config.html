@@ -386,6 +386,20 @@
     <section class="config-section">
       <h2 class="config-section__title">Artwork</h2>
       <div class="field-grid">
+        <label class="field-label">sorgente</label>
+        <div class="field-checkbox-row" style="gap:18px;">
+          <label style="display:flex; align-items:center; gap:6px;">
+            <input type="radio" name="artwork_source" value="endpoint"
+                   {% if config.artwork.source == "endpoint" %}checked{% endif %} />
+            Endpoint (query online)
+          </label>
+          <label style="display:flex; align-items:center; gap:6px;">
+            <input type="radio" name="artwork_source" value="folder"
+                   {% if config.artwork.source == "folder" %}checked{% endif %} />
+            Cartella locale (pictures/)
+          </label>
+        </div>
+
         <label class="field-label" for="artwork_query">query</label>
         <div style="display:flex; gap:8px; align-items:center; max-width:360px;">
           <input class="field-input" type="text" id="artwork_query" name="artwork_query"

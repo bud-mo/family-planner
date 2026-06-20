@@ -58,6 +58,13 @@ _ARTWORK_QUERY_DEFAULT: str = "landscape painting"
 
 class ArtworkConfig(BaseModel):
     query: str = _ARTWORK_QUERY_DEFAULT
+    # "endpoint" → fetch a random painting from the ARTIC API using `query`.
+    # "folder"   → show images from the local `pictures/` folder, in alphabetical
+    #              order, advancing to the next one on each button press.
+    source: Literal["endpoint", "folder"] = "endpoint"
+    # Folder scanned in "folder" mode. Relative paths are resolved against the
+    # project root.
+    folder: str = "pictures"
 
 
 class AppConfig(BaseModel):

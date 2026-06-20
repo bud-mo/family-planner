@@ -401,7 +401,7 @@ def _perform_shutdown(
 
     try:
         img = renderer.render_artwork()
-        processed = eink_renderer.process(img)
+        processed = eink_renderer.process_photo(img)
         display.push(processed)
         logger.info("_perform_shutdown: artwork inviato al pannello.")
     except Exception:  # noqa: BLE001
@@ -441,7 +441,13 @@ def _perform_show_artwork(
     next push while the artwork is being fetched and sent to the panel.
     The actual fetch + push runs in a daemon thread to avoid blocking the
     GPIO callback.
+
+    When the mode is freshly entered (it was not already active) the folder
+    cursor is reset, so each entry starts from the first picture; pressing the
+    button again while already in artwork mode advances to the next image.
     """
+    if not artwork_mode.is_set():
+        renderer.reset_artwork_cursor()
     artwork_mode.set()
     logger.info("Modalità artwork attivata (pulsante B).")
 
@@ -453,7 +459,7 @@ def _perform_show_artwork(
                 # a panel refresh that would immediately be overwritten by planner.
                 logger.info("artwork-push: annullato durante il fetch (pulsante A premuto).")
                 return
-            processed = eink_renderer.process(img)
+            processed = eink_renderer.process_photo(img)
             display.push(processed)
             logger.info("Artwork inviato al pannello.")
         except Exception:  # noqa: BLE001

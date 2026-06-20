@@ -139,6 +139,32 @@ class EinkRenderer:
 
         return result
 
+    def process_photo(self, image: Image.Image) -> Image.Image:
+        """Prepare a *photographic* image for the panel, following the Spectra 6 example.
+
+        Unlike :meth:`process`, this does **not** quantise to a hard-coded palette.
+        It only resizes (and rotates) the image and keeps it in ``"RGB"`` mode, so
+        the Inky library performs the palette mapping itself via
+        ``set_image(image, saturation=...)`` — applying its hardware-calibrated
+        palette blend and its own dithering.  This mirrors the official example::
+
+            resizedimage = image.resize(inky.resolution)
+            inky.set_image(resizedimage, saturation=saturation)
+
+        Quantising a photo here instead (as :meth:`process` does for the UI) would
+        posterise it: flat colour blocks, a dark/harsh look, and skin tones
+        snapping orange→yellow because the custom palette has no intermediate
+        hues.  Photos must therefore go through this method, not :meth:`process`.
+
+        Returns an ``"RGB"`` ``PIL.Image`` at the panel's native resolution.
+        """
+        W, H = self._size
+        resize_target = (H, W) if self._rotation in (90, 270) else (W, H)
+        result = image.convert("RGB").resize(resize_target, Image.Resampling.LANCZOS)
+        if self._rotation:
+            result = result.rotate(-self._rotation, expand=True)
+        return result
+
     def _quantise(self, image: Image.Image, dither: Image.Dither) -> Image.Image:
         """Dispatch to the configured palette quantiser."""
         if self._palette == "bw":

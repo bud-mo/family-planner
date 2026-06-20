@@ -13,7 +13,7 @@ REMOTE_DIR="/home/$REMOTE_USER/family-planner"
 echo "=== Family Planner — Deploy to $TARGET ==="
 
 # Sync project files (exclude dev/build artifacts)
-echo "[1/4] Syncing files to $TARGET:$REMOTE_DIR ..."
+echo "[1/5] Syncing files to $TARGET:$REMOTE_DIR ..."
 rsync -avz \
     --exclude='.git' \
     --exclude='.github' \
@@ -35,6 +35,7 @@ rsync -avz \
     --exclude='README.md' \
     --exclude='docs/' \
     --exclude='tests/' \
+    --exclude='pictures/' \
     --exclude='config/config.local.yaml' \
     --exclude='scripts/deploy.sh' \
     --exclude='scripts/setup-autostart.sh' \
@@ -43,15 +44,22 @@ rsync -avz \
     --exclude='scripts/extract_icons.py' \
     "$PROJECT_DIR/" "$TARGET:$REMOTE_DIR/"
 
+# Sync the artwork pictures folder (used by artwork "folder" mode).
+# Synced separately so its contents are copied as-is without being affected by
+# the build-artifact excludes above.
+echo "[2/5] Syncing pictures folder to $TARGET:$REMOTE_DIR/pictures ..."
+ssh "$TARGET" "mkdir -p $REMOTE_DIR/pictures"
+rsync -avz "$PROJECT_DIR/pictures/" "$TARGET:$REMOTE_DIR/pictures/"
+
 # Install/update Python dependencies on target
-echo "[2/4] Installing Python dependencies on target..."
+echo "[3/5] Installing Python dependencies on target..."
 ssh "$TARGET" "cd $REMOTE_DIR && \
     python3 -m venv venv && \
     venv/bin/pip install --upgrade pip --quiet && \
     venv/bin/pip install -r requirements.txt --quiet"
 
 # Install/update systemd service
-echo "[3/4] Installing systemd service..."
+echo "[4/5] Installing systemd service..."
 # shellcheck disable=SC2029
 ssh -t "$TARGET" "sed \"s|/home/pi|/home/$REMOTE_USER|g; s|User=pi|User=$REMOTE_USER|g\" \
     $REMOTE_DIR/systemd/family-planner.service | \
@@ -66,7 +74,7 @@ ssh -t "$TARGET" "sed \"s|/home/pi|/home/$REMOTE_USER|g; s|User=pi|User=$REMOTE_
     fi"
 
 # Reload and restart systemd service
-echo "[4/4] Restarting family-planner service..."
+echo "[5/5] Restarting family-planner service..."
 ssh -t "$TARGET" "sudo systemctl daemon-reload && \
     sudo systemctl enable family-planner && \
     sudo systemctl restart family-planner && \

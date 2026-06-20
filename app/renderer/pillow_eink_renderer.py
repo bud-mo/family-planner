@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -89,6 +90,22 @@ class PillowEinkRenderer:
         self._artwork_query: str = (
             _artwork_cfg.query if _artwork_cfg is not None else _ARTWORK_QUERY_DEFAULT
         )
+        # Artwork source: "endpoint" (ARTIC API query) or "folder" (local pictures).
+        self._artwork_source: str = (
+            getattr(_artwork_cfg, "source", "endpoint") if _artwork_cfg is not None else "endpoint"
+        )
+        # Folder scanned in "folder" mode; relative paths resolve against the
+        # project root (two levels above this file: app/renderer/ -> project/).
+        _folder = (
+            getattr(_artwork_cfg, "folder", "pictures") if _artwork_cfg is not None else "pictures"
+        )
+        _folder_path = Path(_folder)
+        if not _folder_path.is_absolute():
+            _folder_path = Path(__file__).resolve().parents[2] / _folder_path
+        self._artwork_folder: Path = _folder_path
+        # Cursor into the alphabetically-sorted folder; advances on each render so
+        # a button press shows the next image. Cycles via modulo in the loader.
+        self._artwork_index: int = 0
 
         # E-ink artwork enhancement — only meaningful when display_type == "eink".
         # Values can be overridden via config.display.eink_gamma / saturation / brightness.
@@ -176,38 +193,55 @@ class PillowEinkRenderer:
         ctx.attach_mask()
         return img
 
+    def reset_artwork_cursor(self) -> None:
+        """Reset the folder cursor so the next artwork render shows the first image.
+
+        Called when artwork mode is (re)entered, so each entry starts from the
+        alphabetically-first picture in ``config.artwork.folder``.  No effect in
+        ``"endpoint"`` mode (each render is already random).
+        """
+        self._artwork_index = 0
+
     def render_artwork(self) -> Image.Image:
-        """Render a random public-domain landscape painting as an RGB ``PIL.Image``.
+        """Render an artwork image as an RGB ``PIL.Image``.
 
-        The painting region is marked as ditherable; the caption box is left
-        crisp.  Falls back to a plain ``BG`` background if the fetch fails.
+        When ``config.artwork.source`` is ``"endpoint"`` (default) a random
+        public-domain painting is fetched from the ARTIC API.  When it is
+        ``"folder"`` the images in ``config.artwork.folder`` are shown in
+        alphabetical order, advancing to the next one on each call (so a button
+        press cycles through the folder).
 
-        When ``display_type`` is ``"eink"``, :func:`~app.renderer.components.artwork.enhance_for_eink`
-        is applied before pasting, using the gamma/saturation/brightness values from
-        ``config.display`` (defaults: gamma=0.50, saturation=1.45, brightness=1.15).
-        This compensates for the Spectra 6 panel's tendency to render photographs
-        darker and more muted than the source image.
+        The picture is shown as-is: no e-ink enhancement and no dithering are
+        applied (for both sources), so it keeps its original tones.  Falls back
+        The picture is shown as-is: no e-ink enhancement and no dithering are
+        applied (for both sources), so it keeps its original tones.  Falls back
+        to a plain ``BG`` background if the fetch fails.
         """
         W, H = self._size
         palette = self._palette
         img = Image.new("RGB", (W, H), palette["BG"])
         ctx = self._make_ctx(img, palette)
 
-        is_eink = self._display_type == "eink"
-        result = _artwork.fetch_artwork(
-            W, H, self._artwork_query,
-            eink_enhance=is_eink,
-            gamma=self._eink_gamma,
-            saturation=self._eink_saturation,
-            brightness=self._eink_brightness,
-        )
+        # Artwork mode shows pictures as-is: no e-ink enhancement and no
+        # dithering, for both folder and endpoint sources.
+        if self._artwork_source == "folder":
+            # Local pictures: alphabetical order, next image on each call.
+            result = _artwork.load_folder_artwork(
+                self._artwork_folder, self._artwork_index, W, H,
+                eink_enhance=False,
+            )
+            if result is not None:
+                self._artwork_index += 1
+        else:
+            result = _artwork.fetch_artwork(
+                W, H, self._artwork_query,
+                eink_enhance=False,
+            )
         if result is not None:
             artwork_img, caption = result
             img.paste(artwork_img)
-            ctx.mark_dither((0, 0, W, H))  # photographic content — dither it
             if caption:
-                box = _artwork.draw_artwork_caption(ctx, caption)
-                ctx.unmark_dither(box)  # keep the caption crisp
+                _artwork.draw_artwork_caption(ctx, caption)
 
         ctx.attach_mask()
         return img

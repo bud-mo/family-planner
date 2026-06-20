@@ -9,6 +9,7 @@ from __future__ import annotations
 import io
 import logging
 import random
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -18,6 +19,11 @@ if TYPE_CHECKING:
     from app.renderer.components.context import RenderContext
 
 logger = logging.getLogger(__name__)
+
+# Image extensions recognised when scanning the local pictures folder.
+_FOLDER_IMAGE_EXTS: tuple[str, ...] = (
+    ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp",
+)
 
 # ---------------------------------------------------------------------------
 # Art Institute of Chicago public API (no key required)
@@ -197,6 +203,69 @@ def fetch_artwork(
     except Exception:  # noqa: BLE001
         logger.exception("fetch_artwork: impossibile scaricare artwork — uso sfondo BG.")
         return None
+
+
+def list_folder_images(folder: "Path | str") -> list[Path]:
+    """Return image files in *folder*, sorted case-insensitively by name.
+
+    Only files whose extension is in :data:`_FOLDER_IMAGE_EXTS` are returned.
+    A missing or non-directory path yields an empty list.
+    """
+    folder = Path(folder)
+    if not folder.is_dir():
+        return []
+    files = [
+        p
+        for p in folder.iterdir()
+        if p.is_file() and p.suffix.lower() in _FOLDER_IMAGE_EXTS
+    ]
+    return sorted(files, key=lambda p: p.name.lower())
+
+
+def load_folder_artwork(
+    folder: "Path | str",
+    index: int,
+    width: int,
+    height: int,
+    *,
+    eink_enhance: bool = False,
+    gamma: float = _DEFAULT_GAMMA,
+    saturation: float = _DEFAULT_SATURATION,
+    brightness: float = _DEFAULT_BRIGHTNESS,
+) -> "tuple[Image.Image, str] | None":
+    """Load the *index*-th image (alphabetical) from *folder* and crop-fill it.
+
+    The index wraps around the number of images found, so callers can keep
+    incrementing it to cycle through the folder.  Returns a ``(image, caption)``
+    tuple, or ``None`` when the folder is empty / unreadable (the caller falls
+    back to a plain background).  The caption is the file name without extension.
+
+    Args mirror :func:`fetch_artwork`; *eink_enhance* and the gamma/saturation/
+    brightness knobs apply the same Spectra 6 correction.
+    """
+    images = list_folder_images(folder)
+    if not images:
+        logger.warning("load_folder_artwork: nessuna immagine in %s", folder)
+        return None
+
+    path = images[index % len(images)]
+    try:
+        img = Image.open(path).convert("RGB")
+    except Exception:  # noqa: BLE001
+        logger.exception("load_folder_artwork: impossibile aprire %s — uso sfondo BG.", path)
+        return None
+
+    cover = ImageOps.fit(img, (width, height), Image.Resampling.LANCZOS)
+    if eink_enhance:
+        cover = enhance_for_eink(
+            cover,
+            gamma=gamma,
+            saturation=saturation,
+            brightness=brightness,
+        )
+
+    logger.info("load_folder_artwork: «%s» (%d/%d)", path.name, index % len(images) + 1, len(images))
+    return cover, path.stem
 
 
 def draw_artwork_caption(ctx: "RenderContext", caption: str) -> Rect:
