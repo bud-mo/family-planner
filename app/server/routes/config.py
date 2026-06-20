@@ -147,6 +147,9 @@ def _parse_config_form(form: Any, existing: AppConfig) -> dict:
             "query": _str("artwork_query", "landscape painting") or "landscape painting",
             "source": _str("artwork_source", existing.artwork.source) or "endpoint",
             "folder": existing.artwork.folder,
+            "slideshow_interval_minutes": _int(
+                "artwork_slideshow_interval", existing.artwork.slideshow_interval_minutes
+            ),
         },
         "calendars": calendars,
         "timezone": _str("timezone", existing.timezone) or existing.timezone,

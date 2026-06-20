@@ -31,4 +31,7 @@ artwork:
   # "folder"   → local images from `folder`, alphabetical, next one per button press.
   source: "endpoint"
   folder: "pictures"
+  # Minutes between automatic image changes when slideshow mode is active
+  # (button C while in artwork mode toggles it). Integer minutes, >= 1.
+  slideshow_interval_minutes: 30
 calendars: []

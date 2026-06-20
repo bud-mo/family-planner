@@ -180,6 +180,42 @@ The query is passed directly to ARTIC's Elasticsearch full-text engine (`q` fiel
 
 ---
 
+## Slideshow (auto-advance)
+
+While **artwork mode is active** (either `source: endpoint` or `source: folder`),
+a single press of button **C** — its rotation-equivalent **B** when the panel is
+mounted upside-down (180°/270°) — **toggles slideshow mode on/off**:
+
+- When **on**, the panel advances to the **next image at a regular interval**: the
+  next folder picture in `folder` mode, or a fresh random painting in `endpoint`
+  mode — exactly what a manual artwork-button press does, but on a timer.
+- The interval is `artwork.slideshow_interval_minutes` (**integer minutes, ≥ 1,
+  default 30**), editable from the `/config` web UI. It is read live, so a config
+  save changes the cadence of the *next* interval without a restart.
+- Pressing C again while the slideshow is on turns it off; the current image stays
+  (e-ink is bistable). Leaving artwork mode (planner button) or shutting the device
+  down also stops the slideshow.
+- Pressing C while **not** in artwork mode is a no-op (logged at INFO).
+
+```yaml
+artwork:
+  query: "landscape painting"
+  slideshow_interval_minutes: 30   # auto-advance cadence; integer minutes, >= 1
+```
+
+A slideshow "tick" reuses the same `render_artwork() → process_photo() → push()`
+cycle as the manual artwork button — no second render or push route. The timer
+lives in `app/display/slideshow.py` (`SlideshowController`), driven from a
+dedicated short-lived thread that is started only when an e-ink panel is present.
+
+> **Button C and SPI CS1.** On every model except the 13.3″, button C is BCM16,
+> which the Inky driver also uses as SPI CS1. All four GPIO lines are requested
+> together; if a board refuses line 16, `InkyButtonHandler` falls back to A/B/D
+> only, disabling the slideshow button alone and keeping planner/artwork/shutdown
+> working. On `inky_impression_13` button C is BCM25 (no conflict).
+
+---
+
 ## Managing artwork from `/config`
 
 The web configuration page (`/config`, Artwork section) lets you manage the

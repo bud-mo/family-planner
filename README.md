@@ -11,11 +11,12 @@ A minimalist calendar viewer inspired by *Wall Street Journal* typography, desig
 - **Portrait and landscape layout**: selectable from configuration, adaptable to any resolution
 - **Screen rotation**: support for 0°/90°/180°/270° via `display.rotation` — the EinkRenderer post-processor rotates the final image before sending it to the panel
 - **Artwork mode (privacy)**: pressing button B shows a random public-domain painting from the **Art Institute of Chicago** (or a local image) instead of the calendar; pressing A restores the planner
+- **Slideshow**: in artwork mode, button C toggles automatic image rotation at a configurable interval (`artwork.slideshow_interval_minutes`, default 30 min)
 - **Shutdown screen**: pressing button D shows a final artwork on the panel before the device shuts down
 - **E-ink display**: Waveshare EPD and Pimoroni Inky Impression (Spectra 6) panels — palette quantization (BW / BWR / 4-gray / Spectra 6) and optional Floyd-Steinberg dithering
 - **FastAPI web server**: browser preview (`GET /`) and remote configuration (`GET/POST /config`)
 - **Artwork management from the web config**: list, upload, rename, and delete images in the local `pictures/` folder, and a Test button to preview an endpoint-query result — all directly from `/config`
-- **Always up-to-date calendar view**: the Home always shows the current day — no Up/Down navigation or pagination. Physical buttons on Pimoroni Inky Impression are **A = return to planner**, **B = artwork/privacy**, **D = shutdown**
+- **Always up-to-date calendar view**: the Home always shows the current day — no Up/Down navigation or pagination. Physical buttons on Pimoroni Inky Impression are **A = return to planner**, **B = artwork/privacy**, **C = slideshow toggle**, **D = shutdown** (positions stay fixed across panel rotation)
 
 ---
 
@@ -138,6 +139,7 @@ display:
 
 artwork:
   query: "landscape painting"  # search query for artwork (Art Institute of Chicago)
+  slideshow_interval_minutes: 30  # button C in artwork mode auto-advances at this cadence (min 1)
 
 calendars:
   - name: "Family"

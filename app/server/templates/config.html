@@ -436,7 +436,17 @@
           </button>
           <button type="button" class="btn" onclick="testArtwork(this)">Test</button>
         </div>
+
+        <label class="field-label" for="artwork_slideshow_interval">intervallo slideshow (minuti)</label>
+        <input class="field-input" type="number" id="artwork_slideshow_interval"
+               name="artwork_slideshow_interval" min="1" step="1"
+               value="{{ config.artwork.slideshow_interval_minutes }}" />
       </div>
+
+      <p style="margin:6px 0 0; font-size:var(--text-sm); color:var(--color-ink-muted);">
+        In modalità artwork, premi il pulsante C per avviare/fermare lo slideshow;
+        le immagini ruotano a questo intervallo.
+      </p>
 
       <!-- Endpoint query preview (hidden until first successful test) -->
       <div id="artwork-preview" style="display:none; margin-top:14px;">

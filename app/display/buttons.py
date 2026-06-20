@@ -4,10 +4,17 @@
 physical buttons of any Inky Impression panel (A=BCM5, B=BCM6, C=BCM16,
 D=BCM24) and invokes a callback with the button label.
 
-Only buttons **A**, **B** and **D** are requested from the GPIO chip — button
-**C** (BCM16) is **not** acquired because pin 16 is also used as SPI CS1 by
-the Pimoroni Inky library.  Requesting that pin simultaneously would prevent
-the Inky driver from initialising correctly.
+All four lines (A, B, C and D) are requested from the GPIO chip.  On every
+model except the 13.3″, button **C** is BCM16, which the Inky driver also
+uses as SPI CS1.  Acquiring line 16 alongside the others generally succeeds,
+but if a particular board/kernel/overlay refuses it, ``_listen`` falls back
+to requesting only A, B and D — so a CS1 conflict disables the slideshow
+button only, never the planner/artwork/shutdown buttons.  On the 13.3″ model
+button C is BCM25 (no conflict) and the first request always succeeds.
+
+``resolve_button_roles`` maps the physical labels (A/B/C/D) to logical roles
+for a given panel rotation; it is a pure function and lives here next to the
+handler so the mapping can be unit-tested without GPIO.
 
 The ``gpiod`` library is imported lazily so this module can be imported on
 any platform (macOS, Linux dev machines) without raising ``ImportError``.
@@ -57,6 +64,24 @@ _GPIO_CHIP_CANDIDATES: list[str] = ["/dev/gpiochip4", "/dev/gpiochip0"]
 
 # Minimum seconds between two accepted presses of the same button.
 _DEBOUNCE_SECONDS: float = 0.300
+
+
+def resolve_button_roles(rotation: int) -> dict[str, str]:
+    """Map physical button labels (A/B/C/D) to logical roles for a rotation.
+
+    Standard (0°/90°):    A=planner  B=artwork  C=slideshow  D=shutdown
+    Inverted (180°/270°): A=shutdown C=artwork  B=slideshow  D=planner
+
+    The 180° flip swaps A↔D and B↔C, so every role keeps the same *physical*
+    button position regardless of mounting orientation.
+    """
+    inverted = rotation in (180, 270)
+    return {
+        "planner": "D" if inverted else "A",
+        "artwork": "C" if inverted else "B",
+        "slideshow": "B" if inverted else "C",
+        "shutdown": "A" if inverted else "D",
+    }
 
 
 class InkyButtonHandler:
@@ -162,24 +187,51 @@ class InkyButtonHandler:
         import gpiod
         from gpiod.line import Bias, Direction, Edge
 
-        pins = tuple(self._button_pins.values())
         settings = gpiod.LineSettings(
             direction=Direction.INPUT,
             edge_detection=Edge.FALLING,
             bias=Bias.PULL_UP,
         )
 
-        try:
-            request = gpiod.request_lines(
-                chip_path,
-                consumer="family-planner-buttons",
-                config={pins: settings},
-            )
-        except Exception:
-            logger.exception(
-                "InkyButtonHandler: impossibile aprire le linee GPIO su %s.", chip_path
-            )
+        # Try the full set first; on failure (typically a BCM16/SPI-CS1 conflict
+        # on a non-13.3" board) retry without C so the slideshow button is the
+        # only casualty — planner/artwork/shutdown keep working.
+        pins_all = tuple(self._button_pins.values())
+        c_pin = self._button_pins.get("C")
+        pins_no_c = tuple(p for p in pins_all if p != c_pin)
+
+        request = None
+        for pins in (pins_all, pins_no_c):
+            try:
+                request = gpiod.request_lines(
+                    chip_path,
+                    consumer="family-planner-buttons",
+                    config={pins: settings},
+                )
+                break
+            except Exception:
+                if pins is pins_all and pins_no_c != pins_all:
+                    logger.warning(
+                        "InkyButtonHandler: richiesta linee %s fallita — "
+                        "riprovo senza C (BCM%s).",
+                        pins,
+                        c_pin,
+                    )
+                else:
+                    logger.exception(
+                        "InkyButtonHandler: impossibile aprire le linee GPIO su %s.",
+                        chip_path,
+                    )
+        if request is None:
             return
+
+        active_pins = set(pins)
+        active = ", ".join(
+            f"{lbl}={pin}"
+            for lbl, pin in self._button_pins.items()
+            if pin in active_pins
+        )
+        logger.info("InkyButtonHandler: pulsanti attivi: %s", active)
 
         logger.debug("InkyButtonHandler: loop GPIO attivo.")
         try:

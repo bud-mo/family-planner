@@ -64,7 +64,8 @@ family-planner/
 │   │   └── open_meteo.py        # OpenMeteoProvider: Open-Meteo API + in-memory cache TTL 1h
 │   └── display/
 │       ├── __init__.py
-│       ├── buttons.py           # InkyButtonHandler: GPIO A/B/D on Pimoroni Inky (gpiod)
+│       ├── buttons.py           # InkyButtonHandler (GPIO A/B/C/D, gpiod) + resolve_button_roles()
+│       ├── slideshow.py         # SlideshowController: auto-advance timer for artwork mode
 │       └── eink.py              # EinkDisplay / InkyDisplay: push image via SPI; panel_available()
 ├── config/
 │   └── default.yaml             # Default configuration (included in repo)
@@ -175,9 +176,13 @@ Startup (main.py --config ...)
         └── E-ink ──▶  EinkRenderer(config.display)  [no browser, no display server]
                         Uvicorn on main thread
                         InkyButtonHandler.start() — GPIO daemon thread (gpiod)
-                          A → wake_event.set()  → skip sleep, immediate re-render (back to planner)
+                          roles = resolve_button_roles(rotation)  — A/B/C/D → planner/artwork/slideshow/shutdown
+                          (line request: all four lines; falls back to A/B/D if BCM16/CS1 is refused)
+                          A → wake_event.set()  → skip sleep, immediate re-render (back to planner) + slideshow.stop()
                           B → _perform_show_artwork() → fetch ARTIC → EinkRenderer → push
                               (artwork_mode blocking: suppresses loop pushes while active)
+                          C → SlideshowController.toggle() — start/stop the auto-advance timer
+                              (no-op outside artwork mode; own daemon thread, interval read live)
                           D → _perform_shutdown() → render_artwork() → push → sudo shutdown -h now
                         Daemon loop (clock-aligned cadence — see app/scheduling.py):
                           wakes at every quarter-hour (xx:00/15/30/45)

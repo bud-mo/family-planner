@@ -649,17 +649,40 @@ def main() -> None:
         # Physical button handler (Inky Impression only)
         # ----------------------------------------------------------
         if config.display.eink_model.startswith("inky_"):
-            from app.display.buttons import InkyButtonHandler
+            from app.display.buttons import InkyButtonHandler, resolve_button_roles
+            from app.display.slideshow import SlideshowController
 
             _shutdown_triggered = threading.Event()
 
-            # Buttons are physically inverted when the panel is rotated 180° or 270°:
-            #   standard (0°/90°)  : A=planner  B=artwork  D=shutdown
-            #   inverted (180°/270°): A=shutdown C=artwork  D=planner   (B ignored)
-            _inverted_rotation = config.display.rotation in (180, 270)
-            _artwork_button  = "C" if _inverted_rotation else "B"
-            _planner_button  = "D" if _inverted_rotation else "A"
-            _shutdown_button = "A" if _inverted_rotation else "D"
+            # Buttons keep the same *physical* position across mounting
+            # orientations: a 180°/270° flip swaps A↔D and B↔C.
+            #   standard (0°/90°)  : A=planner  B=artwork  C=slideshow  D=shutdown
+            #   inverted (180°/270°): A=shutdown C=artwork  B=slideshow  D=planner
+            roles = resolve_button_roles(config.display.rotation)
+            _planner_button = roles["planner"]
+            _artwork_button = roles["artwork"]
+            _slideshow_button = roles["slideshow"]
+            _shutdown_button = roles["shutdown"]
+
+            def _advance_slideshow() -> None:
+                # Reuse the artwork push so the slideshow moves forward.
+                # render_artwork() advances the folder cursor / fetches a fresh
+                # random work itself, so no extra cursor handling is needed.
+                # The mode-change guard mirrors _perform_show_artwork._push.
+                img = _renderer_ref[0].render_artwork()
+                if not _artwork_mode.is_set():
+                    logger.info("slideshow: avanzamento annullato (uscita da artwork).")
+                    return
+                processed = _eink_renderer_ref[0].process_photo(img)
+                display_obj.push(processed)  # type: ignore[union-attr]
+                logger.info("Slideshow: immagine successiva inviata al pannello.")
+
+            _slideshow = SlideshowController(
+                advance=_advance_slideshow,
+                artwork_mode=_artwork_mode,
+                stop_event=eink_stop_event,
+                interval_minutes=lambda: web_app.state.config.artwork.slideshow_interval_minutes,
+            )
 
             def _on_button(button: str) -> None:
                 if _shutdown_triggered.is_set():
@@ -674,6 +697,10 @@ def main() -> None:
                         _artwork_mode,
                     )
 
+                elif button == _slideshow_button:
+                    # Toggle the auto-advance slideshow. No-op outside artwork mode.
+                    _slideshow.toggle()
+
                 elif button == _planner_button:
                     # Return to the planner.  We must not wake the eink loop
                     # directly: if an artwork push is in progress the loop would
@@ -683,6 +710,7 @@ def main() -> None:
                     # to become free (_push_lock) and only then wakes the loop.
                     if _artwork_mode.is_set():
                         _artwork_mode.clear()
+                        _slideshow.stop()  # leaving artwork stops the slideshow
                         logger.info(
                             "Modalit\u00e0 artwork disattivata (pulsante %s) \u2014 ritorno al planner.",
                             _planner_button,
@@ -713,6 +741,7 @@ def main() -> None:
 
                 elif button == _shutdown_button:
                     # Shutdown: stop the loop and power off the device.
+                    _slideshow.stop()  # defensive — no auto-advance during shutdown
                     _shutdown_triggered.set()
                     threading.Thread(
                         target=_perform_shutdown,
@@ -724,10 +753,12 @@ def main() -> None:
             _button_handler = InkyButtonHandler(eink_model=config.display.eink_model)
             _button_handler.start(_on_button, eink_stop_event)
             logger.info(
-                "InkyButtonHandler avviato (rotation=%d\u00b0: %s=planner, %s=artwork, %s=shutdown).",
+                "InkyButtonHandler avviato (rotation=%d\u00b0: %s=planner, %s=artwork, "
+                "%s=slideshow, %s=shutdown).",
                 config.display.rotation,
                 _planner_button,
                 _artwork_button,
+                _slideshow_button,
                 _shutdown_button,
             )
     else:

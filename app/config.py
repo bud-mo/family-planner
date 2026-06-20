@@ -87,6 +87,16 @@ class ArtworkConfig(BaseModel):
     # Folder scanned in "folder" mode. Relative paths are resolved against the
     # project root.
     folder: str = "pictures"
+    # Minutes between automatic image changes when slideshow mode is active
+    # (toggled by button C while in artwork mode). Must be >= 1.
+    slideshow_interval_minutes: int = 30
+
+    @field_validator("slideshow_interval_minutes")
+    @classmethod
+    def _validate_interval(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("slideshow_interval_minutes must be >= 1")
+        return v
 
 
 class AppConfig(BaseModel):
