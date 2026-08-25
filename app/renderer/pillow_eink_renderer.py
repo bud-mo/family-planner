@@ -104,12 +104,15 @@ class PillowEinkRenderer:
         # a button press shows the next image. Cycles via modulo in the loader.
         self._artwork_index: int = 0
 
-        # E-ink artwork enhancement knobs.
-        # Values can be overridden via config.display.eink_gamma / saturation / brightness.
-        _disp = config.display
-        self._eink_gamma: float = float(getattr(_disp, "eink_gamma", 0.50))
-        self._eink_saturation: float = float(getattr(_disp, "eink_saturation", 1.45))
-        self._eink_brightness: float = float(getattr(_disp, "eink_brightness", 1.15))
+        # Nota: la pipeline di enhancement per e-ink (gamma / saturazione /
+        # luminosità in [app/renderer/components/artwork.py]) non è collegata qui.
+        # `render_artwork` passa `eink_enhance=False` per entrambe le sorgenti —
+        # le immagini vanno a schermo con i toni originali — quindi il renderer
+        # non ha manopole fotografiche da leggere dalla config.
+        #
+        # La saturazione che agisce davvero sul pannello è
+        # `config.display.eink_saturation`, applicata dal driver Inky in
+        # [app/display/eink.py] via `inky.set_image(saturation=...)`.
 
         tz_name: str = getattr(config, "timezone", "local")
         if tz_name and tz_name != "local":
@@ -124,6 +127,15 @@ class PillowEinkRenderer:
         else:
             self._tz = None
 
+        # Refresh policy — needed here because the quiet band changes *what* is
+        # drawn, not only when: see `weather_for_display`.
+        from app.config import RefreshConfig
+        from app.scheduling import RefreshPolicy
+
+        self._policy = RefreshPolicy.from_config(
+            getattr(config, "refresh", None) or RefreshConfig()
+        )
+
         # Resolved semantic palette for the e-ink panel (palette-snapped tokens).
         self._palette: dict[str, str] = resolve_palette(self._eink_palette)
 
@@ -137,12 +149,39 @@ class PillowEinkRenderer:
     # Public API
     # ------------------------------------------------------------------
 
+    def weather_for_display(self, now: datetime | None = None) -> WeatherData:
+        """Return the weather data to draw, with the night projection applied.
+
+        On a night frame the instantaneous fields are dropped (see
+        :func:`app.weather.provider.strip_instant_fields`): those frames stay on
+        the panel for hours, so a reading taken at push time would be stale long
+        before the next repaint.  ``RefreshPolicy.is_night_frame`` decides — the
+        quiet band plus the ticks that serve it, which are night frames even when
+        configured outside the band's bounds.
+
+        This lives in the renderer, not in the e-ink loop, so that the browser
+        preview shows the same frame as the panel — a preview that displayed the
+        full banner at 02:00 while the panel showed the night variant would be
+        misleading exactly when it is used for debugging.
+        """
+        from app.weather.provider import strip_instant_fields
+
+        weather = (
+            self._weather_provider.get()
+            if self._weather_provider is not None
+            else WeatherData()
+        )
+        if self._policy.is_night_frame(now or datetime.now()):
+            return strip_instant_fields(weather)
+        return weather
+
     def render(
         self,
         state: NavigationState,
         events: list["CalendarEvent"],
         *,
         updated_at: datetime | None = None,
+        weather: WeatherData | None = None,
     ) -> Image.Image:
         """Render the Home view for *state* and *events* as an RGB ``PIL.Image``.
 
@@ -150,17 +189,19 @@ class PillowEinkRenderer:
         in the footer ("Ultimo aggiornamento").  When ``None`` (browser preview)
         the current time is used.  The returned image carries a dither mask
         in ``img.info["dither_mask"]``.
+
+        *weather* lets the caller supply the exact data the frame must show.  The
+        e-ink loop passes the same value it fed into the content signature, so
+        that what is signed and what is drawn can never diverge; when omitted the
+        renderer resolves it through :meth:`weather_for_display`.
         """
         W, H = self._size
         palette = self._palette
         img = Image.new("RGB", (W, H), palette["BG"])
         ctx = self._make_ctx(img, palette)
 
-        weather = (
-            self._weather_provider.get()
-            if self._weather_provider is not None
-            else WeatherData()
-        )
+        if weather is None:
+            weather = self.weather_for_display()
 
         if self._layout == "portrait":
             weather_rect: Rect = (0, 0, W, BANNER_HEIGHT)
@@ -206,8 +247,6 @@ class PillowEinkRenderer:
         alphabetical order, advancing to the next one on each call (so a button
         press cycles through the folder).
 
-        The picture is shown as-is: no e-ink enhancement and no dithering are
-        applied (for both sources), so it keeps its original tones.  Falls back
         The picture is shown as-is: no e-ink enhancement and no dithering are
         applied (for both sources), so it keeps its original tones.  Falls back
         to a plain ``BG`` background if the fetch fails.

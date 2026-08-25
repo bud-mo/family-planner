@@ -121,6 +121,21 @@ def _parse_config_form(form: Any, existing: AppConfig) -> dict:
             }
         )
 
+    existing_quiet = existing.refresh.quiet_hours
+    quiet_enabled = _bool("quiet_enabled")
+    quiet_start = _str("quiet_start") or existing_quiet.start
+    quiet_end = _str("quiet_end") or existing_quiet.end
+    quiet_midnight_update = _bool("quiet_midnight_update")
+
+    # Gli orari di repaint notturni non dipendono dai confini della fascia: il
+    # sigillo resta al proprio orario anche se l'inizio viene spostato, e la
+    # mezzanotte è governata dalla sola casella "cambio data". L'unica voce che
+    # il form controlla è "00:00"; le altre (il sigillo) si riportano invariate,
+    # perché non sono esposte.
+    allowed_ticks = [t for t in existing_quiet.allowed_ticks if t != "00:00"]
+    if quiet_midnight_update:
+        allowed_ticks.append("00:00")
+
     return {
         "server": {
             "host": _str("server_host", "0.0.0.0"),
@@ -150,6 +165,20 @@ def _parse_config_form(form: Any, existing: AppConfig) -> dict:
             "slideshow_interval_minutes": _int(
                 "artwork_slideshow_interval", existing.artwork.slideshow_interval_minutes
             ),
+        },
+        # Le cadenze di aggiornamento (display/calendar/push) non sono esposte
+        # nel form: si riportano invariate, altrimenti ogni salvataggio dal web
+        # le riazzererebbe ai default silenziosamente.
+        "refresh": {
+            "display_interval_minutes": existing.refresh.display_interval_minutes,
+            "calendar_poll_minutes": existing.refresh.calendar_poll_minutes,
+            "min_push_interval_minutes": existing.refresh.min_push_interval_minutes,
+            "quiet_hours": {
+                "enabled": quiet_enabled,
+                "start": quiet_start,
+                "end": quiet_end,
+                "allowed_ticks": allowed_ticks,
+            },
         },
         "calendars": calendars,
         "timezone": _str("timezone", existing.timezone) or existing.timezone,

@@ -20,6 +20,33 @@ display:
   # and distort/darken colours.
   eink_saturation: 0.5
   rotation: 0
+refresh:
+  # Griglia dei repaint del pannello, allineata alla mezzanotte. Il default di
+  # 120 min coincide con la finestra di previsione bioraria del meteo: il
+  # pannello si ridipinge quando il contenuto cambia davvero, non a vuoto.
+  # Deve essere un divisore di 1440.
+  display_interval_minutes: 120
+  # Solo fetch di rete del calendario, non repaint: una modifica provoca un push
+  # dedicato, un calendario invariato non ne provoca nessuno. Divisore di 60.
+  calendar_poll_minutes: 15
+  # Distanza minima fra due push consecutivi guidati dal calendario: fonde in un
+  # solo repaint le raffiche di modifiche fatte dal telefono.
+  min_push_interval_minutes: 20
+  quiet_hours:
+    # Fascia notturna senza repaint: l'e-ink mantiene l'immagine a costo zero e
+    # non lampeggia. `start` incluso, `end` escluso; può attraversare la mezzanotte.
+    enabled: true
+    start: "23:00"
+    end: "06:00"
+    # Orari a cui il pannello si ridipinge comunque durante la notte. "00:00"
+    # serve al cambio di data; "23:00" stampa il frame che sigilla la notte
+    # (rimuoverlo fa restare a schermo quello delle 22:00, con un repaint in meno
+    # al giorno). Non devono cadere dentro start/end: valgono al proprio orario,
+    # così spostare l'inizio della fascia non fa sparire il sigillo. Valgono però
+    # solo a fascia attiva.
+    # Nei frame notturni la banda meteo perde i dati istantanei (temperatura,
+    # icona, min/max): resterebbero a schermo per ore, invecchiando.
+    allowed_ticks: ["23:00", "00:00"]
 weather:
   enabled: false
   latitude: 45.4654    # Milano — sostituire con le proprie coordinate

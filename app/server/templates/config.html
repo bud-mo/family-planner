@@ -368,6 +368,42 @@
     </section>
 
     <!-- ---------------------------------------------------------------- -->
+    <!-- Fascia notturna                                                    -->
+    <!-- ---------------------------------------------------------------- -->
+    <section class="config-section">
+      <h2 class="config-section__title">Fascia notturna</h2>
+      <div class="field-grid">
+        <label class="field-label" for="quiet_enabled">abilitato</label>
+        <div class="field-checkbox-row">
+          <input type="checkbox" id="quiet_enabled" name="quiet_enabled"
+                 {% if config.refresh.quiet_hours.enabled %}checked{% endif %} />
+          <label for="quiet_enabled">Sospendi gli aggiornamenti del pannello durante la notte</label>
+        </div>
+
+        <label class="field-label" for="quiet_start">inizio</label>
+        <input class="field-input" type="time" id="quiet_start" name="quiet_start"
+               value="{{ config.refresh.quiet_hours.start }}" />
+
+        <label class="field-label" for="quiet_end">fine</label>
+        <input class="field-input" type="time" id="quiet_end" name="quiet_end"
+               value="{{ config.refresh.quiet_hours.end }}" />
+
+        <label class="field-label" for="quiet_midnight_update">cambio data</label>
+        <div class="field-checkbox-row">
+          <input type="checkbox" id="quiet_midnight_update" name="quiet_midnight_update"
+                 {% if "00:00" in config.refresh.quiet_hours.allowed_ticks %}checked{% endif %} />
+          <label for="quiet_midnight_update">Aggiorna a mezzanotte per il cambio data</label>
+        </div>
+      </div>
+
+      <p style="margin:6px 0 0; font-size:var(--text-sm); color:var(--color-ink-muted);">
+        L'e-ink mantiene l'immagine senza consumo: non ridipingere di notte non
+        costa leggibilità ed evita il lampeggio. Senza l'aggiornamento di
+        mezzanotte il pannello mostra la data del giorno precedente fino al mattino.
+      </p>
+    </section>
+
+    <!-- ---------------------------------------------------------------- -->
     <!-- Meteo                                                             -->
     <!-- ---------------------------------------------------------------- -->
     <section class="config-section">

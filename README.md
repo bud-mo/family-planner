@@ -16,6 +16,7 @@ A minimalist calendar viewer inspired by *Wall Street Journal* typography, desig
 - **E-ink display**: Waveshare EPD and Pimoroni Inky Impression (Spectra 6) panels — palette quantization (BW / BWR / 4-gray / Spectra 6) and optional Floyd-Steinberg dithering
 - **FastAPI web server**: browser preview (`GET /`) and remote configuration (`GET/POST /config`)
 - **Artwork management from the web config**: list, upload, rename, and delete images in the local `pictures/` folder, and a Test button to preview an endpoint-query result — all directly from `/config`
+- **Minimal repaints**: the panel is refreshed on a bihourly clock grid aligned to the weather's forecast window, plus an immediate push when the calendar actually changes — 11 scheduled repaints a day instead of one per hour, with a silent quiet band overnight (`refresh` section)
 - **Always up-to-date calendar view**: the Home always shows the current day — no Up/Down navigation or pagination. Physical buttons on Pimoroni Inky Impression are **A = return to planner**, **B = artwork/privacy**, **C = slideshow toggle**, **D = shutdown** (positions stay fixed across panel rotation)
 
 ---
@@ -123,6 +124,38 @@ server:
 
 timezone: "Europe/Rome"      # IANA name (e.g. "Europe/Rome") or "local"
 
+refresh:
+  # A panel repaint costs 20-30 s of flashing, so the cadence follows how often
+  # the content actually changes. The default grid is bihourly and aligned to
+  # midnight, matching the weather's bihourly forecast window — the only thing
+  # on screen that moves by itself. Must divide 1440.
+  display_interval_minutes: 120
+  # Network fetch only, not a repaint: a calendar change earns its own push, an
+  # unchanged calendar earns none. Must divide 60.
+  calendar_poll_minutes: 15
+  # Minimum gap between calendar-driven pushes: collapses a burst of edits made
+  # from a phone into a single repaint.
+  min_push_interval_minutes: 20
+  quiet_hours:
+    enabled: true
+    start: "23:00"           # included
+    end: "06:00"             # excluded
+    # Times at which the panel repaints anyway during the night. "00:00" rolls
+    # the date over; "23:00" is the seal — the last repaint before the night
+    # (drop it for one repaint less a day and the 22:00 frame, the one that still
+    # shows the temperature, stays up until midnight). They are NOT required to
+    # fall inside start/end: each fires at its own time, so moving the band start
+    # never silently deletes the seal. They do require the band to be enabled.
+    #
+    # Night frames — the band and these ticks, wherever they are configured —
+    # omit the current temperature, the condition icon and the daily max/min:
+    # they would sit on the panel for hours going stale. The bihourly strip
+    # stays — it is a forecast, so it is still useful at breakfast.
+    allowed_ticks: ["23:00", "00:00"]
+    # La fascia notturna (attivazione, orari, aggiornamento di mezzanotte) è
+    # modificabile anche dal pannello web, sezione "Fascia notturna" in /config.
+    # Le tre cadenze qui sopra restano solo su file.
+
 weather:
   enabled: false             # true → shows the weather section
   latitude: 45.4654          # GPS coordinates of the location
@@ -176,10 +209,11 @@ family-planner/
 ├── app/
 │   ├── main.py              # Entry point
 │   ├── config.py            # Config loading and validation (Pydantic v2)
+│   ├── scheduling.py        # RefreshPolicy — when to poll, when to repaint, quiet band
 │   ├── server/              # FastAPI app, routes, Jinja2 templates
 │   ├── calendar/            # CalDAV / iCal / ICS providers and aggregator
 │   ├── renderer/            # Pillow rendering pipeline (e-ink + browser preview)
-│   ├── weather/             # OpenMeteoProvider with 1h TTL in-memory cache
+│   ├── weather/             # OpenMeteoProvider, cached for one bihourly window
 │   └── display/             # Waveshare and Pimoroni Inky e-ink display handlers
 ├── config/
 │   └── default.yaml         # Default configuration
@@ -209,7 +243,9 @@ PillowEinkRenderer (native Pillow)
                             └── EinkDisplay / InkyDisplay (SPI)
 ```
 
-The pipeline is shared: `PillowEinkRenderer` generates the same `PIL.Image` for the panel and the browser preview. Only the final post-processing differs. Weather is injected by `OpenMeteoProvider` (1h TTL in-memory cache, keyless Open-Meteo API).
+The pipeline is shared: `PillowEinkRenderer` generates the same `PIL.Image` for the panel and the browser preview. Only the final post-processing differs. Weather is injected by `OpenMeteoProvider` (keyless Open-Meteo API, cached for one bihourly window so it expires exactly when the panel is allowed to show new data).
+
+When the frame is pushed matters as much as how it is drawn: `RefreshPolicy` (`app/scheduling.py`) keeps the network poll, the repaint grid and the push decision separate, so an unchanged screen is never repainted and a night frame — which sits on the panel until dawn — omits the readings that would go stale on it. See [docs/architecture.md](docs/architecture.md) and the `refresh` section above.
 
 `PillowEinkRenderer.render_artwork()` is a second entry point of the same renderer: it fetches a random public-domain painting from the **Art Institute of Chicago** via IIIF and returns it as a `PIL.Image` of the same format — privacy mode and the shutdown screen use this same pipeline.
 

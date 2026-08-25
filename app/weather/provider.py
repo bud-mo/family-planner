@@ -41,6 +41,42 @@ def drop_past_hourly_slots(weather: WeatherData, now: datetime) -> WeatherData:
     return replace(weather, hourly_forecast=[])
 
 
+def strip_instant_fields(weather: WeatherData) -> WeatherData:
+    """Return *weather* without the fields that describe the present moment.
+
+    Used for the frames rendered inside the quiet band (see
+    ``RefreshPolicy.in_quiet_hours``). Those frames stay on the panel for hours
+    — the one pushed at midnight survives until ``06:00`` — so any reading taken
+    at push time silently rots: a temperature measured at midnight is wrong by
+    dawn, and ``temp_max``/``temp_min`` describe a day that is barely under way.
+    Dropping them is more honest than showing a stale number, and it is what
+    keeps the panel from repainting whenever they drift.
+
+    What survives is the bihourly forecast, which is *predictive* and therefore
+    stays valid: the midnight frame carries the ``00:00``–``10:00`` windows and
+    is still useful at breakfast.
+
+    Idempotent — projecting an already-projected value returns it unchanged, so
+    the e-ink loop and the renderer can both apply it without coordination.
+    """
+    if (
+        weather.condition_icon is None
+        and weather.description is None
+        and weather.temp_current is None
+        and weather.temp_max is None
+        and weather.temp_min is None
+    ):
+        return weather
+    return replace(
+        weather,
+        condition_icon=None,
+        description=None,
+        temp_current=None,
+        temp_max=None,
+        temp_min=None,
+    )
+
+
 class WeatherProvider(ABC):
     """Returns current weather data for the configured location.
 

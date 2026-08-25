@@ -35,7 +35,12 @@ from app.weather.provider import WeatherProvider, drop_past_hourly_slots
 logger = logging.getLogger(__name__)
 
 _OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
-_CACHE_TTL: int = 3600  # seconds — refresh at most once per hour
+# Default TTL: one bihourly forecast window.  The banner shows a 2-hour window,
+# so fetching more often than that only produces data the panel cannot display
+# differently — and every difference it *does* produce costs a repaint.  Callers
+# pass ``cache_ttl`` derived from ``refresh.display_interval_minutes`` to keep
+# the two aligned; the hourly tick that used to drive this is gone.
+_CACHE_TTL: int = 7200
 
 # ---------------------------------------------------------------------------
 # WMO 4677 weather code → Tabler icon name (subset used in design.md)
@@ -125,15 +130,18 @@ def _resolve_icon(code: int, is_day: bool) -> str | None:
 class OpenMeteoProvider(WeatherProvider):
     """Fetches current conditions from the Open-Meteo API.
 
-    Results are cached in-memory for ``_CACHE_TTL`` seconds (1 hour).
-    On fetch or parse errors the last known data is returned; if no data has
-    ever been fetched successfully an empty ``WeatherData()`` is returned so
-    the renderer degrades gracefully to showing the date only.
+    Results are cached in-memory for *cache_ttl* seconds (default: one bihourly
+    window).  On fetch or parse errors the last known data is returned; if no
+    data has ever been fetched successfully an empty ``WeatherData()`` is
+    returned so the renderer degrades gracefully to showing the date only.
 
     Args:
         latitude: Geographic latitude of the target location.
         longitude: Geographic longitude of the target location.
         units: Temperature unit — ``"celsius"`` (default) or ``"fahrenheit"``.
+        cache_ttl: Seconds before a non-forced ``get()`` refetches.  Callers
+            derive it from ``refresh.display_interval_minutes`` so the cache
+            expires exactly when the panel is allowed to show new data.
     """
 
     def __init__(
@@ -141,10 +149,12 @@ class OpenMeteoProvider(WeatherProvider):
         latitude: float,
         longitude: float,
         units: str = "celsius",
+        cache_ttl: int = _CACHE_TTL,
     ) -> None:
         self._latitude = latitude
         self._longitude = longitude
         self._units = units
+        self._cache_ttl = cache_ttl
         self._lock = threading.Lock()
         self._cached: WeatherData | None = None
         self._cached_at: float = 0.0
@@ -170,7 +180,7 @@ class OpenMeteoProvider(WeatherProvider):
             with self._lock:
                 if (
                     self._cached is not None
-                    and time.monotonic() - self._cached_at < _CACHE_TTL
+                    and time.monotonic() - self._cached_at < self._cache_ttl
                 ):
                     return drop_past_hourly_slots(self._cached, datetime.now())
 
