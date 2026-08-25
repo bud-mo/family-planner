@@ -1,12 +1,13 @@
 from __future__ import annotations
 import logging
 import stat
+from datetime import time as _time
 from pathlib import Path
 from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
-from pydantic import BaseModel, ValidationError, field_validator
+from pydantic import BaseModel, ValidationError, field_validator, model_validator
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +76,134 @@ class WeatherConfig(BaseModel):
     units: Literal["celsius", "fahrenheit"] = "celsius"
 
 
+def _parse_hhmm(value: str, field_name: str) -> _time:
+    """Parse ``"HH:MM"`` into a :class:`datetime.time`, raising on bad input."""
+    try:
+        hour_s, minute_s = value.split(":")
+        return _time(hour=int(hour_s), minute=int(minute_s))
+    except (AttributeError, ValueError) as exc:
+        raise ValueError(
+            f"{field_name} must be a time in 'HH:MM' format (got {value!r})"
+        ) from exc
+
+
+class QuietHoursConfig(BaseModel):
+    """Fascia notturna in cui i repaint del pannello sono sospesi.
+
+    L'e-ink mantiene l'immagine senza alimentazione, quindi durante la notte
+    non ridipingere non costa nulla in leggibilità ed evita il lampeggio.
+    ``start`` è incluso e ``end`` escluso; la fascia può attraversare la
+    mezzanotte (default ``23:00``–``06:00``).
+
+    ``allowed_ticks`` elenca gli orari a cui il pannello si ridipinge comunque
+    durante la notte. La mezzanotte è necessaria per il cambio di data: senza di
+    essa il pannello mostrerebbe la data di ieri fino al mattino; il sigillo
+    (default ``23:00``) è l'ultimo repaint prima della notte.
+
+    Non sono vincolati a cadere dentro ``[start, end)``: valgono al proprio
+    orario, così spostare l'inizio della fascia non fa sparire il sigillo. Sono
+    però legati a ``enabled``: a fascia disattivata non c'è notte da sigillare e
+    vale la sola griglia display.
+    """
+
+    enabled: bool = True
+    start: str = "23:00"
+    end: str = "06:00"
+    allowed_ticks: list[str] = ["23:00", "00:00"]
+
+    @field_validator("start", "end")
+    @classmethod
+    def _validate_bounds(cls, v: str, info) -> str:  # noqa: ANN001
+        _parse_hhmm(v, f"quiet_hours.{info.field_name}")
+        return v
+
+    @field_validator("allowed_ticks")
+    @classmethod
+    def _validate_ticks(cls, v: list[str]) -> list[str]:
+        for tick in v:
+            _parse_hhmm(tick, "quiet_hours.allowed_ticks")
+        return v
+
+    @model_validator(mode="after")
+    def _validate_band_bounds(self) -> "QuietHoursConfig":
+        """Gli estremi della fascia devono differire.
+
+        Gli orari di ``allowed_ticks`` non sono invece vincolati alla fascia:
+        valgono al proprio orario. Il sigillo è *l'ultimo repaint prima della
+        notte* e resta tale anche se cade poco prima dell'inizio fascia — legarlo
+        ai confini lo farebbe sparire ogni volta che si sposta l'orario di inizio.
+        """
+        if not self.enabled:
+            return self
+        if self.start_time == self.end_time:
+            raise ValueError(
+                "quiet_hours.start and quiet_hours.end must differ "
+                "(set enabled: false to disable the quiet band)"
+            )
+        return self
+
+    @property
+    def start_time(self) -> _time:
+        return _parse_hhmm(self.start, "quiet_hours.start")
+
+    @property
+    def end_time(self) -> _time:
+        return _parse_hhmm(self.end, "quiet_hours.end")
+
+    @property
+    def allowed_tick_times(self) -> tuple[_time, ...]:
+        return tuple(
+            _parse_hhmm(t, "quiet_hours.allowed_ticks") for t in self.allowed_ticks
+        )
+
+
+class RefreshConfig(BaseModel):
+    """Cadenze di aggiornamento — vedi ``app/scheduling.py`` per la politica.
+
+    ``display_interval_minutes`` è la griglia dei repaint, allineata alla
+    mezzanotte: il default di 120 minuti coincide con la finestra di previsione
+    bioraria del meteo, così che il pannello si aggiorni esattamente quando il
+    contenuto cambia.
+
+    ``calendar_poll_minutes`` governa solo il *fetch* di rete, non il repaint:
+    una modifica al calendario provoca un push dedicato (soggetto a
+    ``min_push_interval_minutes``), un calendario invariato non ne provoca
+    nessuno.
+    """
+
+    display_interval_minutes: int = 120
+    calendar_poll_minutes: int = 15
+    min_push_interval_minutes: int = 20
+    quiet_hours: QuietHoursConfig = QuietHoursConfig()
+
+    @field_validator("display_interval_minutes")
+    @classmethod
+    def _validate_display_interval(cls, v: int) -> int:
+        if v < 1 or 1440 % v:
+            raise ValueError(
+                "display_interval_minutes must be a positive divisor of 1440 "
+                f"so the grid stays aligned to midnight (got {v})"
+            )
+        return v
+
+    @field_validator("calendar_poll_minutes")
+    @classmethod
+    def _validate_poll_interval(cls, v: int) -> int:
+        if v < 1 or 60 % v:
+            raise ValueError(
+                "calendar_poll_minutes must be a positive divisor of 60 so the "
+                f"poll boundaries stay aligned to the hour (got {v})"
+            )
+        return v
+
+    @field_validator("min_push_interval_minutes")
+    @classmethod
+    def _validate_cooldown(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("min_push_interval_minutes must be >= 0")
+        return v
+
+
 _ARTWORK_QUERY_DEFAULT: str = "landscape painting"
 
 
@@ -105,6 +234,7 @@ class AppConfig(BaseModel):
     calendars: list[CalendarConfig] = []
     weather: WeatherConfig = WeatherConfig()
     artwork: ArtworkConfig = ArtworkConfig()
+    refresh: RefreshConfig = RefreshConfig()
     timezone: str = "Europe/Rome"
 
     @field_validator("timezone")

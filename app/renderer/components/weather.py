@@ -55,65 +55,58 @@ def draw_weather(ctx: "RenderContext", rect: Rect, weather: WeatherData) -> None
         anchor="lm",
     )
 
-    right_x = x0 + w - 12
+    # Right-hand block, laid out right-to-left:
+    #   [icon 48px] | [current temp] | [↑max / ↓min stacked]
+    #
+    # Each element takes up space only when it is present, so any subset renders
+    # correctly.  This matters beyond partial API responses: inside the quiet
+    # band the night projection clears all three at once (see
+    # :func:`app.weather.provider.strip_instant_fields`) and the row is left with
+    # the date alone, because a frame that stays on the panel until dawn must not
+    # claim to report the present moment.
+    cursor_x = x0 + w - 12
+
+    if weather.temp_max is not None and weather.temp_min is not None:
+        max_str = f"↑{weather.temp_max:.0f}°"
+        min_str = f"↓{weather.temp_min:.0f}°"
+        maxmin_col_w = max(
+            int(draw.textlength(max_str, font=fonts.label)),
+            int(draw.textlength(min_str, font=fonts.label)),
+        )
+        _half_lh = (TEXT_XS + 5) // 2  # half visual line-height of font_label
+        ctx.text(
+            (cursor_x, y_mid - _half_lh),
+            max_str,
+            font=fonts.label,
+            fill=palette["INK_MUTED"],
+            anchor="rm",
+        )
+        ctx.text(
+            (cursor_x, y_mid + _half_lh),
+            min_str,
+            font=fonts.label,
+            fill=palette["INK_MUTED"],
+            anchor="rm",
+        )
+        cursor_x -= maxmin_col_w + 8
 
     if weather.temp_current is not None:
-        # Horizontal layout (right-to-left):
-        #   [icon 40px] | [temp 40px] | [↑max / ↓min stacked]
-        has_maxmin = weather.temp_max is not None and weather.temp_min is not None
-
-        # Step 1: measure max/min column width (rightmost block)
-        maxmin_col_w = 0
-        if has_maxmin:
-            max_str = f"↑{weather.temp_max:.0f}°"
-            min_str = f"↓{weather.temp_min:.0f}°"
-            maxmin_col_w = max(
-                int(draw.textlength(max_str, font=fonts.label)),
-                int(draw.textlength(min_str, font=fonts.label)),
-            )
-
-        # Step 2: draw max/min stacked column, right-anchored at right_x
-        if has_maxmin:
-            _half_lh = (TEXT_XS + 5) // 2  # half visual line-height of font_label
-            y_max = y_mid - _half_lh
-            y_min = y_mid + _half_lh
-            ctx.text(
-                (right_x, y_max),
-                max_str,
-                font=fonts.label,
-                fill=palette["INK_MUTED"],
-                anchor="rm",
-            )
-            ctx.text(
-                (right_x, y_min),
-                min_str,
-                font=fonts.label,
-                fill=palette["INK_MUTED"],
-                anchor="rm",
-            )
-
-        # Step 3: draw current temperature, right-anchored left of max/min column
-        temp_gap = 8 if has_maxmin else 0
-        temp_right_x = right_x - maxmin_col_w - temp_gap
         temp_str = f"{weather.temp_current:.0f}°"
         ctx.text(
-            (temp_right_x, y_mid),
+            (cursor_x, y_mid),
             temp_str,
             font=fonts.temp,
             fill=palette["INK"],
             anchor="rm",
         )
-        temp_w = int(draw.textlength(temp_str, font=fonts.temp))
+        cursor_x -= int(draw.textlength(temp_str, font=fonts.temp)) + 10
 
-        # Step 4: draw condition icon (48px), left of temperature
-        if weather.condition_icon is not None:
-            icon_color = WEATHER_ICON_COLORS.get(weather.condition_icon, palette["INK"])
-            icon_x = temp_right_x - temp_w - 10 - 48
-            icon_y = y_mid - 24
-            ctx.draw_icon(
-                weather.condition_icon, 48, (icon_x, icon_y), icon_color,
-                dither=weather.condition_icon == "sun",
-            )
+    if weather.condition_icon is not None:
+        icon_color = WEATHER_ICON_COLORS.get(weather.condition_icon, palette["INK"])
+        ctx.draw_icon(
+            weather.condition_icon, 48, (cursor_x - 48, y_mid - 24), icon_color,
+            dither=weather.condition_icon == "sun",
+        )
 
     _draw_hourly_row(
         ctx, (x0, y0 + BANNER_MAIN_HEIGHT, w, BANNER_HOURLY_HEIGHT), weather

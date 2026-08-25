@@ -185,13 +185,18 @@ Startup (main.py --config ...)
                               (no-op outside artwork mode; own daemon thread, interval read live)
                           D → _perform_shutdown() → render_artwork() → push → sudo shutdown -h now
                         Daemon loop (clock-aligned cadence — see app/scheduling.py):
-                          wakes at every quarter-hour (xx:00/15/30/45)
-                          calendar: re-fetch at every tick; weather: only at xx:00
-                          push only if data changes (content signature)
+                          wakes at RefreshPolicy.next_wake() = min(display tick, calendar poll)
+                          display ticks: 06 08 10 12 14 16 18 20 22 · 23 · 00  (11/day)
+                          calendar poll: every 15 min, daytime only — fetch, not repaint
+                          quiet band 23:00-06:00: no polling, no push except allowed_ticks
                           NavigationState() → anchor_date = today
                           aggregator.get_events(start, end, force=True) → events
-                          PillowEinkRenderer.render(state, events) → PIL.Image
+                          weather: fetched only on a display tick (or retry/button A)
+                                   in the quiet band → strip_instant_fields()
+                          push only if the content signature moved AND the reason
+                            qualifies (tick · calendar change + cooldown · weather recovery)
                           if NOT artwork_mode:
+                            PillowEinkRenderer.render(state, events, weather=...) → PIL.Image
                             EinkRenderer.process(img) → resize + palette + dithering + rotation
                             EinkDisplay.push() → SPI → Waveshare panel
 ```
@@ -201,16 +206,22 @@ Startup (main.py --config ...)
 ## Web Routes
 
 ### `GET /`
-Minimal HTML page with auto-refresh that shows the current calendar image via `<img src="/preview.png">`. The refresh interval is fixed at `WEB_REFRESH_SECONDS` (900 s = 15 min, aligned with the calendar cadence; see `app/scheduling.py`). Useful for browser preview during development.
+Minimal HTML page with auto-refresh that shows the current calendar image via `<img src="/preview.png">`. The refresh interval is fixed at `WEB_REFRESH_SECONDS` (300 s = 5 min; see `app/scheduling.py`). It is deliberately **decoupled** from the panel cadence: reloading a browser tab costs nothing, whereas tying it to the bihourly display grid would freeze the preview for two hours. Useful for browser preview during development.
 
 ### `GET /preview.png`
 Calls `PillowEinkRenderer.render(state, events)` on-demand and returns the resulting PNG image (`Content-Type: image/png`). This is the same image that would be sent to the e-ink panel.
 
 ### `GET /config`
-Web interface for configuration: add/remove calendars, modify display parameters, test provider connections.
+Web interface for configuration: add/remove calendars, modify display parameters, set the night quiet band, test provider connections.
 
 ### `POST /config`
 Saves changes to the configuration file and restarts the server gracefully (SIGHUP or Uvicorn restart).
+
+The form does not expose every setting, and `_parse_config_form` rebuilds the config dict from scratch, so anything absent from the form must be carried over explicitly from the existing config or it is silently reset to its default. That is the case for the three cadence knobs (`display_interval_minutes`, `calendar_poll_minutes`, `min_push_interval_minutes`).
+
+The **Fascia notturna** section maps to `refresh.quiet_hours`: the enable checkbox, the two `HH:MM` bounds, and a "cambio data" checkbox that controls whether `00:00` appears in `allowed_ticks`. The form owns only that one entry; the seal tick is carried over untouched, because it is not exposed.
+
+`allowed_ticks` are **not** constrained to lie inside the band — they fire at their own time (see `is_display_tick`). Binding them to the bounds would silently delete the seal the moment the band start moved past it, and that is the repaint that matters most: the last one before the night. They are, however, tied to `enabled`: with no night to seal, `RefreshPolicy.from_config` drops them and only the display grid applies.
 
 ### Picture-folder management
 
@@ -391,7 +402,26 @@ When the app is not running on a Raspberry Pi (`panel_available()` returns `Fals
 
 The e-ink loop starts no Chromium process. Rendering happens entirely in-process via **`PillowEinkRenderer`** (`renderer/pillow_eink_renderer.py`), which produces a `PIL.Image` directly from `NavigationState` and the event list. TTF fonts are loaded from `app/assets/fonts/` — no network calls.
 
-`main.py` starts a daemon thread that wakes at every quarter-hour boundary (`xx:00`/`xx:15`/`xx:30`/`xx:45`, see `app/scheduling.py`). At each tick it re-fetches the calendar; weather only at `xx:00`. When both cadences coincide (`xx:00`) only one cycle is run. The push to the panel happens only if the *content signature* (`_content_signature`) changes. Button A forces an immediate refresh of both weather **and** calendar:
+`main.py` starts a daemon thread whose sleep is governed by `RefreshPolicy` (see `app/scheduling.py`). Because a repaint costs 20–30 s of flashing, the loop keeps three things apart:
+
+| | cadence | cost | effect |
+|---|---|---|---|
+| **poll** | `calendar_poll_minutes` (15) | network only | never repaints on its own |
+| **display tick** | `display_interval_minutes` (120), midnight-aligned | — | the grid on which a repaint is allowed |
+| **push** | when the content signature moved | a panel refresh | the repaint itself |
+
+The bihourly grid is chosen so a tick lands exactly when the weather's bihourly forecast window advances — the only thing on screen that changes on its own. Adding `quiet_hours` (23:00–06:00, `allowed_ticks` at 23:00 and 00:00) yields **11 scheduled repaints a day**: `06 08 10 12 14 16 18 20 22 · 23 · 00`.
+
+Push rules, beyond "the signature moved":
+
+- a **display tick** always pushes a genuine change;
+- a **calendar change** pushes immediately — someone added an appointment and expects to see it — rate-limited by `min_push_interval_minutes` so a burst of phone edits collapses into one repaint;
+- a **weather change between ticks** is held until the next tick; it is never urgent. The exception is recovery from a failed fetch, where the panel is currently showing degraded data;
+- inside the quiet band nothing is pushed except `allowed_ticks`, and the loop does not even poll: the panel holds its image for free and nobody is reading it at 03:00. Those ticks keep their own time whether or not it falls inside the bounds, so the seal survives a change to the band start.
+
+Night frames drop the *instantaneous* weather fields — current temperature, condition icon, daily max/min — via `strip_instant_fields()`. `RefreshPolicy.is_night_frame` decides: the quiet band, plus the `allowed_ticks` that serve it. Those ticks count even when configured outside the bounds, because what makes a frame a night frame is how long it will sit on the glass, not which side of a boundary it was painted on — with a band of `00:30`–`06:00` the midnight frame is technically outside it and still survives until dawn. The midnight frame stays on the glass until 06:00, and a temperature read at midnight is simply wrong by dawn; the bihourly strip survives because it is predictive and still useful at breakfast. The projection is applied **before** the signature is computed, so what is signed is always exactly what is drawn, and the browser preview applies the same rule (`PillowEinkRenderer.weather_for_display`) so it can never disagree with the panel.
+
+The loop keeps two baselines: `last_pushed_sig` (what is on the glass — advances only on a successful push, so a change deferred by the quiet band or the cooldown stays pending and is still pushed later) and `last_seen_sig` (data changes, feeding the footer's "Ultimo aggiornamento"). Button A forces an immediate refresh of both weather **and** calendar:
 
 1. **`NavigationState()`** creates a new state with `anchor_date = date.today()`.
 2. **`aggregator.get_events(start, end, force=True)`** fetches fresh events for the current view's range.
@@ -409,7 +439,7 @@ The e-ink loop starts no Chromium process. Rendering happens entirely in-process
 
 > **Supported panels**: 13 Waveshare models (mapping `eink_model → module` in `display/eink.py`) + 3 Pimoroni Inky Impression Spectra 6 (`inky_impression_4`, `inky_impression_7`, `inky_impression_13`) with resolutions defined in `renderer/eink_renderer.py`.
 
-> **Refresh time**: Waveshare e-ink panels typically take 15–30 seconds for a full update. The cadences (calendar 15 min, weather 1 hour) are fixed and well above this limit; the push occurs only when data changes.
+> **Refresh time**: Waveshare e-ink panels typically take 15–30 seconds for a full update, during which the panel visibly flashes. That cost is why the cadence is driven by *how often the content genuinely changes* rather than by how often it could be polled: the bihourly grid plus the quiet band brings the scheduled repaints down to 11 a day, and unchanged content pushes nothing at all. The `refresh` config section exposes every knob.
 
 > **On RPi**: the e-ink loop requires no display server — it runs on RPi OS Lite without X11 or Wayland.
 
